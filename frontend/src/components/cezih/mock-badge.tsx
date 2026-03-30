@@ -16,8 +16,8 @@ export function MockBadge() {
         </TooltipTrigger>
         <TooltipContent>
           <p className="max-w-[200px] text-xs">
-            Mock način rada — podaci su simulirani. Prava CEZIH integracija zahtijeva
-            lokalnog agenta i certificirani VPN.
+            DEMO način rada — svi CEZIH podaci su simulirani. Prava CEZIH integracija
+            zahtijeva lokalnog agenta, AKD karticu i certificirani VPN.
           </p>
         </TooltipContent>
       </Tooltip>

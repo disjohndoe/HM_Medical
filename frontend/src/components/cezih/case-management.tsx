@@ -98,11 +98,17 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
     )
   }
 
+  const [pendingAction, setPendingAction] = useState<Record<string, string>>({})
+
   const handleAction = (caseId: string, action: string) => {
+    const actionLabel = CASE_ACTIONS.find((a) => a.value === action)?.label || action
     updateStatus.mutate(
       { caseId, mbo: patientMbo, action },
       {
-        onSuccess: () => toast.success(`Akcija "${action}" uspješna`),
+        onSuccess: () => {
+          toast.success(`${actionLabel} — uspješno`)
+          setPendingAction((prev) => ({ ...prev, [caseId]: "" }))
+        },
         onError: (err) => toast.error(err.message),
       }
     )
@@ -224,8 +230,14 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                     Od: {c.onset_date} | ID: {c.case_id}
                   </div>
                 </div>
-                <Select<string>
-                  onValueChange={(action) => action && handleAction(c.case_id, action)}
+                <Select
+                  value={pendingAction[c.case_id] || null}
+                  onValueChange={(action) => {
+                    if (action) {
+                      setPendingAction((prev) => ({ ...prev, [c.case_id]: action as string }))
+                      handleAction(c.case_id, action as string)
+                    }
+                  }}
                   disabled={updateStatus.isPending}
                 >
                   <SelectTrigger className="w-[140px] h-8 text-xs">

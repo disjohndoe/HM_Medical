@@ -1,6 +1,6 @@
 "use client"
 
-import { Shield, FileText, Pill, ArrowDownToLine, Clock } from "lucide-react"
+import { Shield, FileText, Pill, ArrowDownToLine, Clock, Calendar, Folder, UserPlus } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,20 @@ const ACTION_ICONS: Record<string, typeof Shield> = {
   e_nalaz_send: FileText,
   e_uputnica_retrieve: ArrowDownToLine,
   e_recept_send: Pill,
+  visit_create: Calendar,
+  visit_update: Calendar,
+  visit_close: Calendar,
+  visit_reopen: Calendar,
+  visit_cancel: Calendar,
+  case_create: Folder,
+  case_retrieve: Folder,
+  case_update: Folder,
+  case_remission: Folder,
+  case_relapse: Folder,
+  case_resolve: Folder,
+  case_reopen: Folder,
+  case_delete: Folder,
+  foreigner_register: UserPlus,
 }
 
 function timeAgo(dateStr: string): string {
@@ -95,6 +109,10 @@ export function CezihActivityLog() {
                         {item.action === "e_nalaz_send" && details.reference_id && `Ref: ${details.reference_id}`}
                         {item.action === "e_uputnica_retrieve" && details.count && `${details.count} uputnica`}
                         {item.action === "e_recept_send" && details.recept_id && `ID: ${details.recept_id}`}
+                        {item.action.startsWith("visit_") && details.visit_id && `ID: ${details.visit_id}`}
+                        {item.action.startsWith("case_") && details.case_id && `ID: ${details.case_id}`}
+                        {item.action.startsWith("case_") && !details.case_id && details.mbo && `MBO: ${details.mbo}`}
+                        {item.action === "foreigner_register" && details.mbo && `MBO: ${details.mbo}`}
                       </p>
                     )}
                   </div>

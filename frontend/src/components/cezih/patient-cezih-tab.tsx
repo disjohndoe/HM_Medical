@@ -18,6 +18,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { MockBadge } from "@/components/cezih/mock-badge"
 import { EReceptDialog } from "@/components/cezih/e-recept-dialog"
+import { VisitManagement } from "@/components/cezih/visit-management"
+import { CaseManagement } from "@/components/cezih/case-management"
 import { usePatientCezihSummary, useInsuranceCheck } from "@/lib/hooks/use-cezih"
 import { OSIGURANJE_STATUS, RECORD_TIP } from "@/lib/constants"
 import { formatDateTimeHR } from "@/lib/utils"
@@ -217,6 +219,14 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
           )}
         </CardContent>
       </Card>
+
+      {/* Visit & Case Management */}
+      {patientMbo && (
+        <>
+          <VisitManagement patientId={patientId} patientMbo={patientMbo} />
+          <CaseManagement patientId={patientId} patientMbo={patientMbo} />
+        </>
+      )}
 
       <EReceptDialog
         open={eReceptOpen}

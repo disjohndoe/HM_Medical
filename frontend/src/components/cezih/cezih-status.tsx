@@ -31,12 +31,14 @@ export function CezihStatusCard() {
                 }`}
               />
               <span className="text-sm">
-                {data.connected ? "Povezano" : "Nije povezano"}
+                {data.connected ? "Povezano" : data.mock ? "Nije povezano (DEMO MODE)" : "Nije povezano"}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Način:</span>
-              <Badge variant="outline">{data.mode}</Badge>
+              <Badge variant={data.mock ? "destructive" : "outline"} className={data.mock ? "uppercase font-bold" : ""}>
+                {data.mock ? "DEMO" : data.mode}
+              </Badge>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Agent:</span>
