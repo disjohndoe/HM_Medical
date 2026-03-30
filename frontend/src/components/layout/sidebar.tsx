@@ -6,28 +6,16 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Home,
-  Users,
-  CalendarDays,
-  FileText,
-  Shield,
-  Settings,
-} from "lucide-react";
-import { PLAN_TIER, CEZIH_STATUS, CEZIH_STATUS_COLORS } from "@/lib/constants";
-
-const navItems = [
-  { href: "/dashboard", label: "Početna", icon: Home },
-  { href: "/pacijenti", label: "Pacijenti", icon: Users },
-  { href: "/termini", label: "Termini", icon: CalendarDays },
-  { href: "/postupci", label: "Postupci", icon: FileText },
-  { href: "/cezih", label: "CEZIH", icon: Shield },
-  { href: "/postavke", label: "Postavke", icon: Settings, adminOnly: true },
-];
+import { PLAN_TIER, CEZIH_STATUS, CEZIH_STATUS_COLORS, NAV_ITEMS } from "@/lib/constants";
+import { useCezihStatus } from "@/lib/hooks/use-cezih";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { tenant, user } = useAuth();
+  const { tenant } = useAuth();
+  const { data: cezihData } = useCezihStatus();
+  const isDemo = cezihData && !cezihData.connected && cezihData.mock;
+  const perms = usePermissions();
 
   return (
     <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:border-r lg:bg-sidebar lg:text-sidebar-foreground">
@@ -48,7 +36,7 @@ export function Sidebar() {
       <Separator />
 
       <nav className="flex-1 px-2 py-3 space-y-1">
-        {navItems.filter((item) => !item.adminOnly || user?.role === "admin").map((item) => {
+        {NAV_ITEMS.filter((item) => !item.perm || perms[item.perm]).map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
@@ -73,11 +61,11 @@ export function Sidebar() {
       <div className="px-4 py-3 flex items-center gap-2">
         <span className="text-xs text-muted-foreground">CEZIH</span>
         <div
-          className={cn("h-2 w-2 rounded-full", CEZIH_STATUS_COLORS[tenant?.cezih_status ?? "nepovezano"])}
-          title={tenant?.cezih_status ?? "Nije povezano"}
+          className={cn("h-2 w-2 rounded-full", isDemo ? "bg-orange-400" : CEZIH_STATUS_COLORS[tenant?.cezih_status ?? "nepovezano"])}
+          title={isDemo ? "Nije povezano (DEMO)" : (tenant?.cezih_status ?? "Nije povezano")}
         />
         <span className="text-xs text-muted-foreground">
-          {CEZIH_STATUS[tenant?.cezih_status ?? "nepovezano"] ?? "Nije povezano"}
+          {isDemo ? "Nije povezano (DEMO)" : (CEZIH_STATUS[tenant?.cezih_status ?? "nepovezano"] ?? "Nije povezano")}
         </span>
       </div>
     </aside>

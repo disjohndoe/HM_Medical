@@ -17,6 +17,7 @@ import { DocumentList } from "@/components/documents/document-list"
 import { UploadDialog } from "@/components/documents/upload-dialog"
 import { PatientCezihTab } from "@/components/cezih/patient-cezih-tab"
 import { usePatient } from "@/lib/hooks/use-patients"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 
 export default function PacijentDetailPage() {
@@ -24,6 +25,7 @@ export default function PacijentDetailPage() {
   const id = params.id as string
   const { data: patient, isLoading, error } = usePatient(id)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const { canViewMedicalRecords, canViewCezih, canViewDocuments, canUploadDocuments, canEditMedicalRecord } = usePermissions()
 
   if (isLoading) {
     return (
@@ -50,19 +52,21 @@ export default function PacijentDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={`${patient.ime} ${patient.prezime}`}>
-        <Button variant="outline" nativeButton={false} render={<Link href={`/pacijenti/${patient.id}/uredi`} />}>
-          <PencilIcon className="mr-2 h-4 w-4" />
-          Uredi
-        </Button>
+        {canEditMedicalRecord && (
+          <Button variant="outline" nativeButton={false} render={<Link href={`/pacijenti/${patient.id}/uredi`} />}>
+            <PencilIcon className="mr-2 h-4 w-4" />
+            Uredi
+          </Button>
+        )}
       </PageHeader>
 
       <Tabs defaultValue="pregled">
         <TabsList>
           <TabsTrigger value="pregled">Pregled</TabsTrigger>
           <TabsTrigger value="postupci">Postupci</TabsTrigger>
-          <TabsTrigger value="nalazi">Nalazi</TabsTrigger>
-          <TabsTrigger value="dokumenti">Dokumenti</TabsTrigger>
-          <TabsTrigger value="cezih">CEZIH</TabsTrigger>
+          {canViewMedicalRecords && <TabsTrigger value="nalazi">Nalazi</TabsTrigger>}
+          {canViewDocuments && <TabsTrigger value="dokumenti">Dokumenti</TabsTrigger>}
+          {canViewCezih && <TabsTrigger value="cezih">CEZIH</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="pregled" className="space-y-4">
@@ -174,28 +178,36 @@ export default function PacijentDetailPage() {
           <PerformedList patientId={id} />
         </TabsContent>
 
-        <TabsContent value="nalazi">
-          <RecordList patientId={id} />
-        </TabsContent>
+        {canViewMedicalRecords && (
+          <TabsContent value="nalazi">
+            <RecordList patientId={id} />
+          </TabsContent>
+        )}
 
-        <TabsContent value="dokumenti" className="space-y-4">
-          <div className="flex justify-end">
-            <Button onClick={() => setUploadOpen(true)}>
-              <Upload className="mr-2 h-4 w-4" />
-              Upload dokument
-            </Button>
-          </div>
-          <DocumentList patientId={id} />
-          <UploadDialog
-            open={uploadOpen}
-            onOpenChange={setUploadOpen}
-            patientId={id}
-          />
-        </TabsContent>
+        {canViewDocuments && (
+          <TabsContent value="dokumenti" className="space-y-4">
+            <div className="flex justify-end">
+              {canUploadDocuments && (
+                <Button onClick={() => setUploadOpen(true)}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Upload dokument
+                </Button>
+              )}
+            </div>
+            <DocumentList patientId={id} />
+            <UploadDialog
+              open={uploadOpen}
+              onOpenChange={setUploadOpen}
+              patientId={id}
+            />
+          </TabsContent>
+        )}
 
-        <TabsContent value="cezih">
-          <PatientCezihTab patientId={id} patientMbo={patient.mbo} />
-        </TabsContent>
+        {canViewCezih && (
+          <TabsContent value="cezih">
+            <PatientCezihTab patientId={id} patientMbo={patient.mbo} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

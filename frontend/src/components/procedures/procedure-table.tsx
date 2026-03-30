@@ -18,8 +18,8 @@ import type { Procedure } from "@/lib/types"
 
 interface ProcedureTableProps {
   procedures: Procedure[]
-  onEdit: (procedure: Procedure) => void
-  onDelete: (procedure: Procedure) => void
+  onEdit?: (procedure: Procedure) => void
+  onDelete?: (procedure: Procedure) => void
 }
 
 export function ProcedureTable({ procedures, onEdit, onDelete }: ProcedureTableProps) {
@@ -65,20 +65,24 @@ export function ProcedureTable({ procedures, onEdit, onDelete }: ProcedureTableP
             </TableCell>
             <TableCell className="text-right">
               <div className="flex justify-end gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => onEdit(p)}
-                >
-                  <PencilIcon className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => onDelete(p)}
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </Button>
+                {onEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onEdit(p)}
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                  </Button>
+                )}
+                {onDelete && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onDelete(p)}
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </TableCell>
           </TableRow>

@@ -5,27 +5,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import {
-  Home,
-  Users,
-  CalendarDays,
-  FileText,
-  Shield,
-  Settings,
-} from "lucide-react";
-
-const navItems = [
-  { href: "/dashboard", label: "Početna", icon: Home },
-  { href: "/pacijenti", label: "Pacijenti", icon: Users },
-  { href: "/termini", label: "Termini", icon: CalendarDays },
-  { href: "/postupci", label: "Postupci", icon: FileText },
-  { href: "/cezih", label: "CEZIH", icon: Shield },
-  { href: "/postavke", label: "Postavke", icon: Settings, adminOnly: true },
-];
+import { usePermissions } from "@/lib/hooks/use-permissions";
+import { NAV_ITEMS } from "@/lib/constants";
 
 export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const pathname = usePathname();
-  const { tenant, user } = useAuth();
+  const { tenant } = useAuth();
+  const perms = usePermissions();
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -37,7 +23,7 @@ export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange:
         </SheetHeader>
 
         <nav className="flex flex-col gap-1 px-2 pb-4">
-          {navItems.filter((item) => !item.adminOnly || user?.role === "admin").map((item) => {
+          {NAV_ITEMS.filter((item) => !item.perm || perms[item.perm]).map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link

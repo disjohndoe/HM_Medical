@@ -24,6 +24,7 @@ import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { RecordForm } from "./record-form"
 import { RecordDetail } from "./record-detail"
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import { RECORD_TIP_OPTIONS, RECORD_TIP_COLORS } from "@/lib/constants"
 import { formatDateHR } from "@/lib/utils"
 import type { MedicalRecord } from "@/lib/types"
@@ -38,6 +39,7 @@ export function RecordList({ patientId }: RecordListProps) {
   const [viewRecord, setViewRecord] = useState<MedicalRecord | null>(null)
   const [editRecord, setEditRecord] = useState<MedicalRecord | null>(null)
 
+  const { canCreateMedicalRecord, canEditMedicalRecord } = usePermissions()
   const { data, isLoading } = useMedicalRecords(
     patientId,
     tipFilter || undefined,
@@ -68,10 +70,12 @@ export function RecordList({ patientId }: RecordListProps) {
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={() => setFormOpen(true)}>
-          <PlusIcon className="mr-2 h-4 w-4" />
-          Novi nalaz
-        </Button>
+        {canCreateMedicalRecord && (
+          <Button onClick={() => setFormOpen(true)}>
+            <PlusIcon className="mr-2 h-4 w-4" />
+            Novi nalaz
+          </Button>
+        )}
       </div>
 
       {records.length === 0 ? (
@@ -129,13 +133,15 @@ export function RecordList({ patientId }: RecordListProps) {
                     >
                       <EyeIcon className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => handleEdit(r)}
-                    >
-                      <PencilIcon className="h-4 w-4" />
-                    </Button>
+                    {canEditMedicalRecord && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleEdit(r)}
+                      >
+                        <PencilIcon className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

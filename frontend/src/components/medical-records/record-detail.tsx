@@ -17,6 +17,7 @@ import {
 import { RECORD_TIP, RECORD_TIP_COLORS } from "@/lib/constants"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 import { useSendENalaz, useEUputnice, useRetrieveEUputnice } from "@/lib/hooks/use-cezih"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import { MockBadge } from "@/components/cezih/mock-badge"
 import { ReferralLinkSelect } from "@/components/cezih/referral-link-select"
 import { EReceptDialog } from "@/components/cezih/e-recept-dialog"
@@ -32,6 +33,7 @@ interface RecordDetailProps {
 
 export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: RecordDetailProps) {
   const sendENalaz = useSendENalaz()
+  const { canPerformCezihOps, canEditMedicalRecord } = usePermissions()
   const { data: storedEUputnice } = useEUputnice()
   const retrieveEUputnice = useRetrieveEUputnice()
   const [selectedUputnica, setSelectedUputnica] = useState("")
@@ -63,7 +65,7 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-lg overflow-y-auto">
+      <SheetContent side="center">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Badge
@@ -107,6 +109,7 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
 
           <Separator />
 
+          {canPerformCezihOps && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-medium text-muted-foreground">CEZIH status</h4>
@@ -166,7 +169,10 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
               </div>
             )}
           </div>
+          )}
 
+          {canPerformCezihOps && (
+          <>
           <Separator />
 
           {/* e-Recept button */}
@@ -186,6 +192,8 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
           </div>
 
           <Separator />
+          </>
+          )}
 
           <div className="text-xs text-muted-foreground">
             Kreiran: {formatDateTimeHR(record.created_at)}
@@ -196,12 +204,14 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
             </div>
           )}
 
+          {canEditMedicalRecord && (
           <div className="pt-4">
             <Button variant="outline" className="w-full" onClick={onEdit}>
               <PencilIcon className="mr-2 h-4 w-4" />
               Uredi zapis
             </Button>
           </div>
+          )}
         </div>
       </SheetContent>
 

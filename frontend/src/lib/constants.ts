@@ -155,6 +155,30 @@ export const CEZIH_ACTION_LABELS: Record<string, string> = {
   e_nalaz_send: "Slanje e-Nalaza",
   e_uputnica_retrieve: "Dohvat e-Uputnica",
   e_recept_send: "Slanje e-Recepta",
+  visit_create: "Kreiranje posjete",
+  visit_update: "Ažuriranje posjete",
+  visit_close: "Zatvaranje posjete",
+  visit_reopen: "Ponovno otvaranje posjete",
+  visit_cancel: "Storno posjete",
+  case_create: "Kreiranje slučaja",
+  case_retrieve: "Dohvat slučajeva",
+  case_update: "Ažuriranje slučaja",
+  case_remission: "Remisija slučaja",
+  case_relapse: "Relaps slučaja",
+  case_resolve: "Zatvaranje slučaja",
+  case_reopen: "Ponovno otvaranje slučaja",
+  case_delete: "Brisanje slučaja",
+  foreigner_register: "Registracija stranca",
+  oid_lookup: "OID pretraga",
+  code_system_query: "Pretraga šifrarnika",
+  value_set_expand: "Pretraga skupova pojmova",
+  organization_search: "Pretraga organizacija",
+  practitioner_search: "Pretraga djelatnika",
+  document_search: "Pretraga dokumenata",
+  document_replace: "Zamjena dokumenta",
+  document_cancel: "Storno dokumenta",
+  document_retrieve: "Dohvat dokumenta",
+  sign_document: "Potpisivanje dokumenta",
 };
 
 export const CEZIH_ACTION_COLORS: Record<string, string> = {
@@ -162,7 +186,48 @@ export const CEZIH_ACTION_COLORS: Record<string, string> = {
   e_nalaz_send: "bg-green-100 text-green-800 border-green-200",
   e_uputnica_retrieve: "bg-purple-100 text-purple-800 border-purple-200",
   e_recept_send: "bg-orange-100 text-orange-800 border-orange-200",
+  visit_create: "bg-teal-100 text-teal-800 border-teal-200",
+  visit_update: "bg-teal-100 text-teal-800 border-teal-200",
+  visit_close: "bg-teal-100 text-teal-800 border-teal-200",
+  visit_reopen: "bg-teal-100 text-teal-800 border-teal-200",
+  visit_cancel: "bg-red-100 text-red-800 border-red-200",
+  case_create: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  case_retrieve: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  case_update: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  case_remission: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  case_relapse: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  case_resolve: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  case_reopen: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  case_delete: "bg-red-100 text-red-800 border-red-200",
+  foreigner_register: "bg-amber-100 text-amber-800 border-amber-200",
 };
+
+// --- Navigation ---
+
+import {
+  Home,
+  Users,
+  CalendarDays,
+  FileText,
+  Shield,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
+import type { Permissions } from "@/lib/hooks/use-permissions";
+
+export const NAV_ITEMS: {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  perm?: keyof Permissions;
+}[] = [
+  { href: "/dashboard", label: "Početna", icon: Home },
+  { href: "/pacijenti", label: "Pacijenti", icon: Users },
+  { href: "/termini", label: "Termini", icon: CalendarDays },
+  { href: "/postupci", label: "Postupci", icon: FileText },
+  { href: "/cezih", label: "CEZIH", icon: Shield, perm: "canViewCezih" },
+  { href: "/postavke", label: "Postavke", icon: Settings, perm: "canViewSettings" },
+];
 
 // --- Documents ---
 

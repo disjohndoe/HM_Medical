@@ -18,7 +18,7 @@ import { formatDateHR } from "@/lib/utils"
 
 interface PatientTableProps {
   patients: Patient[]
-  onDelete: (patient: Patient) => void
+  onDelete?: (patient: Patient) => void
 }
 
 export function PatientTable({ patients, onDelete }: PatientTableProps) {
@@ -81,13 +81,15 @@ export function PatientTable({ patients, onDelete }: PatientTableProps) {
                   <Button size="icon-xs" variant="ghost" nativeButton={false} render={<Link href={`/pacijenti/${patient.id}/uredi`} />}>
                     <PencilIcon className="h-4 w-4" />
                   </Button>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    onClick={() => onDelete(patient)}
-                  >
-                    <Trash2Icon className="h-4 w-4 text-destructive" />
-                  </Button>
+                  {onDelete && (
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      onClick={() => onDelete(patient)}
+                    >
+                      <Trash2Icon className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>

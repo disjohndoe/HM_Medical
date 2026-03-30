@@ -1,6 +1,7 @@
 "use client"
 
-import { Download, Loader2 } from "lucide-react"
+import { useState } from "react"
+import { Download, Loader2, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -24,11 +25,15 @@ import { CezihActivityLog } from "@/components/cezih/activity-log"
 import { VisitManagement } from "@/components/cezih/visit-management"
 import { CaseManagement } from "@/components/cezih/case-management"
 import { ForeignerRegistration } from "@/components/cezih/foreigner-registration"
+import { PatientSelector, type SelectedPatient } from "@/components/cezih/patient-selector"
 import { useRetrieveEUputnice, useEUputnice } from "@/lib/hooks/use-cezih"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 
 export default function CezihPage() {
+  const { canViewCezih } = usePermissions()
   const retrieveEUputnice = useRetrieveEUputnice()
   const { data: storedEUputnice } = useEUputnice()
+  const [selectedPatient, setSelectedPatient] = useState<SelectedPatient | null>(null)
 
   const handleRetrieveEUputnice = () => {
     retrieveEUputnice.mutate(undefined, {
@@ -39,9 +44,16 @@ export default function CezihPage() {
 
   const euputnice = storedEUputnice?.items ?? []
 
-  // Demo patient for visit/case management (in production, selected from patient list)
-  const demoPatientId = ""
-  const demoPatientMbo = ""
+  if (!canViewCezih) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="CEZIH" />
+        <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">Nemate pristup ovoj stranici.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -129,11 +141,55 @@ export default function CezihPage() {
         </TabsContent>
 
         <TabsContent value="posjete">
-          <VisitManagement patientId={demoPatientId} patientMbo={demoPatientMbo} />
+          <Card className="mb-4">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Pacijent</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <PatientSelector value={selectedPatient} onChange={setSelectedPatient} />
+            </CardContent>
+          </Card>
+          {selectedPatient?.mbo ? (
+            <VisitManagement patientId={selectedPatient.id} patientMbo={selectedPatient.mbo} />
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Users className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Odaberite pacijenta za upravljanje posjetama
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="slucajevi">
-          <CaseManagement patientId={demoPatientId} patientMbo={demoPatientMbo} />
+          <Card className="mb-4">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Pacijent</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <PatientSelector value={selectedPatient} onChange={setSelectedPatient} />
+            </CardContent>
+          </Card>
+          {selectedPatient?.mbo ? (
+            <CaseManagement patientId={selectedPatient.id} patientMbo={selectedPatient.mbo} />
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Users className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Odaberite pacijenta za upravljanje slučajevima
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="stranci">

@@ -18,6 +18,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { ProcedureTable } from "@/components/procedures/procedure-table"
 import { ProcedureForm } from "@/components/procedures/procedure-form"
 import { useProcedures, useDeleteProcedure } from "@/lib/hooks/use-procedures"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import { PROCEDURE_KATEGORIJA_OPTIONS } from "@/lib/constants"
 import type { Procedure } from "@/lib/types"
 
@@ -35,6 +36,7 @@ export default function PostupciPage() {
     100,
   )
   const deleteMutation = useDeleteProcedure()
+  const { canCreateProcedure, canEditProcedure, canDeleteProcedure } = usePermissions()
 
   function handleEdit(procedure: Procedure) {
     setEditingProcedure(procedure)
@@ -59,10 +61,12 @@ export default function PostupciPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Katalog postupaka" description="Upravljanje katalogom medicinskih postupaka">
-        <Button onClick={handleCreate}>
-          <PlusIcon className="mr-2 h-4 w-4" />
-          Novi postupak
-        </Button>
+        {canCreateProcedure && (
+          <Button onClick={handleCreate}>
+            <PlusIcon className="mr-2 h-4 w-4" />
+            Novi postupak
+          </Button>
+        )}
       </PageHeader>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -94,8 +98,8 @@ export default function PostupciPage() {
       ) : (
         <ProcedureTable
           procedures={data?.items ?? []}
-          onEdit={handleEdit}
-          onDelete={setDeleteTarget}
+          onEdit={canEditProcedure ? handleEdit : undefined}
+          onDelete={canDeleteProcedure ? setDeleteTarget : undefined}
         />
       )}
 
