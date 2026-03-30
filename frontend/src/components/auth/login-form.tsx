@@ -26,6 +26,7 @@ export function LoginForm() {
 
   // Show reason for redirect (kicked session, expired token)
   const [info] = useState(() => {
+    if (typeof window === "undefined") return "";
     const reason = localStorage.getItem("auth_redirect_reason");
     if (reason) {
       localStorage.removeItem("auth_redirect_reason");
