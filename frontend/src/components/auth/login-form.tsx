@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -23,18 +23,18 @@ export function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
   const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
 
-  // MISSING 2: show reason for redirect (kicked session, expired token)
-  useEffect(() => {
+  // Show reason for redirect (kicked session, expired token)
+  const [info] = useState(() => {
     const reason = localStorage.getItem("auth_redirect_reason");
     if (reason) {
       localStorage.removeItem("auth_redirect_reason");
       if (reason === "session_expired") {
-        setInfo("Vaša sesija je istekla. Prijavite se ponovo.");
+        return "Vaša sesija je istekla. Prijavite se ponovo.";
       }
     }
-  }, []);
+    return "";
+  });
 
   const {
     register,

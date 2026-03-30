@@ -5,11 +5,11 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 from app.schemas.tenant import TenantRead
 from app.schemas.user import UserRead, UserReadWithTenant
 from app.services import auth_service
-from app.utils.security import hash_refresh_token
+from app.utils.security import hash_password, hash_refresh_token, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -40,6 +40,24 @@ async def get_me(current_user: User = Depends(get_current_user), db: AsyncSessio
     user_data = UserRead.model_validate(current_user).model_dump()
     user_data["tenant"] = TenantRead.model_validate(tenant)
     return user_data
+
+
+@router.post("/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the current user's password."""
+    if not verify_password(data.old_password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Neispravna stara lozinka")
+
+    if data.old_password == data.new_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nova lozinka mora biti drugačija od stare")
+
+    current_user.hashed_password = hash_password(data.new_password)
+    await db.flush()
+    return {"message": "Lozinka uspješno promijenjena"}
 
 
 @router.get("/sessions")

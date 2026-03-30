@@ -49,6 +49,7 @@ export function RegisterForm() {
     try {
       setError("");
       const { confirmPassword, ...payload } = data;
+      void confirmPassword;
       await registerUser(payload);
       router.replace("/dashboard");
     } catch (err) {

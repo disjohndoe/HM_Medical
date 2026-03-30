@@ -5,7 +5,14 @@ import { useAuth } from "@/lib/auth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LogOut, Menu } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { LogOut, Menu, KeyRound } from "lucide-react";
 import { MobileNav } from "./mobile-nav";
 import { useState } from "react";
 
@@ -51,17 +58,29 @@ export function Header() {
               <Badge variant="outline" className="hidden sm:inline-flex">
                 {roleLabels[user.role] ?? user.role}
               </Badge>
-              <div className="flex items-center gap-2">
-                <Avatar size="sm">
-                  <AvatarFallback>{initials}</AvatarFallback>
-                </Avatar>
-                <span className="text-sm font-medium hidden sm:block">
-                  {user.ime} {user.prezime}
-                </span>
-              </div>
-              <Button variant="ghost" size="icon" onClick={handleLogout} title="Odjava">
-                <LogOut className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-accent transition-colors"
+                >
+                  <Avatar size="sm">
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium hidden sm:block">
+                    {user.ime} {user.prezime}
+                  </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => router.push("/promjena-lozinke")}>
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    Promijeni lozinku
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleLogout()}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Odjava
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
         </div>
