@@ -28,6 +28,19 @@ const ACTION_ICONS: Record<string, typeof Shield> = {
   case_reopen: Folder,
   case_delete: Folder,
   foreigner_register: UserPlus,
+  e_nalaz_cancel: FileText,
+  e_nalaz_replace: FileText,
+}
+
+function formatDetail(details: Record<string, string>): string | null {
+  if (details.reference_id) return `Ref: ${details.reference_id}`
+  if (details.original) return `Ref: ${details.original}`
+  if (details.visit_id) return `ID: ${details.visit_id}`
+  if (details.case_id) return `ID: ${details.case_id}`
+  if (details.recept_id) return `ID: ${details.recept_id}`
+  if (details.mbo) return `MBO: ${details.mbo}`
+  if (details.count) return `${details.count} uputnica`
+  return null
 }
 
 function timeAgo(dateStr: string): string {
@@ -103,16 +116,9 @@ export function CezihActivityLog() {
                         {timeAgo(item.created_at)}
                       </span>
                     </div>
-                    {details && (
+                    {details && formatDetail(details) && (
                       <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                        {item.action === "insurance_check" && details.mbo && `MBO: ${details.mbo}`}
-                        {item.action === "e_nalaz_send" && details.reference_id && `Ref: ${details.reference_id}`}
-                        {item.action === "e_uputnica_retrieve" && details.count && `${details.count} uputnica`}
-                        {item.action === "e_recept_send" && details.recept_id && `ID: ${details.recept_id}`}
-                        {item.action.startsWith("visit_") && details.visit_id && `ID: ${details.visit_id}`}
-                        {item.action.startsWith("case_") && details.case_id && `ID: ${details.case_id}`}
-                        {item.action.startsWith("case_") && !details.case_id && details.mbo && `MBO: ${details.mbo}`}
-                        {item.action === "foreigner_register" && details.mbo && `MBO: ${details.mbo}`}
+                        {formatDetail(details)}
                       </p>
                     )}
                   </div>

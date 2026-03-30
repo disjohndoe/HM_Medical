@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Send, Loader2, PencilIcon, Pill } from "lucide-react"
+import { Send, Loader2, PencilIcon, Pill, XCircle, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -16,11 +16,12 @@ import {
 } from "@/components/ui/sheet"
 import { RECORD_TIP, RECORD_TIP_COLORS } from "@/lib/constants"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
-import { useSendENalaz, useEUputnice, useRetrieveEUputnice } from "@/lib/hooks/use-cezih"
+import { useSendENalaz, useEUputnice, useRetrieveEUputnice, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { MockBadge } from "@/components/cezih/mock-badge"
 import { ReferralLinkSelect } from "@/components/cezih/referral-link-select"
 import { EReceptDialog } from "@/components/cezih/e-recept-dialog"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import type { MedicalRecord } from "@/lib/types"
 
 interface RecordDetailProps {
@@ -33,11 +34,15 @@ interface RecordDetailProps {
 
 export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: RecordDetailProps) {
   const sendENalaz = useSendENalaz()
+  const cancelDocument = useCancelDocument()
+  const replaceDocument = useReplaceDocument()
   const { canPerformCezihOps, canEditMedicalRecord } = usePermissions()
   const { data: storedEUputnice } = useEUputnice()
   const retrieveEUputnice = useRetrieveEUputnice()
   const [selectedUputnica, setSelectedUputnica] = useState("")
   const [eReceptOpen, setEReceptOpen] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [confirmReplace, setConfirmReplace] = useState(false)
 
   const handleSendENalaz = () => {
     sendENalaz.mutate(
@@ -57,6 +62,28 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
 
   const handleLoadReferrals = () => {
     retrieveEUputnice.mutate(undefined, {
+      onError: (err) => toast.error(err.message),
+    })
+  }
+
+  const handleCancelDocument = () => {
+    if (!record.cezih_reference_id) return
+    cancelDocument.mutate(record.cezih_reference_id, {
+      onSuccess: () => {
+        toast.success("e-Nalaz storniran na CEZIH")
+        setConfirmCancel(false)
+      },
+      onError: (err) => toast.error(err.message),
+    })
+  }
+
+  const handleReplaceDocument = () => {
+    if (!record.cezih_reference_id) return
+    replaceDocument.mutate(record.cezih_reference_id, {
+      onSuccess: () => {
+        toast.success("Dokument zamijenjen na CEZIH")
+        setConfirmReplace(false)
+      },
       onError: (err) => toast.error(err.message),
     })
   }
@@ -83,7 +110,7 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 space-y-4 px-4">
           {record.dijagnoza_tekst && (
             <div>
               <h4 className="text-sm font-medium text-muted-foreground">Dijagnoza</h4>
@@ -116,7 +143,7 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
               <MockBadge />
             </div>
             {record.cezih_sent ? (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <Badge className="bg-green-100 text-green-800 border-green-200">
                   Poslano na CEZIH
                 </Badge>
@@ -129,6 +156,37 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
                   <p className="text-xs text-muted-foreground">
                     Vrijeme: {formatDateTimeHR(record.cezih_sent_at)}
                   </p>
+                )}
+                {record.cezih_reference_id && (
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmReplace(true)}
+                      disabled={replaceDocument.isPending}
+                    >
+                      {replaceDocument.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      Zamijeni
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setConfirmCancel(true)}
+                      disabled={cancelDocument.isPending}
+                    >
+                      {cancelDocument.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <XCircle className="mr-2 h-4 w-4" />
+                      )}
+                      Storniraj
+                    </Button>
+                  </div>
                 )}
               </div>
             ) : (
@@ -219,6 +277,27 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
         open={eReceptOpen}
         onOpenChange={setEReceptOpen}
         patientId={patientId}
+      />
+
+      <ConfirmDialog
+        open={confirmCancel}
+        onOpenChange={setConfirmCancel}
+        title="Storno e-Nalaza"
+        description="Jeste li sigurni da želite stornirati ovaj nalaz na CEZIH? Ova radnja se ne može poništiti."
+        confirmLabel="Storniraj"
+        variant="destructive"
+        onConfirm={handleCancelDocument}
+        loading={cancelDocument.isPending}
+      />
+
+      <ConfirmDialog
+        open={confirmReplace}
+        onOpenChange={setConfirmReplace}
+        title="Zamjena dokumenta"
+        description="Jeste li sigurni da želite zamijeniti ovaj dokument na CEZIH? Stari dokument će biti označen kao zamijenjen."
+        confirmLabel="Zamijeni"
+        onConfirm={handleReplaceDocument}
+        loading={replaceDocument.isPending}
       />
     </Sheet>
   )

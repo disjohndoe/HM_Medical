@@ -25,6 +25,7 @@ import { CezihActivityLog } from "@/components/cezih/activity-log"
 import { VisitManagement } from "@/components/cezih/visit-management"
 import { CaseManagement } from "@/components/cezih/case-management"
 import { ForeignerRegistration } from "@/components/cezih/foreigner-registration"
+import { DocumentSearch } from "@/components/cezih/document-search"
 import { PatientSelector, type SelectedPatient } from "@/components/cezih/patient-selector"
 import { useRetrieveEUputnice, useEUputnice } from "@/lib/hooks/use-cezih"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -65,10 +66,11 @@ export default function CezihPage() {
       </div>
 
       <Tabs defaultValue="uputnice" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="uputnice">e-Uputnice</TabsTrigger>
           <TabsTrigger value="posjete">Posjete</TabsTrigger>
           <TabsTrigger value="slucajevi">Slučajevi</TabsTrigger>
+          <TabsTrigger value="dokumenti">Dokumenti</TabsTrigger>
           <TabsTrigger value="stranci">Stranci</TabsTrigger>
           <TabsTrigger value="aktivnost">Aktivnost</TabsTrigger>
         </TabsList>
@@ -194,6 +196,10 @@ export default function CezihPage() {
 
         <TabsContent value="stranci">
           <ForeignerRegistration />
+        </TabsContent>
+
+        <TabsContent value="dokumenti">
+          <DocumentSearch />
         </TabsContent>
 
         <TabsContent value="aktivnost">
