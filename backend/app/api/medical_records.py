@@ -30,7 +30,14 @@ async def list_medical_records(
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await medical_record_service.list_records(
-        db, current_user.tenant_id, patient_id=patient_id, tip=tip, date_from=date_from, date_to=date_to, skip=skip, limit=limit
+        db,
+        current_user.tenant_id,
+        patient_id=patient_id,
+        tip=tip,
+        date_from=date_from,
+        date_to=date_to,
+        skip=skip,
+        limit=limit,
     )
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 

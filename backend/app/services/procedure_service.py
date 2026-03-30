@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, timedelta
+from datetime import date
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select

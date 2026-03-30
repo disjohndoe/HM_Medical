@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -34,11 +34,11 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Neispravan token")
 
     # GAP 1 fix: reject if user has no active refresh tokens (kicked/revoked session)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     has_active = await db.execute(
         select(RefreshToken.id).where(
             RefreshToken.user_id == user.id,
-            RefreshToken.is_revoked == False,
+            RefreshToken.is_revoked.is_(False),
             RefreshToken.expires_at > now,
         ).limit(1)
     )

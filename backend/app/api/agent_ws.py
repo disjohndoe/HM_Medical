@@ -38,7 +38,7 @@ async def agent_websocket(websocket: WebSocket):
             return
 
     # Accept and register
-    conn = await agent_manager.connect(tenant_id, websocket)
+    await agent_manager.connect(tenant_id, websocket)
     await websocket.send_json({"type": "connected", "message": "Agent spojen"})
 
     # Start ping loop

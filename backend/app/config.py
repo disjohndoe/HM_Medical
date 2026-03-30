@@ -42,11 +42,14 @@ class Settings(BaseSettings):
     CEZIH_OAUTH2_URL: str = ""  # Keycloak token endpoint (VPN: certsso2, public: certpubsso)
     CEZIH_CLIENT_ID: str = ""
     CEZIH_CLIENT_SECRET: str = ""
-    CEZIH_FHIR_BASE_URL: str = ""  # e.g. https://certws2.cezih.hr
+    CEZIH_FHIR_BASE_URL: str = ""  # e.g. https://certws2.cezih.hr:8443 (clinical FHIR)
+    CEZIH_FHIR_AUX_URL: str = ""  # e.g. https://certws2.cezih.hr:9443 (terminology, mCSD, OID, notifications)
     CEZIH_SIGNING_URL: str = ""  # Remote signing endpoint (certpubws.cezih.hr)
     CEZIH_SIGNING_OAUTH2_URL: str = ""  # Public Keycloak for signing (certpubsso.cezih.hr)
     CEZIH_TIMEOUT: int = 30
     CEZIH_RETRY_ATTEMPTS: int = 3
+    CEZIH_ORG_CODE: str = ""  # HZZO sifra zdravstvene organizacije
+    CEZIH_OID: str = ""  # OID informacijskog sustava (urn:oid:...)
 
     @property
     def cors_origin_list(self) -> list[str]:

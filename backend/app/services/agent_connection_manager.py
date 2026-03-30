@@ -1,7 +1,6 @@
-import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import WebSocket
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 class AgentConnection:
     tenant_id: UUID
     websocket: WebSocket
-    connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    connected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_heartbeat: datetime | None = None
     card_inserted: bool = False
     vpn_connected: bool = False
@@ -58,7 +57,7 @@ class AgentConnectionManager:
     def update_heartbeat(self, tenant_id: UUID) -> None:
         conn = self._connections.get(tenant_id)
         if conn:
-            conn.last_heartbeat = datetime.now(timezone.utc)
+            conn.last_heartbeat = datetime.now(UTC)
 
     def update_status(
         self,

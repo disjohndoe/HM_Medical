@@ -12,7 +12,7 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         try:
             return await call_next(request)
-        except Exception as exc:
+        except Exception:
             logger.error("Unhandled exception on %s %s:\n%s", request.method, request.url.path, traceback.format_exc())
             return JSONResponse(
                 status_code=500,

@@ -1,7 +1,7 @@
-from datetime import date, datetime, timedelta, time
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -48,7 +48,7 @@ async def get_stats(
     # Total active patients
     q = select(func.count()).select_from(Patient).where(
         Patient.tenant_id == tid,
-        Patient.is_active == True,
+        Patient.is_active.is_(True),
     )
     ukupno_pacijenti = (await db.execute(q)).scalar_one()
 
@@ -66,7 +66,7 @@ async def get_stats(
     # New patients this month
     q = select(func.count()).select_from(Patient).where(
         Patient.tenant_id == tid,
-        Patient.is_active == True,
+        Patient.is_active.is_(True),
         Patient.created_at >= datetime.combine(first_of_month, time.min),
     )
     novi_pacijenti_mjesec = (await db.execute(q)).scalar_one()

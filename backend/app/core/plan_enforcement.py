@@ -1,10 +1,10 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.plan_limits import PLAN_LIMITS, PlanLimits, get_plan_limits
+from app.core.plan_limits import get_plan_limits
 from app.models.patient import Patient
 from app.models.refresh_token import RefreshToken
 from app.models.tenant import Tenant
@@ -23,14 +23,17 @@ async def check_user_limit(db: AsyncSession, tenant_id) -> None:
     limits = get_plan_limits(tenant.plan_tier)
 
     count_q = select(func.count()).select_from(
-        select(User).where(User.tenant_id == tenant_id, User.is_active == True).subquery()
+        select(User).where(User.tenant_id == tenant_id, User.is_active.is_(True)).subquery()
     )
     count = (await db.execute(count_q)).scalar_one()
 
     if count >= limits.max_users:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Dosegnut ograničenje od {limits.max_users} korisnika za {tenant.plan_tier} plan. Nadogradite plan za više korisnika.",
+            detail=(
+                f"Dosegnut ograničenje od {limits.max_users} korisnika za "
+                f"{tenant.plan_tier} plan. Nadogradite plan za više korisnika."
+            ),
         )
 
 
@@ -42,14 +45,17 @@ async def check_patient_limit(db: AsyncSession, tenant_id) -> None:
         return
 
     count_q = select(func.count()).select_from(
-        select(Patient).where(Patient.tenant_id == tenant_id, Patient.is_active == True).subquery()
+        select(Patient).where(Patient.tenant_id == tenant_id, Patient.is_active.is_(True)).subquery()
     )
     count = (await db.execute(count_q)).scalar_one()
 
     if count >= limits.max_patients:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Dosegnut ograničenje od {limits.max_patients} pacijenata za {tenant.plan_tier} plan. Nadogradite plan za više pacijenata.",
+            detail=(
+                f"Dosegnut ograničenje od {limits.max_patients} pacijenata za "
+                f"{tenant.plan_tier} plan. Nadogradite plan za više pacijenata."
+            ),
         )
 
 
@@ -69,18 +75,21 @@ async def get_current_usage(db: AsyncSession, tenant_id) -> dict:
     limits = get_plan_limits(tenant.plan_tier)
 
     users_q = select(func.count()).select_from(
-        select(User).where(User.tenant_id == tenant_id, User.is_active == True).subquery()
+        select(User).where(User.tenant_id == tenant_id, User.is_active.is_(True)).subquery()
     )
     patients_q = select(func.count()).select_from(
-        select(Patient).where(Patient.tenant_id == tenant_id, Patient.is_active == True).subquery()
+        select(Patient).where(Patient.tenant_id == tenant_id, Patient.is_active.is_(True)).subquery()
     )
+    # Admin sessions don't count toward the limit
     sessions_q = select(func.count()).select_from(
         select(RefreshToken).where(
             RefreshToken.user_id.in_(
-                select(User.id).where(User.tenant_id == tenant_id, User.is_active == True)
+                select(User.id).where(
+                    User.tenant_id == tenant_id, User.is_active.is_(True), User.role != "admin"
+                )
             ),
-            RefreshToken.is_revoked == False,
-            RefreshToken.expires_at > datetime.now(timezone.utc),
+            RefreshToken.is_revoked.is_(False),
+            RefreshToken.expires_at > datetime.now(UTC),
         ).subquery()
     )
 
@@ -92,7 +101,7 @@ async def get_current_usage(db: AsyncSession, tenant_id) -> dict:
 
     trial_days_remaining = None
     if tenant.plan_tier == "trial" and tenant.trial_expires_at:
-        remaining = (tenant.trial_expires_at - datetime.now(timezone.utc)).days
+        remaining = (tenant.trial_expires_at - datetime.now(UTC)).days
         trial_days_remaining = max(0, remaining)
 
     return {
