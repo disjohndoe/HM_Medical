@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api-client"
-import type { PaginatedResponse, User, UserCreate } from "@/lib/types"
+import type { CardStatusResponse, PaginatedResponse, User, UserCreate } from "@/lib/types"
 
 export function useUsers(skip = 0, limit = 50) {
   return useQuery({
@@ -39,5 +39,50 @@ export function useDeactivateUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
+  })
+}
+
+export function useBindCard() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      userId,
+      data,
+    }: {
+      userId: string
+      data: { card_holder_name: string; card_certificate_oib?: string | null }
+    }) => api.post<User>(`/users/${userId}/card-binding`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] })
+    },
+  })
+}
+
+export function useUnbindCard() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => api.delete(`/users/${userId}/card-binding`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] })
+    },
+  })
+}
+
+export function useAutoBindCard() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) =>
+      api.post<User>(`/users/${userId}/card-binding/auto`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] })
+    },
+  })
+}
+
+export function useCardStatus() {
+  return useQuery({
+    queryKey: ["card-status"],
+    queryFn: () => api.get<CardStatusResponse>("/settings/card-status"),
+    refetchInterval: 5000,
   })
 }

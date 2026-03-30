@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { z } from "zod"
-import { Save, Loader2 } from "lucide-react"
+import { Save, Loader2, CreditCard, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -23,7 +23,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { USER_ROLE_OPTIONS } from "@/lib/constants"
+import { useAutoBindCard, useUnbindCard, useCardStatus } from "@/lib/hooks/use-users"
 import type { User } from "@/lib/types"
+import { toast } from "sonner"
 
 const userSchema = z.object({
   email: z.string().email("Neispravan email"),
@@ -53,6 +55,25 @@ export function UserFormDialog({
   isPending,
 }: UserFormDialogProps) {
   const isEdit = !!user
+  const autoBindCard = useAutoBindCard()
+  const unbindCard = useUnbindCard()
+  const { data: cardStatus } = useCardStatus()
+
+  const handleAutoBind = () => {
+    if (!user) return
+    autoBindCard.mutate(user.id, {
+      onSuccess: () => toast.success("Kartica povezana"),
+      onError: (err) => toast.error(err.message),
+    })
+  }
+
+  const handleUnbind = () => {
+    if (!user) return
+    unbindCard.mutate(user.id, {
+      onSuccess: () => toast.success("Kartica odpojena"),
+      onError: (err) => toast.error(err.message),
+    })
+  }
 
   const {
     register,
@@ -171,6 +192,53 @@ export function UserFormDialog({
               )}
             </div>
           </div>
+
+          {isEdit && user && (
+            <div className="space-y-2 rounded-lg border p-3">
+              <Label className="flex items-center gap-1.5 text-sm font-medium">
+                <CreditCard className="h-4 w-4" />
+                AKD Kartica
+              </Label>
+              {user.card_holder_name ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">{user.card_holder_name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleUnbind}
+                    disabled={unbindCard.isPending}
+                  >
+                    {unbindCard.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <X className="h-4 w-4" />
+                    )}
+                    Odpoji
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Nema povezane kartice</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAutoBind}
+                    disabled={autoBindCard.isPending || !cardStatus?.card_inserted}
+                    title={!cardStatus?.agent_connected ? "Agent nije spojen" : !cardStatus?.card_inserted ? "Kartica nije umetnuta" : "Poveži trenutnu karticu"}
+                  >
+                    {autoBindCard.isPending ? (
+                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CreditCard className="mr-1 h-4 w-4" />
+                    )}
+                    Poveži karticu
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
 
           <DialogFooter>
             <Button

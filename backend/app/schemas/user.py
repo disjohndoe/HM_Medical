@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr
 
 from app.schemas.tenant import TenantRead
 
@@ -18,6 +18,8 @@ class UserRead(BaseModel):
     last_login_at: datetime | None
     tenant_id: UUID
     created_at: datetime
+    card_holder_name: str | None = None
+    card_certificate_oib: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -44,3 +46,10 @@ class UserUpdate(BaseModel):
     telefon: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    card_holder_name: str | None = None
+    card_certificate_oib: str | None = None
+
+
+class CardBindingRequest(BaseModel):
+    card_holder_name: str
+    card_certificate_oib: str | None = None

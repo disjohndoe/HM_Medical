@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, PencilIcon, Trash2, Loader2 } from "lucide-react"
+import { Plus, PencilIcon, Trash2, Loader2, CreditCard } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -132,6 +132,7 @@ export default function KorisniciPage() {
                   <TableHead className="hidden sm:table-cell">Email</TableHead>
                   <TableHead>Uloga</TableHead>
                   <TableHead className="hidden md:table-cell">Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Kartica</TableHead>
                   <TableHead className="hidden lg:table-cell">Zadnja prijava</TableHead>
                   <TableHead className="text-right">Akcije</TableHead>
                 </TableRow>
@@ -153,6 +154,16 @@ export default function KorisniciPage() {
                       <Badge variant={user.is_active ? "default" : "secondary"}>
                         {user.is_active ? "Aktivan" : "Neaktivan"}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {user.card_holder_name ? (
+                        <Badge variant="outline" className="gap-1">
+                          <CreditCard className="h-3 w-3" />
+                          {user.card_holder_name}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
                       {formatDateTimeHR(user.last_login_at)}
