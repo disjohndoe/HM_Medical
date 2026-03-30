@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { FileText, Plus, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { formatDateHR } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -227,7 +228,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                     <span className="text-sm text-muted-foreground">{c.icd_display}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Od: {c.onset_date} | ID: {c.case_id}
+                    Od: {formatDateHR(c.onset_date)} | ID: {c.case_id}
                   </div>
                 </div>
                 <Select
