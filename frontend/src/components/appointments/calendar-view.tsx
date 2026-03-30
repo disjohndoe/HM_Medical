@@ -73,7 +73,7 @@ export function CalendarView({
       }
     }
     return grouped
-  }, [data?.items, dates])
+  }, [data, dates])
 
   if (isLoading) {
     return <LoadingSpinner text="Učitavanje..." />

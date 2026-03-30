@@ -33,6 +33,7 @@ export function DocumentPreviewDialog({
   const { data: blobUrl, isLoading } = useDocumentBlob(open ? document?.id ?? null : null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset zoom when dialog closes
     if (!open) setScale(1)
   }, [open])
 
@@ -77,6 +78,7 @@ export function DocumentPreviewDialog({
               className="overflow-auto w-full h-full flex items-center justify-center"
               onWheel={handleWheel}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={blobUrl}
                 alt={document?.naziv ?? ""}

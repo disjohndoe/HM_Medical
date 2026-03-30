@@ -1,6 +1,7 @@
 "use client"
+/* eslint-disable react-hooks/incompatible-library -- react-hook-form watch() is intentionally used */
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
@@ -81,7 +82,7 @@ export function AppointmentForm({
   const { data: patientsData } = usePatients(patientSearch, 0, 20)
   const patientSearchRef = useRef<HTMLInputElement>(null)
 
-  const doctors = doctorsData ?? []
+  const doctors = useMemo(() => doctorsData ?? [], [doctorsData])
 
   const {
     register,

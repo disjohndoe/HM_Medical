@@ -1,4 +1,5 @@
 "use client"
+/* eslint-disable react-hooks/incompatible-library -- react-hook-form watch() is intentionally used */
 
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
@@ -21,7 +22,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { SPOL_OPTIONS } from "@/lib/constants"
 import type { Patient } from "@/lib/types"
-import { cn } from "@/lib/utils"
 
 const patientSchema = z.object({
   ime: z.string().min(1, "Ime je obavezno"),

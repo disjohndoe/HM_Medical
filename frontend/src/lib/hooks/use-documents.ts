@@ -57,7 +57,7 @@ export function useUploadDocument() {
 export function useDeleteDocument() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, patientId }: { id: string; patientId: string }) =>
+    mutationFn: ({ id }: { id: string; patientId: string }) =>
       api.delete(`/documents/${id}`),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["documents", variables.patientId] })

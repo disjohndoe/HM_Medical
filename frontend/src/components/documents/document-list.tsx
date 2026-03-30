@@ -34,6 +34,7 @@ function DocumentThumbnail({ doc }: { doc: Document }) {
 
   if (isImg && blobUrl) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={blobUrl}
         alt={doc.naziv}

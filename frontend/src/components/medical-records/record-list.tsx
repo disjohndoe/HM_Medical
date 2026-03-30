@@ -23,7 +23,7 @@ import {
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { RecordForm } from "./record-form"
 import { RecordDetail } from "./record-detail"
-import { useMedicalRecords, useUpdateMedicalRecord } from "@/lib/hooks/use-medical-records"
+import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
 import { RECORD_TIP_OPTIONS, RECORD_TIP_COLORS } from "@/lib/constants"
 import { formatDateHR } from "@/lib/utils"
 import type { MedicalRecord } from "@/lib/types"
@@ -42,8 +42,6 @@ export function RecordList({ patientId }: RecordListProps) {
     patientId,
     tipFilter || undefined,
   )
-  const updateMutation = useUpdateMedicalRecord()
-
   function handleEdit(record: MedicalRecord) {
     setViewRecord(null)
     setEditRecord(record)
