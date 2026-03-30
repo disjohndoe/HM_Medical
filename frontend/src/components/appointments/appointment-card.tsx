@@ -1,7 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { APPOINTMENT_VRSTA_COLORS, APPOINTMENT_VRSTA } from "@/lib/constants"
+import { APPOINTMENT_VRSTA_COLORS, APPOINTMENT_VRSTA, WORKING_HOURS_START } from "@/lib/constants"
 import type { Appointment } from "@/lib/types"
 
 interface AppointmentCardProps {
@@ -12,7 +12,7 @@ interface AppointmentCardProps {
 export function AppointmentCard({ appointment, onClick }: AppointmentCardProps) {
   const start = new Date(appointment.datum_vrijeme)
   const startMin = start.getHours() * 60 + start.getMinutes()
-  const topOffset = (startMin / 60) * 64 // 64px per hour (4 rows * 16px)
+  const topOffset = ((startMin - WORKING_HOURS_START * 60) / 60) * 64 // 64px per hour (4 rows * 16px)
   const height = (appointment.trajanje_minuta / 60) * 64
 
   const patientName = appointment.patient_ime && appointment.patient_prezime
