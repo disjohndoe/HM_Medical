@@ -140,3 +140,218 @@ class LijekItem(BaseModel):
     naziv: str
     oblik: str
     jacina: str
+
+
+# ============================================================
+# TC6: OID Registry
+# ============================================================
+
+
+class OidLookupRequest(BaseModel):
+    oid: str
+
+
+class OidLookupResponse(BaseModel):
+    mock: bool = True
+    oid: str
+    name: str
+    responsible_org: str
+    status: str
+
+
+# ============================================================
+# TC7: Code System Query
+# ============================================================
+
+
+class CodeSystemItem(BaseModel):
+    mock: bool = True
+    code: str
+    display: str
+    system: str
+
+
+# ============================================================
+# TC8: Value Set Expand
+# ============================================================
+
+
+class ValueSetConceptItem(BaseModel):
+    code: str
+    display: str
+    system: str
+
+
+class ValueSetExpandResponse(BaseModel):
+    mock: bool = True
+    url: str
+    concepts: list[ValueSetConceptItem]
+    total: int
+
+
+# ============================================================
+# TC9: Subject Registry
+# ============================================================
+
+
+class OrganizationItem(BaseModel):
+    mock: bool = True
+    id: str
+    name: str
+    hzzo_code: str
+    active: bool
+
+
+class PractitionerItem(BaseModel):
+    mock: bool = True
+    id: str
+    family: str
+    given: str
+    hzjz_id: str
+    active: bool
+
+
+# ============================================================
+# TC11: Foreigner Registration
+# ============================================================
+
+
+class ForeignerRegistrationRequest(BaseModel):
+    ime: str
+    prezime: str
+    datum_rodjenja: str
+    spol: str = "unknown"
+    drzavljanstvo: str = ""
+    broj_putovnice: str | None = None
+    ehic_broj: str | None = None
+
+
+class ForeignerRegistrationResponse(BaseModel):
+    mock: bool = True
+    success: bool
+    patient_id: str
+    mbo: str
+
+
+# ============================================================
+# TC12-14: Visit Management
+# ============================================================
+
+
+class CreateVisitRequest(BaseModel):
+    patient_id: UUID
+    patient_mbo: str
+    period_start: str
+    admission_type_code: str = "9"
+
+
+class VisitResponse(BaseModel):
+    mock: bool = True
+    success: bool
+    visit_id: str
+    status: str = "in-progress"
+    created_at: str | None = None
+
+
+class UpdateVisitRequest(BaseModel):
+    period_start: str | None = None
+    admission_type_code: str | None = None
+
+
+class CloseVisitRequest(BaseModel):
+    period_end: str
+    diagnosis_case_id: str | None = None
+
+
+class VisitActionResponse(BaseModel):
+    mock: bool = True
+    success: bool
+    visit_id: str | None = None
+    status: str | None = None
+
+
+# ============================================================
+# TC15-17: Case Management
+# ============================================================
+
+
+class CaseItem(BaseModel):
+    mock: bool = True
+    case_id: str
+    icd_code: str
+    icd_display: str
+    clinical_status: str
+    onset_date: str
+
+
+class CasesListResponse(BaseModel):
+    mock: bool = True
+    cases: list[CaseItem]
+
+
+class CreateCaseRequest(BaseModel):
+    patient_id: UUID
+    patient_mbo: str
+    icd_code: str
+    icd_display: str
+    onset_date: str
+    verification_status: str = "unconfirmed"
+    note: str | None = None
+
+
+class CaseResponse(BaseModel):
+    mock: bool = True
+    success: bool
+    local_case_id: str
+    cezih_case_id: str
+
+
+class UpdateCaseStatusRequest(BaseModel):
+    action: str  # remission, relapse, resolve, reopen, delete, create_recurring
+
+
+class UpdateCaseDataRequest(BaseModel):
+    current_clinical_status: str | None = None
+    verification_status: str | None = None
+    icd_code: str | None = None
+    icd_display: str | None = None
+    onset_date: str | None = None
+    abatement_date: str | None = None
+    note: str | None = None
+
+
+class CaseActionResponse(BaseModel):
+    mock: bool = True
+    success: bool
+    case_id: str | None = None
+    action: str | None = None
+
+
+# ============================================================
+# TC19-22: Document Operations
+# ============================================================
+
+
+class ReplaceDocumentRequest(BaseModel):
+    patient_id: UUID | None = None
+    record_id: UUID | None = None
+
+
+class DocumentActionResponse(BaseModel):
+    mock: bool = True
+    success: bool
+    reference_id: str | None = None
+    new_reference_id: str | None = None
+    replaced_reference_id: str | None = None
+    status: str | None = None
+
+
+class DocumentSearchItem(BaseModel):
+    mock: bool = True
+    id: str
+    datum_izdavanja: str
+    izdavatelj: str
+    svrha: str
+    specijalist: str
+    status: str
+    type: str | None = None

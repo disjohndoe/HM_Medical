@@ -21,6 +21,17 @@ logger = logging.getLogger(__name__)
 _FHIR_CONTENT_TYPE = "application/fhir+json"
 _GATEWAY_PREFIX = "/services-router/gateway/"
 
+# Services that live on the auxiliary port (9443 in test env).
+# All other services use the primary port (8443 in test env).
+_AUX_PORT_PREFIXES = (
+    "terminology-services/",
+    "mcsd/",
+    "identifier-registry-services/",
+    "notification-pull-service/",
+    "notification-push-websocket/",
+    "fhir/",
+)
+
 
 class CezihFhirClient:
     """Async HTTP client for CEZIH FHIR API calls.
@@ -32,11 +43,14 @@ class CezihFhirClient:
     def __init__(self, http_client: httpx.AsyncClient) -> None:
         self._client = http_client
         self._base_url = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
+        self._aux_url = (settings.CEZIH_FHIR_AUX_URL or settings.CEZIH_FHIR_BASE_URL).rstrip("/")
 
     def _full_url(self, path: str) -> str:
         if not path.startswith("/"):
             path = "/" + path
-        return f"{self._base_url}{_GATEWAY_PREFIX}{path}"
+        clean = path.lstrip("/")
+        base = self._aux_url if any(clean.startswith(p) for p in _AUX_PORT_PREFIXES) else self._base_url
+        return f"{base}{_GATEWAY_PREFIX}{path}"
 
     async def _attach_auth(self, headers: dict[str, str]) -> dict[str, str]:
         token = await get_oauth_token(client=self._client)
@@ -123,10 +137,15 @@ class CezihFhirClient:
     async def post(self, path: str, *, json_body: dict | None = None) -> dict:
         return await self.request("POST", path, json_body=json_body)
 
+    async def process_message(self, service_path: str, bundle: dict) -> dict:
+        """POST a FHIR message Bundle via $process-message operation."""
+        path = f"{service_path}/$process-message"
+        return await self.post(path, json_body=bundle)
+
     async def health_check(self) -> bool:
         """Simple connectivity check."""
         try:
-            await self.get("terminology-services/api/v1/CodeSystem?_count=1")
+            await self.get("terminology-services/api/v1/CodeSystem", params={"_count": "1"})
             return True
         except CezihError:
             return False

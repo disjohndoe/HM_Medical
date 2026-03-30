@@ -37,6 +37,7 @@ class FHIRReference(BaseModel):
     reference: str | None = None
     display: str | None = None
     identifier: FHIRIdentifier | None = None
+    type: str | None = None  # "Patient", "Practitioner", "Organization"
 
 
 class FHIRPeriod(BaseModel):
@@ -62,13 +63,16 @@ class FHIRPatient(BaseModel):
 class FHIREncounter(BaseModel):
     resourceType: Literal["Encounter"] = "Encounter"
     id: str | None = None
-    status: str | None = None
-    class_fhir: FHIRCodeableConcept | None = Field(default=None, alias="class")
+    identifier: list[FHIRIdentifier] = Field(default_factory=list)
+    extension: list[dict[str, Any]] = Field(default_factory=list)
+    status: str | None = None  # "in-progress", "finished", "cancelled"
+    class_fhir: FHIRCoding | None = Field(default=None, alias="class")
     subject: FHIRReference | None = None
     period: FHIRPeriod | None = None
     participant: list[dict[str, Any]] = Field(default_factory=list)
     reasonCode: list[FHIRCodeableConcept] = Field(default_factory=list)
     diagnosis: list[dict[str, Any]] = Field(default_factory=list)
+    serviceProvider: FHIRReference | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -76,11 +80,18 @@ class FHIREncounter(BaseModel):
 class FHIRCondition(BaseModel):
     resourceType: Literal["Condition"] = "Condition"
     id: str | None = None
-    code: FHIRCodeableConcept | None = None
-    subject: FHIRReference | None = None
-    encounter: FHIRReference | None = None
+    identifier: list[FHIRIdentifier] = Field(default_factory=list)
     clinicalStatus: FHIRCodeableConcept | None = None
     verificationStatus: FHIRCodeableConcept | None = None
+    severity: FHIRCodeableConcept | None = None
+    code: FHIRCodeableConcept | None = None
+    bodySite: list[FHIRCodeableConcept] = Field(default_factory=list)
+    subject: FHIRReference | None = None
+    encounter: FHIRReference | None = None
+    onsetDateTime: str | None = None
+    abatementDateTime: str | None = None
+    asserter: FHIRReference | None = None
+    note: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class FHIRDocumentReferenceContent(BaseModel):
@@ -104,12 +115,20 @@ class FHIRBundleEntry(BaseModel):
     request: dict[str, Any] | None = None
 
 
+class FHIRBundleSignature(BaseModel):
+    type: list[FHIRCoding] = Field(default_factory=list)
+    when: str | None = None  # ISO datetime
+    who: FHIRReference | None = None
+    data: str | None = None  # base64 encoded signature
+
+
 class FHIRBundle(BaseModel):
     resourceType: Literal["Bundle"] = "Bundle"
     type: str | None = None  # "transaction", "searchset", "message", "collection"
     timestamp: str | None = None
     entry: list[FHIRBundleEntry] = Field(default_factory=list)
     total: int | None = None
+    signature: FHIRBundleSignature | None = None
 
 
 class FHIRMessageHeaderDestination(BaseModel):
@@ -120,10 +139,14 @@ class FHIRMessageHeaderDestination(BaseModel):
 class FHIRMessageHeader(BaseModel):
     resourceType: Literal["MessageHeader"] = "MessageHeader"
     id: str | None = None
+    eventCoding: FHIRCoding | None = None
     eventUri: str | None = Field(default=None, alias="eventUri")
+    sender: FHIRReference | None = None
+    author: FHIRReference | None = None
     source: dict[str, Any] | None = None
     destination: list[FHIRMessageHeaderDestination] = Field(default_factory=list)
     focus: list[FHIRReference] = Field(default_factory=list)
+    response: dict[str, Any] | None = None  # {"identifier": "...", "code": "ok"}
 
     model_config = {"populate_by_name": True}
 

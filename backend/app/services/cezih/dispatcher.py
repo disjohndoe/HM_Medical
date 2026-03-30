@@ -291,8 +291,8 @@ async def cezih_status(tenant_id=None, *, http_client=None) -> dict:
     connected = False
     if http_client:
         try:
-            connected = await real_service.get_status(http_client)
-            connected = connected.get("connected", False)
+            status_result = await real_service.get_status(http_client)
+            connected = status_result.get("connected", False)
         except CezihError:
             connected = False
 
@@ -394,3 +394,481 @@ async def signing_health_check(*, http_client=None) -> dict:
     except Exception as e:
         logger.error("CEZIH signing health check failed: %s", e)
         return {"reachable": False, "reason": str(e)}
+
+
+# ============================================================
+# TC6: OID Registry Lookup
+# ============================================================
+
+
+async def oid_lookup(
+    oid: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_lookup_oid(oid, db=db, user_id=user_id, tenant_id=tenant_id)
+    try:
+        result = await real_service.lookup_oid(http_client, oid)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+# ============================================================
+# TC7: Code System Query
+# ============================================================
+
+
+async def code_system_query(
+    system_name: str,
+    query: str,
+    count: int = 20,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> list[dict]:
+    if _is_mock():
+        return await cezih_mock_service.mock_query_code_system(
+            system_name, query, count, db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        return await real_service.query_code_system(http_client, system_name, query, count)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+
+# ============================================================
+# TC8: Value Set Expand
+# ============================================================
+
+
+async def value_set_expand(
+    url: str,
+    filter_text: str | None = None,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_expand_value_set(
+            url, filter_text, db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        result = await real_service.expand_value_set(http_client, url, filter_text)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+# ============================================================
+# TC9: Subject Registry
+# ============================================================
+
+
+async def organization_search(
+    name: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> list[dict]:
+    if _is_mock():
+        return await cezih_mock_service.mock_find_organizations(name, db=db, user_id=user_id, tenant_id=tenant_id)
+    try:
+        return await real_service.find_organizations(http_client, name)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+
+async def practitioner_search(
+    name: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> list[dict]:
+    if _is_mock():
+        return await cezih_mock_service.mock_find_practitioners(name, db=db, user_id=user_id, tenant_id=tenant_id)
+    try:
+        return await real_service.find_practitioners(http_client, name)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+
+# ============================================================
+# TC11: Foreigner Registration
+# ============================================================
+
+
+async def foreigner_registration(
+    patient_data: dict,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_register_foreigner(
+            patient_data, db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        result = await real_service.register_foreigner(http_client, patient_data)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+# ============================================================
+# TC12-14: Visit Management
+# ============================================================
+
+
+async def dispatch_create_visit(
+    patient_mbo: str,
+    practitioner_id: str,
+    org_code: str,
+    period_start: str,
+    admission_type_code: str = "9",
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_create_visit(
+            patient_mbo, period_start, admission_type_code,
+            db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        result = await real_service.create_visit(
+            http_client, patient_mbo, practitioner_id, org_code, period_start, admission_type_code,
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+async def dispatch_update_visit(
+    visit_id: str,
+    practitioner_id: str,
+    org_code: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+    **updates: str,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_update_visit(visit_id, db=db, user_id=user_id, tenant_id=tenant_id)
+    try:
+        result = await real_service.update_visit(http_client, visit_id, practitioner_id, org_code, **updates)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+async def dispatch_close_visit(
+    visit_id: str,
+    practitioner_id: str,
+    org_code: str,
+    period_start: str,
+    period_end: str,
+    admission_type_code: str = "9",
+    diagnosis_case_id: str | None = None,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_close_visit(
+            visit_id, period_end, diagnosis_case_id,
+            db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        result = await real_service.close_visit(
+            http_client, visit_id, practitioner_id, org_code,
+            period_start, period_end, admission_type_code, diagnosis_case_id,
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+async def dispatch_reopen_visit(
+    visit_id: str,
+    practitioner_id: str,
+    org_code: str,
+    admission_type_code: str = "9",
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_reopen_visit(visit_id, db=db, user_id=user_id, tenant_id=tenant_id)
+    try:
+        result = await real_service.reopen_visit(
+            http_client, visit_id, practitioner_id, org_code, admission_type_code,
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+async def dispatch_cancel_visit(
+    visit_id: str,
+    practitioner_id: str,
+    org_code: str,
+    period_start: str,
+    period_end: str | None = None,
+    admission_type_code: str = "9",
+    diagnosis_case_id: str | None = None,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_cancel_visit(visit_id, db=db, user_id=user_id, tenant_id=tenant_id)
+    try:
+        result = await real_service.cancel_visit(
+            http_client, visit_id, practitioner_id, org_code,
+            period_start, period_end, admission_type_code, diagnosis_case_id,
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+# ============================================================
+# TC15-17: Case Management
+# ============================================================
+
+
+async def dispatch_retrieve_cases(
+    patient_mbo: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> list[dict]:
+    if _is_mock():
+        return await cezih_mock_service.mock_retrieve_cases(patient_mbo, db=db, user_id=user_id, tenant_id=tenant_id)
+    try:
+        return await real_service.retrieve_cases(http_client, patient_mbo)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+
+async def dispatch_create_case(
+    patient_mbo: str,
+    practitioner_id: str,
+    org_code: str,
+    icd_code: str,
+    icd_display: str,
+    onset_date: str,
+    verification_status: str = "unconfirmed",
+    note_text: str | None = None,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_create_case(
+            patient_mbo, icd_code, icd_display, onset_date, verification_status, note_text,
+            db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        result = await real_service.create_case(
+            http_client, patient_mbo, practitioner_id, org_code,
+            icd_code, icd_display, onset_date, verification_status, note_text,
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+async def dispatch_update_case(
+    case_id: str,
+    patient_mbo: str,
+    practitioner_id: str,
+    org_code: str,
+    action: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_update_case(case_id, action, db=db, user_id=user_id, tenant_id=tenant_id)
+    try:
+        result = await real_service.update_case(http_client, case_id, patient_mbo, practitioner_id, org_code, action)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+async def dispatch_update_case_data(
+    case_id: str,
+    patient_mbo: str,
+    practitioner_id: str,
+    org_code: str,
+    *,
+    current_clinical_status: str | None = None,
+    verification_status: str | None = None,
+    icd_code: str | None = None,
+    icd_display: str | None = None,
+    onset_date: str | None = None,
+    abatement_date: str | None = None,
+    note_text: str | None = None,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        updates = {k: v for k, v in {
+            "verification_status": verification_status, "icd_code": icd_code,
+            "onset_date": onset_date, "abatement_date": abatement_date, "note_text": note_text,
+        }.items() if v is not None}
+        return await cezih_mock_service.mock_update_case_data(
+            case_id, updates, db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        result = await real_service.update_case_data(
+            http_client, case_id, patient_mbo, practitioner_id, org_code,
+            current_clinical_status=current_clinical_status,
+            verification_status=verification_status,
+            icd_code=icd_code, icd_display=icd_display,
+            onset_date=onset_date, abatement_date=abatement_date,
+            note_text=note_text,
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+# ============================================================
+# TC19-20, 22: Document Operations
+# ============================================================
+
+
+async def dispatch_search_documents(
+    *,
+    patient_mbo: str | None = None,
+    document_type: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    status_filter: str | None = None,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> list[dict]:
+    if _is_mock():
+        return await cezih_mock_service.mock_search_documents(
+            patient_mbo, document_type, date_from, date_to, status_filter,
+            db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        return await real_service.search_documents(
+            http_client, patient_mbo=patient_mbo, document_type=document_type,
+            date_from=date_from, date_to=date_to, status_filter=status_filter,
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+
+async def dispatch_replace_document(
+    original_reference_id: str,
+    patient_data: dict | None = None,
+    record_data: dict | None = None,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_replace_document(
+            original_reference_id, db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        result = await real_service.replace_document(
+            http_client, original_reference_id, patient_data or {}, record_data or {},
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+async def dispatch_cancel_document(
+    reference_id: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    if _is_mock():
+        return await cezih_mock_service.mock_cancel_document(
+            reference_id, db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        result = await real_service.cancel_document(http_client, reference_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+    result["mock"] = False
+    return result
+
+
+async def dispatch_retrieve_document(
+    reference_id: str,
+    document_url: str | None = None,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> bytes:
+    if _is_mock():
+        return await cezih_mock_service.mock_retrieve_document(
+            reference_id, db=db, user_id=user_id, tenant_id=tenant_id,
+        )
+    try:
+        return await real_service.retrieve_document(http_client, document_url or reference_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e

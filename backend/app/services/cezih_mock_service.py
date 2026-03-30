@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.audit_log import AuditLog
 from app.models.cezih_euputnica import CezihEUputnica
 from app.models.medical_record import MedicalRecord
-
 
 _MOCK_NAMES = [
     ("Ivan", "Horvat", "1985-03-15"),
@@ -88,7 +87,7 @@ async def mock_send_enalaz(
     import os
 
     ref = f"MOCK-EN-{os.urandom(4).hex()}"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     result = await db.execute(
         select(MedicalRecord).where(
@@ -303,7 +302,7 @@ async def mock_send_erecept(
             details={
                 "patient_id": str(patient_id),
                 "recept_id": recept_id,
-                "lijekovi": [l.get("naziv", "") if isinstance(l, dict) else str(l) for l in lijekovi],
+                "lijekovi": [item.get("naziv", "") if isinstance(item, dict) else str(item) for item in lijekovi],
             },
         )
 
@@ -391,7 +390,7 @@ def mock_sign_document(document_id: str | None = None) -> dict:
         "success": True,
         "signature": fake_sig,
         "signing_algorithm": "SHA-256",
-        "signed_at": datetime.now(timezone.utc).isoformat(),
+        "signed_at": datetime.now(UTC).isoformat(),
         "document_id": document_id,
     }
 
@@ -403,3 +402,470 @@ def mock_sign_health_check() -> dict:
         "reachable": True,
         "reason": None,
     }
+
+
+# ============================================================
+# TC6: OID Registry Lookup (Mock)
+# ============================================================
+
+_MOCK_OIDS = {
+    "1.2.3.4.5.6": {"name": "HM Digital Medical", "responsible_org": "HM DIGITAL d.o.o.", "status": "active"},
+    "2.16.840.1.113883.2.22.1.1": {"name": "HZZO", "responsible_org": "HZZO", "status": "active"},
+    "2.16.840.1.113883.2.22": {"name": "CEZIH", "responsible_org": "HZZO", "status": "active"},
+}
+
+
+async def mock_lookup_oid(
+    oid: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    data = _MOCK_OIDS.get(oid, {"name": f"Unknown OID: {oid}", "responsible_org": "", "status": "unknown"})
+    result = {"mock": True, "oid": oid, **data}
+    if db and user_id and tenant_id:
+        await _write_audit(db, tenant_id, user_id, action="oid_lookup", details={"oid": oid})
+    return result
+
+
+# ============================================================
+# TC7: Code System Query (Mock, generalized)
+# ============================================================
+
+_MOCK_CODE_SYSTEMS: dict[str, list[dict]] = {
+    "icd10-hr": [
+        {"code": "J45", "display": "Astma", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "M54", "display": "Dorsopatija", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "I10", "display": "Esencijalna (primarna) hipertenzija", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "E11", "display": "Šećerna bolest neovisan o inzulinu", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "C00", "display": "Zloćudna novotvorina usne", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "K29", "display": "Gastritis i duodenitis", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "J06", "display": "Akutne infekcije gornjih dišnih puteva", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "N39", "display": "Ostali poremećaji mokraćnog sustava", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "F41", "display": "Ostali anksiozni poremećaji", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+        {"code": "L20", "display": "Atopijski dermatitis", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
+    ],
+    "nacin-prijema": [
+        {"code": "1", "display": "Dnevna bolnica", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "2", "display": "Hitan prijem", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "3", "display": "Premještaj", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "9", "display": "Interna uputnica", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+    ],
+}
+
+
+async def mock_query_code_system(
+    system_name: str,
+    query: str,
+    count: int = 20,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> list[dict]:
+    codes = _MOCK_CODE_SYSTEMS.get(system_name, [])
+    if query:
+        q = query.lower()
+        codes = [c for c in codes if q in c["code"].lower() or q in c["display"].lower()]
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="code_system_query",
+            details={"system": system_name, "query": query},
+        )
+    return [{"mock": True, **c} for c in codes[:count]]
+
+
+# ============================================================
+# TC8: Value Set Expand (Mock)
+# ============================================================
+
+
+async def mock_expand_value_set(
+    url: str,
+    filter_text: str | None = None,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    concepts = [
+        {"code": "unconfirmed", "display": "Nepotvrđen", "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status"},
+        {"code": "provisional", "display": "Privremeni", "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status"},
+        {"code": "differential", "display": "Diferencijalni", "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status"},
+        {"code": "confirmed", "display": "Potvrđen", "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status"},
+    ]
+    if filter_text:
+        q = filter_text.lower()
+        concepts = [c for c in concepts if q in c["display"].lower() or q in c["code"].lower()]
+    if db and user_id and tenant_id:
+        await _write_audit(db, tenant_id, user_id, action="value_set_expand", details={"url": url})
+    return {"mock": True, "url": url, "concepts": concepts, "total": len(concepts)}
+
+
+# ============================================================
+# TC9: Subject Registry (Mock)
+# ============================================================
+
+_MOCK_ORGANIZATIONS: list[dict[str, str | bool]] = [
+    {"id": "org-1", "name": "DOM ZDRAVLJA ZAGREB-CENTAR", "hzzo_code": "10001", "active": True},
+    {"id": "org-2", "name": "KBC ZAGREB", "hzzo_code": "10002", "active": True},
+    {"id": "org-3", "name": "POLIKLINIKA RIJEKA", "hzzo_code": "20001", "active": True},
+    {"id": "org-4", "name": "DOM ZDRAVLJA SPLIT", "hzzo_code": "30001", "active": True},
+    {"id": "org-5", "name": "DOM ZDRAVLJA OSIJEK", "hzzo_code": "40001", "active": True},
+]
+
+_MOCK_PRACTITIONERS: list[dict[str, str | bool]] = [
+    {"id": "pract-1", "family": "Horvat", "given": "Josip", "hzjz_id": "1234567", "active": True},
+    {"id": "pract-2", "family": "Perić", "given": "Marija", "hzjz_id": "2345678", "active": True},
+    {"id": "pract-3", "family": "Tomić", "given": "Ante", "hzjz_id": "3456789", "active": True},
+    {"id": "pract-4", "family": "Matić", "given": "Ivan", "hzjz_id": "4567890", "active": True},
+    {"id": "pract-5", "family": "Herceg", "given": "Lana", "hzjz_id": "5678901", "active": True},
+]
+
+
+async def mock_find_organizations(
+    name: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> list[dict]:
+    q = name.lower()
+    results = [o for o in _MOCK_ORGANIZATIONS if q in str(o["name"]).lower() or q in str(o["hzzo_code"])]
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="organization_search",
+            details={"name": name, "count": len(results)},
+        )
+    return [{"mock": True, **o} for o in results]
+
+
+async def mock_find_practitioners(
+    name: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> list[dict]:
+    q = name.lower()
+    results = [
+        p for p in _MOCK_PRACTITIONERS
+        if q in str(p["family"]).lower() or q in str(p["given"]).lower() or q in str(p["hzjz_id"])
+    ]
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="practitioner_search",
+            details={"name": name, "count": len(results)},
+        )
+    return [{"mock": True, **p} for p in results]
+
+
+# ============================================================
+# TC11: Foreigner Registration (Mock)
+# ============================================================
+
+
+async def mock_register_foreigner(
+    patient_data: dict,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    import os
+    mock_mbo = f"F{os.urandom(4).hex().upper()}"
+    result = {
+        "mock": True,
+        "success": True,
+        "patient_id": f"mock-foreign-{os.urandom(4).hex()}",
+        "mbo": mock_mbo,
+    }
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="foreigner_registration",
+            details={"ime": patient_data.get("ime"), "prezime": patient_data.get("prezime"), "mbo": mock_mbo},
+        )
+    return result
+
+
+# ============================================================
+# TC12-14: Visit Management (Mock)
+# ============================================================
+
+
+async def mock_create_visit(
+    patient_mbo: str,
+    period_start: str,
+    admission_type_code: str = "9",
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    import os
+    visit_id = f"MOCK-V-{os.urandom(6).hex()}"
+    result = {
+        "mock": True,
+        "success": True,
+        "visit_id": visit_id,
+        "status": "in-progress",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="visit_create",
+            details={"mbo": patient_mbo, "visit_id": visit_id},
+        )
+    return result
+
+
+async def mock_update_visit(
+    visit_id: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    **updates: str,
+) -> dict:
+    result = {"mock": True, "success": True, "visit_id": visit_id}
+    if db and user_id and tenant_id:
+        await _write_audit(db, tenant_id, user_id, action="visit_update", details={"visit_id": visit_id})
+    return result
+
+
+async def mock_close_visit(
+    visit_id: str,
+    period_end: str,
+    diagnosis_case_id: str | None = None,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    result = {"mock": True, "success": True, "visit_id": visit_id, "status": "finished"}
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="visit_close",
+            details={"visit_id": visit_id, "period_end": period_end},
+        )
+    return result
+
+
+async def mock_reopen_visit(
+    visit_id: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    result = {"mock": True, "success": True, "visit_id": visit_id, "status": "in-progress"}
+    if db and user_id and tenant_id:
+        await _write_audit(db, tenant_id, user_id, action="visit_reopen", details={"visit_id": visit_id})
+    return result
+
+
+async def mock_cancel_visit(
+    visit_id: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    result = {"mock": True, "success": True, "visit_id": visit_id, "status": "entered-in-error"}
+    if db and user_id and tenant_id:
+        await _write_audit(db, tenant_id, user_id, action="visit_cancel", details={"visit_id": visit_id})
+    return result
+
+
+# ============================================================
+# TC15-17: Case Management (Mock)
+# ============================================================
+
+_MOCK_CASES = [
+    {"case_id": "MOCK-C-001", "icd_code": "M54", "icd_display": "Dorsopatija",
+     "clinical_status": "active", "onset_date": "2026-01-15"},
+    {"case_id": "MOCK-C-002", "icd_code": "J45", "icd_display": "Astma",
+     "clinical_status": "active", "onset_date": "2025-06-20"},
+    {"case_id": "MOCK-C-003", "icd_code": "I10",
+     "icd_display": "Esencijalna hipertenzija", "clinical_status": "remission",
+     "onset_date": "2024-03-10"},
+]
+
+
+async def mock_retrieve_cases(
+    patient_mbo: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> list[dict]:
+    if db and user_id and tenant_id:
+        await _write_audit(db, tenant_id, user_id, action="case_retrieve", details={"mbo": patient_mbo})
+    return [{"mock": True, **c} for c in _MOCK_CASES]
+
+
+async def mock_create_case(
+    patient_mbo: str,
+    icd_code: str,
+    icd_display: str,
+    onset_date: str,
+    verification_status: str = "unconfirmed",
+    note_text: str | None = None,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    import os
+    local_id = f"local-{os.urandom(4).hex()}"
+    cezih_id = f"MOCK-C-{os.urandom(6).hex()}"
+    result = {
+        "mock": True,
+        "success": True,
+        "local_case_id": local_id,
+        "cezih_case_id": cezih_id,
+    }
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="case_create",
+            details={"mbo": patient_mbo, "icd_code": icd_code, "case_id": cezih_id},
+        )
+    return result
+
+
+async def mock_update_case(
+    case_id: str,
+    action: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    result = {"mock": True, "success": True, "case_id": case_id, "action": action}
+    if db and user_id and tenant_id:
+        await _write_audit(db, tenant_id, user_id, action=f"case_{action}", details={"case_id": case_id})
+    return result
+
+
+async def mock_update_case_data(
+    case_id: str,
+    updates: dict,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    result = {"mock": True, "success": True, "case_id": case_id}
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="case_update_data",
+            details={"case_id": case_id, "fields": list(updates.keys())},
+        )
+    return result
+
+
+# ============================================================
+# TC21: Flexible Document Search (Mock)
+# ============================================================
+
+_MOCK_DOCUMENTS = [
+    {"id": "DOC-001", "datum_izdavanja": "2026-03-25",
+     "izdavatelj": "DOM ZDRAVLJA ZAGREB-CENTAR", "svrha": "Kardiološki nalaz",
+     "specijalist": "Dr. Babić", "status": "Otvorena", "type": "nalaz",
+     "patient_mbo": "999990260"},
+    {"id": "DOC-002", "datum_izdavanja": "2026-03-20",
+     "izdavatelj": "KBC ZAGREB", "svrha": "RTG snimka",
+     "specijalist": "Dr. Perić", "status": "Otvorena", "type": "nalaz",
+     "patient_mbo": "999990260"},
+    {"id": "DOC-003", "datum_izdavanja": "2026-03-15",
+     "izdavatelj": "POLIKLINIKA RIJEKA", "svrha": "Laboratorijski nalaz",
+     "specijalist": "Dr. Tomić", "status": "Zatvorena", "type": "nalaz",
+     "patient_mbo": "999990261"},
+    {"id": "DOC-004", "datum_izdavanja": "2026-03-10",
+     "izdavatelj": "DOM ZDRAVLJA SPLIT", "svrha": "Dermatološki pregled",
+     "specijalist": "Dr. Matić", "status": "Otvorena", "type": "uputnica",
+     "patient_mbo": "999990260"},
+    {"id": "DOC-005", "datum_izdavanja": "2026-03-05",
+     "izdavatelj": "DOM ZDRAVLJA OSIJEK", "svrha": "Oftalmološka uputnica",
+     "specijalist": "Dr. Herceg", "status": "Pogreška", "type": "uputnica",
+     "patient_mbo": "999990262"},
+]
+
+
+async def mock_search_documents(
+    patient_mbo: str | None = None,
+    document_type: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    status_filter: str | None = None,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> list[dict]:
+    results = list(_MOCK_DOCUMENTS)
+    if patient_mbo:
+        results = [d for d in results if d["patient_mbo"] == patient_mbo]
+    if document_type:
+        results = [d for d in results if d["type"] == document_type]
+    if date_from:
+        results = [d for d in results if d["datum_izdavanja"] >= date_from]
+    if date_to:
+        results = [d for d in results if d["datum_izdavanja"] <= date_to]
+    if status_filter:
+        status_map = {"current": "Otvorena", "superseded": "Zatvorena", "entered-in-error": "Pogreška"}
+        mapped = status_map.get(status_filter, status_filter)
+        results = [d for d in results if d["status"] == mapped]
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="document_search",
+            details={"patient_mbo": patient_mbo, "type": document_type, "count": len(results)},
+        )
+    return [{"mock": True, **{k: v for k, v in d.items() if k != "patient_mbo"}} for d in results]
+
+
+# ============================================================
+# TC19-20, 22: Document Operations (Mock)
+# ============================================================
+
+
+async def mock_replace_document(
+    original_reference_id: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    import os
+    new_ref = f"MOCK-EN-R-{os.urandom(4).hex()}"
+    result = {
+        "mock": True, "success": True,
+        "new_reference_id": new_ref, "replaced_reference_id": original_reference_id,
+    }
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="e_nalaz_replace",
+            details={"original": original_reference_id, "new": new_ref},
+        )
+    return result
+
+
+async def mock_cancel_document(
+    reference_id: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> dict:
+    result = {"mock": True, "success": True, "reference_id": reference_id, "status": "entered-in-error"}
+    if db and user_id and tenant_id:
+        await _write_audit(db, tenant_id, user_id, action="e_nalaz_cancel", details={"reference_id": reference_id})
+    return result
+
+
+async def mock_retrieve_document(
+    reference_id: str,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+) -> bytes:
+    if db and user_id and tenant_id:
+        await _write_audit(
+            db, tenant_id, user_id,
+            action="e_nalaz_retrieve_doc",
+            details={"reference_id": reference_id},
+        )
+    return b"%PDF-1.4 mock document content for " + reference_id.encode()

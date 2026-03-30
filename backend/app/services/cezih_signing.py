@@ -57,11 +57,13 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
     # Check cache (with 30s buffer)
     if _signing_token_cache and _signing_token_expires_in:
         if (_time.monotonic() - _signing_token_acquired_at) < (_signing_token_expires_in - 30):
+            assert _signing_token_cache is not None
             return _signing_token_cache
 
     async with _signing_lock:
         if _signing_token_cache and _signing_token_expires_in:
             if (_time.monotonic() - _signing_token_acquired_at) < (_signing_token_expires_in - 30):
+                assert _signing_token_cache is not None
                 return _signing_token_cache
 
         oauth_url = settings.CEZIH_SIGNING_OAUTH2_URL or settings.CEZIH_OAUTH2_URL
@@ -100,11 +102,13 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
             ) from e
 
         body = response.json()
+        global _signing_token_cache, _signing_token_expires_in, _signing_token_acquired_at
         _signing_token_cache = body["access_token"]
         _signing_token_expires_in = body.get("expires_in", 300)
         _signing_token_acquired_at = _time.monotonic()
 
         logger.info("CEZIH signing auth: token acquired (expires_in=%ds)", _signing_token_expires_in)
+        assert _signing_token_cache is not None
         return _signing_token_cache
 
 
