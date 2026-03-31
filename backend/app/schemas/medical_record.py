@@ -3,8 +3,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
-from app.constants import RECORD_TIP_ALLOWED
-
 
 class PreporucenaTerapijaEntry(BaseModel):
     atk: str = ""
@@ -25,14 +23,6 @@ class MedicalRecordCreate(BaseModel):
     sadrzaj: str
     sensitivity: str = "standard"
     preporucena_terapija: list[PreporucenaTerapijaEntry] | None = None
-
-    @field_validator("tip")
-    @classmethod
-    def validate_tip(cls, v: str) -> str:
-        if v not in RECORD_TIP_ALLOWED:
-            allowed = ", ".join(sorted(RECORD_TIP_ALLOWED))
-            raise ValueError(f"Nepoznat tip zapisa '{v}'. Dozvoljeni: {allowed}")
-        return v
 
     @field_validator("sadrzaj")
     @classmethod
@@ -85,14 +75,6 @@ class MedicalRecordUpdate(BaseModel):
     sadrzaj: str | None = None
     sensitivity: str | None = None
     preporucena_terapija: list[PreporucenaTerapijaEntry] | None = None
-
-    @field_validator("tip")
-    @classmethod
-    def validate_tip(cls, v: str | None) -> str | None:
-        if v is not None and v not in RECORD_TIP_ALLOWED:
-            allowed = ", ".join(sorted(RECORD_TIP_ALLOWED))
-            raise ValueError(f"Nepoznat tip zapisa '{v}'. Dozvoljeni: {allowed}")
-        return v
 
     @field_validator("sadrzaj")
     @classmethod

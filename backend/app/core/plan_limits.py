@@ -17,9 +17,9 @@ PLAN_LIMITS: dict[str, PlanLimits] = {
         cezih_access=True,
     ),
     "solo": PlanLimits(
-        max_users=1,
+        max_users=2,  # Website promises "1-2 korisnika" — must match
         max_patients=None,
-        max_concurrent_sessions=1,
+        max_concurrent_sessions=2,
         cezih_access=True,
     ),
     "poliklinika": PlanLimits(

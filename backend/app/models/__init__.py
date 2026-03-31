@@ -6,6 +6,7 @@ from app.models.drug_list import DrugListItem
 from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
 from app.models.procedure import PerformedProcedure, Procedure
+from app.models.record_type import RecordType
 from app.models.refresh_token import RefreshToken
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -21,6 +22,7 @@ __all__ = [
     "Patient",
     "PerformedProcedure",
     "Procedure",
+    "RecordType",
     "RefreshToken",
     "Tenant",
     "TenantMixin",

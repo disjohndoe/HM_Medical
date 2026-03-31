@@ -61,6 +61,10 @@ async def register(db: AsyncSession, data: RegisterRequest) -> TokenResponse:
     from app.utils.seed_data import seed_default_procedures
     await seed_default_procedures(db, tenant.id)
 
+    # Seed default record types for new tenant
+    from app.services.record_type_service import seed_system_record_types
+    await seed_system_record_types(db, tenant.id)
+
     # Create tokens
     token_response = await _create_token_pair(db, user)
 

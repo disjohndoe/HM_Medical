@@ -5,10 +5,28 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import RECORD_TIP_ALLOWED
 from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
+from app.models.record_type import RecordType
 from app.models.user import User
 from app.schemas.medical_record import MedicalRecordCreate, MedicalRecordUpdate
+
+
+async def _validate_tip_for_tenant(db: AsyncSession, tenant_id: uuid.UUID, tip: str) -> None:
+    """Raise 422 if tip is not an active record type for this tenant."""
+    result = await db.execute(
+        select(RecordType).where(
+            RecordType.tenant_id == tenant_id,
+            RecordType.slug == tip,
+            RecordType.is_active.is_(True),
+        ).limit(1)
+    )
+    if not result.scalar_one_or_none() and tip not in RECORD_TIP_ALLOWED:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Nepoznat tip zapisa '{tip}'. Kontaktirajte administratora.",
+        )
 
 
 def _join_record_query(base):
@@ -122,6 +140,8 @@ async def create_record(
     data: MedicalRecordCreate,
     doktor_id: uuid.UUID,
 ) -> dict:
+    await _validate_tip_for_tenant(db, tenant_id, data.tip)
+
     record = MedicalRecord(
         tenant_id=tenant_id,
         patient_id=data.patient_id,
@@ -152,6 +172,9 @@ async def update_record(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medicinski zapis nije pronađen")
 
     update_data = data.model_dump(exclude_unset=True)
+
+    if "tip" in update_data:
+        await _validate_tip_for_tenant(db, tenant_id, update_data["tip"])
 
     for field, value in update_data.items():
         setattr(record, field, value)
