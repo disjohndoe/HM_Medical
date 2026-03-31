@@ -71,6 +71,7 @@ class PerformedProcedureCreate(BaseModel):
     patient_id: UUID
     procedure_id: UUID
     appointment_id: UUID | None = None
+    medical_record_id: UUID | None = None
     lokacija: str | None = None
     datum: date
     cijena_cents: int | None = None
@@ -81,6 +82,7 @@ class PerformedProcedureRead(BaseModel):
     id: UUID
     patient_id: UUID
     appointment_id: UUID | None
+    medical_record_id: UUID | None = None
     procedure_id: UUID
     doktor_id: UUID
     lokacija: str | None

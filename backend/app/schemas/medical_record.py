@@ -42,6 +42,7 @@ class MedicalRecordRead(BaseModel):
     cezih_sent: bool
     cezih_sent_at: datetime | None
     cezih_reference_id: str | None
+    cezih_storno: bool
     sensitivity: str
     doktor_ime: str | None = None
     doktor_prezime: str | None = None

@@ -872,6 +872,16 @@ async def mock_cancel_document(
 ) -> dict:
     result = {"mock": True, "success": True, "reference_id": reference_id, "status": "entered-in-error"}
     if db and user_id and tenant_id:
+        # Mark the medical record as storniran
+        rec_result = await db.execute(
+            select(MedicalRecord).where(
+                MedicalRecord.cezih_reference_id == reference_id,
+                MedicalRecord.tenant_id == tenant_id,
+            )
+        )
+        record = rec_result.scalar_one_or_none()
+        if record:
+            record.cezih_storno = True
         await _write_audit(db, tenant_id, user_id, action="e_nalaz_cancel", details={"reference_id": reference_id})
     return result
 

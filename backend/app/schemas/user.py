@@ -21,6 +21,7 @@ class UserRead(BaseModel):
     card_holder_name: str | None = None
     card_certificate_oib: str | None = None
     card_required: bool = False
+    practitioner_id: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -37,6 +38,7 @@ class UserCreate(BaseModel):
     titula: str | None = None
     telefon: str | None = None
     role: str = "doctor"
+    practitioner_id: str | None = None
 
 
 class UserUpdate(BaseModel):
@@ -50,6 +52,7 @@ class UserUpdate(BaseModel):
     card_holder_name: str | None = None
     card_certificate_oib: str | None = None
     card_required: bool | None = None
+    practitioner_id: str | None = None
 
 
 class CardBindingRequest(BaseModel):

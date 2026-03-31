@@ -35,6 +35,9 @@ class PerformedProcedure(BaseTenantModel):
     appointment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True
     )
+    medical_record_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("medical_records.id"), nullable=True
+    )
     procedure_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("procedures.id"), nullable=False)
     doktor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     lokacija: Mapped[str | None] = mapped_column(String(100), nullable=True)

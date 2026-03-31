@@ -220,6 +220,7 @@ async def get_patient_cezih_summary(
             tip=r.tip,
             reference_id=r.cezih_reference_id,
             cezih_sent_at=r.cezih_sent_at,
+            cezih_storno=r.cezih_storno,
         )
         for r in records
     ]
@@ -456,7 +457,7 @@ async def create_visit(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_create_visit(
-        data.patient_mbo, "",
+        data.patient_mbo, current_user.practitioner_id or "",
         settings.CEZIH_ORG_CODE,
         data.period_start, data.admission_type_code,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
@@ -475,7 +476,7 @@ async def update_visit(
     await check_cezih_access(db, current_user.tenant_id)
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     return await cezih.dispatch_update_visit(
-        visit_id, "",
+        visit_id, current_user.practitioner_id or "",
         settings.CEZIH_ORG_CODE,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
@@ -493,7 +494,7 @@ async def close_visit(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_close_visit(
-        visit_id, "",
+        visit_id, current_user.practitioner_id or "",
         settings.CEZIH_ORG_CODE,
         data.period_end, data.period_end,  # period_start not needed for close
         diagnosis_case_id=data.diagnosis_case_id,
@@ -511,7 +512,7 @@ async def reopen_visit(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_reopen_visit(
-        visit_id, "",
+        visit_id, current_user.practitioner_id or "",
         settings.CEZIH_ORG_CODE,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
@@ -527,7 +528,7 @@ async def cancel_visit(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_cancel_visit(
-        visit_id, "",
+        visit_id, current_user.practitioner_id or "",
         settings.CEZIH_ORG_CODE,
         period_start="",  # Server already has this
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
@@ -565,7 +566,7 @@ async def create_case(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_create_case(
-        data.patient_mbo, "",
+        data.patient_mbo, current_user.practitioner_id or "",
         settings.CEZIH_ORG_CODE,
         data.icd_code, data.icd_display, data.onset_date,
         data.verification_status, data.note,
@@ -585,7 +586,7 @@ async def update_case_status(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_update_case(
-        case_id, mbo, "",
+        case_id, mbo, current_user.practitioner_id or "",
         settings.CEZIH_ORG_CODE,
         data.action,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
@@ -604,7 +605,7 @@ async def update_case_data(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_update_case_data(
-        case_id, mbo, "",
+        case_id, mbo, current_user.practitioner_id or "",
         settings.CEZIH_ORG_CODE,
         current_clinical_status=data.current_clinical_status,
         verification_status=data.verification_status,

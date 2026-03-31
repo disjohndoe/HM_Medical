@@ -98,6 +98,7 @@ async def update_procedure(
         setattr(procedure, field, value)
 
     await db.flush()
+    await db.refresh(procedure)
     return procedure
 
 
@@ -132,6 +133,7 @@ def _performed_row_to_dict(row) -> dict:
         "tenant_id": pp.tenant_id,
         "patient_id": pp.patient_id,
         "appointment_id": pp.appointment_id,
+        "medical_record_id": pp.medical_record_id,
         "procedure_id": pp.procedure_id,
         "doktor_id": pp.doktor_id,
         "lokacija": pp.lokacija,
@@ -153,6 +155,8 @@ async def list_performed(
     patient_id: uuid.UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    appointment_id: uuid.UUID | None = None,
+    medical_record_id: uuid.UUID | None = None,
     skip: int = 0,
     limit: int = 20,
 ) -> tuple[list[dict], int]:
@@ -164,6 +168,10 @@ async def list_performed(
         conditions.append(PerformedProcedure.datum >= date_from)
     if date_to:
         conditions.append(PerformedProcedure.datum <= date_to)
+    if appointment_id:
+        conditions.append(PerformedProcedure.appointment_id == appointment_id)
+    if medical_record_id:
+        conditions.append(PerformedProcedure.medical_record_id == medical_record_id)
 
     base = select(PerformedProcedure).where(and_(*conditions))
     count_q = select(func.count()).select_from(base.subquery())
@@ -193,6 +201,7 @@ async def create_performed(
         patient_id=data.patient_id,
         procedure_id=data.procedure_id,
         appointment_id=data.appointment_id,
+        medical_record_id=data.medical_record_id,
         doktor_id=doktor_id,
         lokacija=data.lokacija,
         datum=data.datum,

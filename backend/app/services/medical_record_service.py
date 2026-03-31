@@ -36,6 +36,7 @@ def _record_row_to_dict(row) -> dict:
         "cezih_sent": rec.cezih_sent,
         "cezih_sent_at": rec.cezih_sent_at,
         "cezih_reference_id": rec.cezih_reference_id,
+        "cezih_storno": rec.cezih_storno,
         "sensitivity": rec.sensitivity,
         "doktor_ime": row.doktor_ime,
         "doktor_prezime": row.doktor_prezime,

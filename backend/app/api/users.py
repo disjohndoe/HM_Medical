@@ -23,10 +23,10 @@ async def list_doctors(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List doctors for the current tenant. Available to all authenticated users."""
+    """List doctors for the current tenant. Includes admins (clinic owners who also practice)."""
     base = select(User).where(
         User.tenant_id == current_user.tenant_id,
-        User.role == "doctor",
+        User.role.in_(["doctor", "admin"]),
         User.is_active.is_(True),
     )
     count_q = select(func.count()).select_from(base.subquery())
@@ -132,6 +132,7 @@ async def delete_user(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ne mozete deaktivirati vlastiti racun")
 
     user.is_active = False
+    await db.flush()
 
 
 @router.post("/{user_id}/card-binding", response_model=UserRead)

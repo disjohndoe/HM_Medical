@@ -27,3 +27,4 @@ class User(BaseTenantModel):
     card_holder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     card_certificate_oib: Mapped[str | None] = mapped_column(String(11), nullable=True)
     card_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    practitioner_id: Mapped[str | None] = mapped_column(String(50), nullable=True)

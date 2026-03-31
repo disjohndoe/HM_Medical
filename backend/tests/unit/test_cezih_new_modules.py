@@ -3,8 +3,6 @@
 Tests the mock service functions, message builder, and FHIR model correctness
 directly without needing the API layer or database.
 """
-import asyncio
-
 import pytest
 
 from app.services.cezih.message_builder import (
@@ -28,8 +26,8 @@ from app.services.cezih.message_builder import (
 from app.services.cezih.models import (
     FHIRBundle,
     FHIRBundleSignature,
-    FHIRCondition,
     FHIRCoding,
+    FHIRCondition,
     FHIREncounter,
     FHIRMessageHeader,
 )
@@ -52,9 +50,7 @@ from app.services.cezih_mock_service import (
     mock_search_documents,
     mock_update_case,
     mock_update_case_data,
-    mock_update_visit,
 )
-
 
 # ============================================================
 # FHIR Models

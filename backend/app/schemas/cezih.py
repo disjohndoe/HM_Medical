@@ -114,6 +114,7 @@ class PatientCezihENalaz(BaseModel):
     tip: str
     reference_id: str | None = None
     cezih_sent_at: datetime | None = None
+    cezih_storno: bool = False
 
 
 class PatientCezihERecept(BaseModel):
