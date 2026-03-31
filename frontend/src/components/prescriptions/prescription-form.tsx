@@ -38,6 +38,7 @@ import {
 import { MockBadge } from "@/components/cezih/mock-badge"
 import { useDrugSearch } from "@/lib/hooks/use-cezih"
 import { useCreatePrescription, useSendPrescription } from "@/lib/hooks/use-prescriptions"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import type { LijekItem } from "@/lib/types"
 
 interface SelectedDrug {
@@ -64,6 +65,7 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
   const { data: drugs } = useDrugSearch(searchQuery)
   const createPrescription = useCreatePrescription()
   const sendPrescription = useSendPrescription()
+  const { canUseHzzo } = usePermissions()
 
   const handleAddDrug = (drug: LijekItem) => {
     if (selected.some((s) => s.atk === drug.atk && s.naziv === drug.naziv)) {
@@ -183,25 +185,23 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
                   <CommandEmpty>
                     {searchQuery.length < 2 ? "Unesite barem 2 znaka" : "Nema rezultata"}
                   </CommandEmpty>
-                  {drugs && drugs.length > 0 && (
-                    <CommandGroup>
-                      {drugs.map((drug) => (
-                        <CommandItem
-                          key={`${drug.atk}-${drug.naziv}`}
-                          value={drug.naziv}
-                          onSelect={() => handleAddDrug(drug)}
-                        >
-                          <Plus className="mr-2 h-3 w-3" />
-                          <div className="flex-1">
-                            <p className="text-sm">{drug.naziv}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {drug.oblik} · {drug.jacina} · ATK: {drug.atk}
-                            </p>
-                          </div>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  )}
+                  <CommandGroup>
+                    {drugs?.map((drug) => (
+                      <CommandItem
+                        key={`${drug.atk}-${drug.naziv}`}
+                        value={drug.naziv}
+                        onSelect={() => handleAddDrug(drug)}
+                      >
+                        <Plus className="mr-2 h-3 w-3" />
+                        <div className="flex-1">
+                          <p className="text-sm">{drug.naziv}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {drug.oblik || drug.jacina} · ATK: {drug.atk}
+                          </p>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
                 </CommandList>
               </Command>
             </PopoverContent>
@@ -293,13 +293,15 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Spremi nacrt
           </Button>
-          <Button
-            onClick={() => handleSave(true)}
-            disabled={isPending || selected.length === 0}
-          >
-            {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Spremi i pošalji
-          </Button>
+          {canUseHzzo && (
+            <Button
+              onClick={() => handleSave(true)}
+              disabled={isPending || selected.length === 0}
+            >
+              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Spremi i pošalji
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

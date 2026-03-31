@@ -1,13 +1,13 @@
 import { CreditCard } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { useCezihStatus } from "@/lib/hooks/use-cezih"
+import { useCezihConnectionDisplay } from "@/lib/hooks/use-cezih"
 import { useCardStatus } from "@/lib/hooks/use-users"
 import { useAuth } from "@/lib/auth"
 import { MockBadge } from "./mock-badge"
 
 export function CezihStatusCard() {
-  const { data, isLoading } = useCezihStatus()
+  const cezih = useCezihConnectionDisplay()
   const { data: cardStatus } = useCardStatus()
   const { user } = useAuth()
 
@@ -17,33 +17,33 @@ export function CezihStatusCard() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-lg">Status veze</CardTitle>
-        {data?.mock && <MockBadge />}
+        {cezih.isDemo && <MockBadge />}
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {cezih.isLoading ? (
           <div className="text-sm text-muted-foreground">Učitavanje...</div>
-        ) : data ? (
+        ) : cezih.raw ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span
-                className={`inline-block h-2.5 w-2.5 rounded-full ${
-                  data.connected ? "bg-green-500" : "bg-muted-foreground/50"
-                }`}
-              />
-              <span className="text-sm">
-                {data.connected ? "Povezano" : data.mock ? "Nije povezano (DEMO MODE)" : "Nije povezano"}
-              </span>
+              <span className={`inline-block h-2.5 w-2.5 rounded-full ${cezih.dotColor}`} />
+              <span className="text-sm">{cezih.label}</span>
             </div>
+            {cezih.connectedDoctor && (
+              <div className="text-sm text-muted-foreground">
+                {cezih.connectedDoctor}
+                {cezih.connectedClinic && <> via {cezih.connectedClinic}</>}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Način:</span>
-              <Badge variant={data.mock ? "destructive" : "outline"} className={data.mock ? "uppercase font-bold" : ""}>
-                {data.mock ? "DEMO" : data.mode}
+              <Badge variant={cezih.isDemo ? "destructive" : "outline"} className={cezih.isDemo ? "uppercase font-bold" : ""}>
+                {cezih.isDemo ? "DEMO" : cezih.raw.mode}
               </Badge>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Agent:</span>
               <span className="text-sm">
-                {data.agent_connected ? "Povezan" : "Nije povezan"}
+                {cezih.raw.agent_connected ? "Povezan" : "Nije povezan"}
               </span>
             </div>
 

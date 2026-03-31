@@ -61,7 +61,9 @@ async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Pro
 
   const accessToken = localStorage.getItem("access_token");
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -70,6 +72,9 @@ async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Pro
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+  } catch {
+    throw new Error("Greška u komunikaciji s poslužiteljem. Provjerite mrežnu vezu i pokušajte ponovo.");
+  }
 
   if (res.status === 401) {
     const refreshToken = localStorage.getItem("refresh_token");

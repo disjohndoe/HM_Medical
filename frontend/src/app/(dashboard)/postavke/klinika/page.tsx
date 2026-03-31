@@ -37,6 +37,7 @@ const clinicSchema = z.object({
   web: z.string().nullable().optional(),
   sifra_ustanove: z.string().nullable().optional(),
   oid: z.string().nullable().optional(),
+  has_hzzo_contract: z.boolean().optional(),
 })
 
 type ClinicFormData = z.infer<typeof clinicSchema>
@@ -50,6 +51,7 @@ export default function KlinikaSettingsPage() {
     register,
     handleSubmit,
     setValue,
+    watch,
     reset,
     formState: { errors },
   } = useForm<ClinicFormData>({
@@ -71,6 +73,7 @@ export default function KlinikaSettingsPage() {
         web: clinic.web ?? null,
         sifra_ustanove: clinic.sifra_ustanove ?? null,
         oid: clinic.oid ?? null,
+        has_hzzo_contract: clinic.has_hzzo_contract ?? false,
       })
     }
   }, [clinic, reset])
@@ -222,6 +225,25 @@ export default function KlinikaSettingsPage() {
                   placeholder="npr. 1.2.3.4.5"
                   {...register("oid")}
                 />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="has_hzzo_contract"
+                className="h-4 w-4 rounded border-gray-300"
+                {...register("has_hzzo_contract")}
+              />
+              <div>
+                <Label htmlFor="has_hzzo_contract" className="cursor-pointer">
+                  Ugovor s HZZO-om
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Omogućuje slanje e-Recepata i e-Uputnica putem CEZIH-a
+                </p>
               </div>
             </div>
 

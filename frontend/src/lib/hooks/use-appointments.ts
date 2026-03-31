@@ -97,3 +97,5 @@ export function useAvailableSlots(doktorId: string, date: string, duration = 30)
     enabled: !!doktorId && !!date,
   })
 }
+
+

@@ -19,9 +19,9 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MockBadge } from "@/components/cezih/mock-badge"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
-import { VisitManagement } from "@/components/cezih/visit-management"
 import { CaseManagement } from "@/components/cezih/case-management"
 import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import { OSIGURANJE_STATUS, RECORD_TIP } from "@/lib/constants"
 import { formatDateTimeHR } from "@/lib/utils"
 
@@ -35,18 +35,19 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
   const insuranceCheck = useInsuranceCheck()
   const cancelDocument = useCancelDocument()
   const replaceDocument = useReplaceDocument()
+  const { canUseHzzo } = usePermissions()
   const [eReceptOpen, setEReceptOpen] = useState(false)
   const [nalazStornoTarget, setNalazStornoTarget] = useState<string | null>(null)
   const [nalazReplaceTarget, setNalazReplaceTarget] = useState<string | null>(null)
 
-  const handleCheckInsurance = () => {
+  function handleCheckInsurance() {
     if (!patientMbo) {
-      toast.error("Pacijent nema MBO broj")
+      toast.error("Pacijent nema MBO")
       return
     }
     insuranceCheck.mutate(patientMbo, {
       onSuccess: () => toast.success("Osiguranje provjereno"),
-      onError: (err) => toast.error(err.message),
+      onError: (err: Error) => toast.error(err.message || "Greška pri provjeri osiguranja"),
     })
   }
 
@@ -118,13 +119,15 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
             <CardTitle className="text-sm font-medium">Brze akcije</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setEReceptOpen(true)}
-            >
-              Novi e-Recept
-            </Button>
+            {canUseHzzo && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEReceptOpen(true)}
+              >
+                Novi e-Recept
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -219,12 +222,9 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
         </CardContent>
       </Card>
 
-      {/* Visit & Case Management */}
+      {/* Case Management */}
       {patientMbo && (
-        <>
-          <VisitManagement patientId={patientId} patientMbo={patientMbo} />
-          <CaseManagement patientId={patientId} patientMbo={patientMbo} />
-        </>
+        <CaseManagement patientId={patientId} patientMbo={patientMbo} />
       )}
 
       <PrescriptionForm

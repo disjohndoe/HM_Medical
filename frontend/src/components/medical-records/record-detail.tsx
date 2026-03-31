@@ -14,13 +14,12 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
-import { RECORD_TIP, RECORD_TIP_COLORS } from "@/lib/constants"
+import { RECORD_TIP, RECORD_TIP_COLORS, CEZIH_ELIGIBLE_TYPES, CEZIH_MANDATORY_TYPES } from "@/lib/constants"
 import { formatDateHR, formatDateTimeHR, formatCurrencyEUR } from "@/lib/utils"
-import { useSendENalaz, useEUputnice, useRetrieveEUputnice, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
+import { useSendENalaz, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { usePerformedProcedures } from "@/lib/hooks/use-procedures"
 import { MockBadge } from "@/components/cezih/mock-badge"
-import { ReferralLinkSelect } from "@/components/cezih/referral-link-select"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import type { MedicalRecord } from "@/lib/types"
@@ -37,10 +36,7 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
   const sendENalaz = useSendENalaz()
   const cancelDocument = useCancelDocument()
   const replaceDocument = useReplaceDocument()
-  const { canPerformCezihOps, canEditMedicalRecord } = usePermissions()
-  const { data: storedEUputnice } = useEUputnice()
-  const retrieveEUputnice = useRetrieveEUputnice()
-  const [selectedUputnica, setSelectedUputnica] = useState("")
+  const { canPerformCezihOps, canEditMedicalRecord, canUseHzzo } = usePermissions()
   const [eReceptOpen, setEReceptOpen] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [confirmReplace, setConfirmReplace] = useState(false)
@@ -50,7 +46,6 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
       {
         patient_id: patientId,
         record_id: record.id,
-        uputnica_id: selectedUputnica && selectedUputnica !== "none" ? selectedUputnica : undefined,
       },
       {
         onSuccess: () => {
@@ -59,12 +54,6 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
         onError: (err) => toast.error(err.message),
       },
     )
-  }
-
-  const handleLoadReferrals = () => {
-    retrieveEUputnice.mutate(undefined, {
-      onError: (err) => toast.error(err.message),
-    })
   }
 
   const handleCancelDocument = () => {
@@ -93,8 +82,6 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
     undefined, undefined, undefined, undefined, record.id,
   )
   const linkedItems = linkedProcedures?.items ?? []
-
-  const referrals = storedEUputnice?.items ?? []
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -142,6 +129,34 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
 
           <Separator />
 
+          {/* Preporučena terapija */}
+          {record.preporucena_terapija && record.preporucena_terapija.length > 0 && (
+          <>
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium text-muted-foreground">Preporučena terapija</h4>
+            <div className="space-y-1">
+              {record.preporucena_terapija.map((lijek, i) => (
+                <div key={i} className="flex items-start justify-between rounded-md bg-muted px-3 py-2 text-sm">
+                  <div>
+                    <span className="font-medium">{lijek.naziv}</span>
+                    {lijek.jacina && <span className="ml-1 text-xs text-muted-foreground">{lijek.jacina}</span>}
+                    {lijek.oblik && <span className="ml-1 text-xs text-muted-foreground">· {lijek.oblik}</span>}
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground">
+                    {lijek.doziranje && <div>{lijek.doziranje}</div>}
+                    {lijek.napomena && <div>{lijek.napomena}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground italic">
+              Obiteljski liječnik izdaje e-Recept s RS oznakom na temelju ove preporuke.
+            </p>
+          </div>
+          <Separator />
+          </>
+          )}
+
           {/* Povezani postupci */}
           <div className="space-y-2">
             <h4 className="text-sm font-medium text-muted-foreground">Povezani postupci</h4>
@@ -170,7 +185,11 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
               <h4 className="text-sm font-medium text-muted-foreground">CEZIH status</h4>
               <MockBadge />
             </div>
-            {record.cezih_sent ? (
+            {!CEZIH_ELIGIBLE_TYPES.has(record.tip) ? (
+              <p className="text-xs text-muted-foreground">
+                Ovaj tip zapisa ({RECORD_TIP[record.tip] || record.tip}) nije predviđen za slanje na CEZIH.
+              </p>
+            ) : record.cezih_sent ? (
               <div className="space-y-2">
                 {record.cezih_storno ? (
                   <Badge className="bg-red-100 text-red-800 border-red-200">
@@ -225,26 +244,13 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
               </div>
             ) : (
               <div className="space-y-2">
-                {/* Referral link select */}
-                {referrals.length > 0 ? (
-                  <ReferralLinkSelect
-                    value={selectedUputnica}
-                    onChange={setSelectedUputnica}
-                    referrals={referrals}
-                  />
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs"
-                    onClick={handleLoadReferrals}
-                    disabled={retrieveEUputnice.isPending}
-                  >
-                    {retrieveEUputnice.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                    Učitaj uputnice za povezivanje
-                  </Button>
+                {CEZIH_MANDATORY_TYPES.has(record.tip) && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2">
+                    <p className="text-xs font-medium text-amber-800">
+                      Obavezno slanje na CEZIH (čl. 23, NN 14/2019)
+                    </p>
+                  </div>
                 )}
-
                 <Button
                   variant="outline"
                   size="sm"
@@ -268,6 +274,8 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
           <Separator />
 
           {/* e-Recept button */}
+          {canUseHzzo && (
+          <>
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-medium text-muted-foreground">e-Recept</h4>
@@ -284,6 +292,8 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
           </div>
 
           <Separator />
+          </>
+          )}
           </>
           )}
 

@@ -6,20 +6,25 @@ import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { toast } from "sonner"
-import { Upload, X } from "lucide-react"
+import { Upload, X, Plus, Trash2, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { RECORD_TIP_OPTIONS, RECORD_SENSITIVITY_OPTIONS } from "@/lib/constants"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { RECORD_TIP_OPTIONS, CEZIH_MANDATORY_TYPES } from "@/lib/constants"
 import {
   useCreateMedicalRecord,
   useUpdateMedicalRecord,
 } from "@/lib/hooks/use-medical-records"
 import { useUploadDocument } from "@/lib/hooks/use-documents"
-import { usePermissions } from "@/lib/hooks/use-permissions"
-import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate } from "@/lib/types"
+import { useDrugSearch } from "@/lib/hooks/use-cezih"
+import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem } from "@/lib/types"
 
 const recordSchema = z.object({
   datum: z.string().min(1, "Datum je obavezan"),
@@ -27,7 +32,6 @@ const recordSchema = z.object({
   dijagnoza_mkb: z.string().optional(),
   dijagnoza_tekst: z.string().optional(),
   sadrzaj: z.string().min(10, "Sadržaj mora imati najmanje 10 znakova"),
-  sensitivity: z.string().optional(),
 })
 
 type RecordFormData = z.infer<typeof recordSchema>
@@ -44,13 +48,17 @@ const MAX_SIZE_MB = 10
 
 export function RecordForm({ open, onOpenChange, patientId, record }: RecordFormProps) {
   const isEdit = !!record
-  const { canSetRecordSensitivity } = usePermissions()
   const createMutation = useCreateMedicalRecord()
   const updateMutation = useUpdateMedicalRecord()
   const uploadDoc = useUploadDocument()
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const dialogContainerRef = useRef<HTMLDialogElement>(null)
+  const [drugSearchOpen, setDrugSearchOpen] = useState(false)
+  const [drugSearchQuery, setDrugSearchQuery] = useState("")
+  const [therapy, setTherapy] = useState<PreporucenaTerapijaEntry[]>([])
+  const { data: drugs } = useDrugSearch(drugSearchQuery)
 
   const {
     register,
@@ -64,7 +72,6 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
   })
 
   const tipValue = watch("tip")
-  const sensitivityValue = watch("sensitivity")
 
   // Sync open prop with native <dialog>
   useEffect(() => {
@@ -100,27 +107,50 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
   useEffect(() => {
     if (open) {
       setAttachedFile(null)
+      setDrugSearchQuery("")
+      setDrugSearchOpen(false)
       if (record) {
+        setTherapy(record.preporucena_terapija ?? [])
         reset({
           datum: record.datum.split("T")[0],
           tip: record.tip,
           dijagnoza_mkb: record.dijagnoza_mkb ?? undefined,
           dijagnoza_tekst: record.dijagnoza_tekst ?? undefined,
           sadrzaj: record.sadrzaj,
-          sensitivity: record.sensitivity ?? "standard",
         })
       } else {
+        setTherapy([])
         reset({
           datum: new Date().toISOString().split("T")[0],
           tip: "",
           dijagnoza_mkb: undefined,
           dijagnoza_tekst: undefined,
           sadrzaj: "",
-          sensitivity: "standard",
         })
       }
     }
   }, [open, record, reset])
+
+  const handleAddTherapyDrug = (drug: LijekItem) => {
+    if (therapy.some((t) => t.atk === drug.atk && t.naziv === drug.naziv && t.oblik === drug.oblik && t.jacina === drug.jacina)) {
+      toast.info("Lijek je već dodan")
+      return
+    }
+    setTherapy((prev) => [
+      ...prev,
+      { atk: drug.atk, naziv: drug.naziv, jacina: drug.jacina, oblik: drug.oblik, doziranje: "", napomena: "" },
+    ])
+    setDrugSearchOpen(false)
+    setDrugSearchQuery("")
+  }
+
+  const handleRemoveTherapyDrug = (index: number) => {
+    setTherapy((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleUpdateTherapyDrug = (index: number, field: keyof PreporucenaTerapijaEntry, value: string) => {
+    setTherapy((prev) => prev.map((d, i) => (i === index ? { ...d, [field]: value } : d)))
+  }
 
   async function onSubmit(data: RecordFormData) {
     try {
@@ -131,7 +161,7 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
           dijagnoza_mkb: data.dijagnoza_mkb || null,
           dijagnoza_tekst: data.dijagnoza_tekst || null,
           sadrzaj: data.sadrzaj,
-          sensitivity: data.sensitivity || null,
+          preporucena_terapija: therapy.length > 0 ? therapy : null,
         }
         await updateMutation.mutateAsync({ id: record.id, data: payload })
         toast.success("Zapis ažuriran")
@@ -143,7 +173,7 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
           dijagnoza_mkb: data.dijagnoza_mkb || null,
           dijagnoza_tekst: data.dijagnoza_tekst || null,
           sadrzaj: data.sadrzaj,
-          sensitivity: data.sensitivity || "standard",
+          preporucena_terapija: therapy.length > 0 ? therapy : null,
         }
         await createMutation.mutateAsync(payload)
         if (attachedFile) {
@@ -181,7 +211,7 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
 
   return (
     <dialog
-      ref={dialogRef}
+      ref={(el) => { (dialogRef as React.MutableRefObject<HTMLDialogElement | null>).current = el; (dialogContainerRef as React.MutableRefObject<HTMLDialogElement | null>).current = el; }}
       onClick={handleBackdropClick}
       aria-labelledby="record-form-title"
       className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[calc(100%-2rem)] sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 shadow-lg backdrop:bg-black/10 backdrop:backdrop-blur-xs m-0"
@@ -222,11 +252,20 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
                 className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm appearance-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
               >
                 <option value="" disabled>Odaberite tip</option>
-                {RECORD_TIP_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
+                <optgroup label="CEZIH obavezni">
+                  {RECORD_TIP_OPTIONS.filter((opt) => CEZIH_MANDATORY_TYPES.has(opt.value)).map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Ostali tipovi">
+                  {RECORD_TIP_OPTIONS.filter((opt) => !CEZIH_MANDATORY_TYPES.has(opt.value)).map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
               {errors.tip && (
                 <p className="text-sm text-destructive">{errors.tip.message}</p>
@@ -234,37 +273,21 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="mkb">Dijagnoza MKB</Label>
-              <Input id="mkb" placeholder="npr. K04.1" {...register("dijagnoza_mkb")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dijagnoza">Dijagnoza tekst</Label>
-              <Input
-                id="dijagnoza"
-                placeholder="Opis dijagnoze"
-                {...register("dijagnoza_tekst")}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="mkb">Dijagnoza MKB</Label>
+            <Input id="mkb" placeholder="npr. K04.1" {...register("dijagnoza_mkb")} className="max-w-[200px]" />
           </div>
 
-          {canSetRecordSensitivity && (
-            <div className="space-y-2">
-              <Label>Osjetljivost zapisa</Label>
-              <select
-                value={sensitivityValue ?? "standard"}
-                onChange={(e) => setValue("sensitivity", e.target.value)}
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm appearance-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-              >
-                {RECORD_SENSITIVITY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor="dijagnoza">Dijagnoza</Label>
+            <Textarea
+              id="dijagnoza"
+              placeholder="Opis dijagnoze"
+              className="min-h-[100px]"
+              {...register("dijagnoza_tekst")}
+            />
+          </div>
+
 
           <div className="space-y-2">
             <Label htmlFor="sadrzaj">Sadržaj *</Label>
@@ -276,6 +299,96 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
             />
             {errors.sadrzaj && (
               <p className="text-sm text-destructive">{errors.sadrzaj.message}</p>
+            )}
+          </div>
+
+          {/* Preporučena terapija */}
+          <div className="space-y-2">
+            <Label>Preporučena terapija</Label>
+            <p className="text-xs text-muted-foreground">
+              Lijekovi koje preporuča specijalist — bit će uključeni u e-Nalaz.
+            </p>
+            <Popover open={drugSearchOpen} onOpenChange={setDrugSearchOpen}>
+              <PopoverTrigger
+                render={<Button variant="outline" size="sm" className="w-full justify-start text-muted-foreground" />}
+              >
+                <Search className="mr-2 h-4 w-4" />
+                Pretraži lijekove...
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-1" align="start" container={dialogContainerRef.current ?? undefined}>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50 pointer-events-none" />
+                  <input
+                    placeholder="Naziv ili ATK šifra..."
+                    value={drugSearchQuery}
+                    onChange={(e) => setDrugSearchQuery(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-input/30 bg-input/30 pl-7 pr-2 text-sm outline-none focus-visible:border-ring"
+                  />
+                </div>
+                <div className="mt-1 max-h-64 overflow-y-auto">
+                  {drugSearchQuery.length < 2 ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">Unesite barem 2 znaka</p>
+                  ) : drugs?.length ? (
+                    drugs.map((drug, idx) => (
+                      <button
+                        key={`${drug.atk}-${drug.naziv}-${drug.oblik}-${idx}`}
+                        type="button"
+                        onClick={() => handleAddTherapyDrug(drug)}
+                        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted transition-colors cursor-pointer"
+                      >
+                        <Plus className="h-3 w-3 shrink-0" />
+                        <div className="flex-1 text-left min-w-0">
+                          <p className="truncate">{drug.naziv}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {[drug.oblik, drug.jacina].filter(Boolean).join(" · ")} · ATK: {drug.atk}
+                          </p>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="py-4 text-center text-xs text-muted-foreground">Nema rezultata</p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {therapy.length > 0 && (
+              <div className="space-y-2 pt-1">
+                {therapy.map((drug, index) => (
+                  <div key={index} className="rounded-lg border p-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{drug.naziv}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveTherapyDrug(index)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                    {(drug.oblik || drug.jacina) && (
+                      <p className="text-xs text-muted-foreground">
+                        {drug.oblik}{drug.oblik && drug.jacina ? " · " : ""}{drug.jacina}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Doziranje (npr. 1-0-1)"
+                        value={drug.doziranje}
+                        onChange={(e) => handleUpdateTherapyDrug(index, "doziranje", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                      <Input
+                        placeholder="Napomena"
+                        value={drug.napomena}
+                        onChange={(e) => handleUpdateTherapyDrug(index, "napomena", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 

@@ -16,6 +16,7 @@ export interface Tenant {
   trial_expires_at: string | null;
   is_active: boolean;
   cezih_status: string;
+  has_hzzo_contract: boolean;
 }
 
 export interface User {
@@ -237,9 +238,12 @@ export interface PerformedProcedureCreate {
 // --- Medical Records ---
 
 export type RecordTip =
+  | "ambulantno_izvjesce"
+  | "specijalisticki_nalaz"
+  | "otpusno_pismo"
   | "nalaz"
   | "dijagnoza"
-  | "mišljenje"
+  | "misljenje"
   | "preporuka"
   | "epikriza"
   | "anamneza";
@@ -259,8 +263,11 @@ export interface MedicalRecord {
   cezih_reference_id: string | null;
   cezih_storno: boolean;
   sensitivity: string;
+  preporucena_terapija: PreporucenaTerapijaEntry[] | null;
   doktor_ime: string | null;
   doktor_prezime: string | null;
+  patient_ime: string | null;
+  patient_prezime: string | null;
   tenant_id: string;
   created_at: string;
   updated_at: string;
@@ -275,6 +282,7 @@ export interface MedicalRecordCreate {
   dijagnoza_tekst?: string | null;
   sadrzaj: string;
   sensitivity?: string;
+  preporucena_terapija?: PreporucenaTerapijaEntry[] | null;
 }
 
 export interface MedicalRecordUpdate {
@@ -285,6 +293,16 @@ export interface MedicalRecordUpdate {
   dijagnoza_tekst?: string | null;
   sadrzaj?: string | null;
   sensitivity?: string | null;
+  preporucena_terapija?: PreporucenaTerapijaEntry[] | null;
+}
+
+export interface PreporucenaTerapijaEntry {
+  atk: string;
+  naziv: string;
+  jacina: string;
+  oblik: string;
+  doziranje: string;
+  napomena: string;
 }
 
 // --- Dashboard ---
@@ -369,6 +387,9 @@ export interface CezihStatusResponse {
   mode: string;
   agent_connected: boolean;
   last_heartbeat: string | null;
+  // TODO: Populated from AKD smart card identity when local agent is connected
+  connected_doctor: string | null;
+  connected_clinic: string | null;
 }
 
 export interface InsuranceCheckResponse {
@@ -387,21 +408,6 @@ export interface ENalazResponse {
   success: boolean;
   reference_id: string;
   sent_at: string;
-}
-
-export interface EUputnicaItem {
-  mock: boolean;
-  id: string;
-  datum_izdavanja: string;
-  izdavatelj: string;
-  svrha: string;
-  specijalist: string;
-  status: string;
-}
-
-export interface EUputniceResponse {
-  mock: boolean;
-  items: EUputnicaItem[];
 }
 
 export interface EReceptLijekEntry {
@@ -522,7 +528,7 @@ export interface PatientCezihSummary {
 export interface CezihDashboardStats {
   mock: boolean;
   danas_operacije: number;
-  otvorene_uputnice: number;
+  neposlani_nalazi: number;
   zadnja_operacija: string | null;
 }
 
@@ -609,32 +615,6 @@ export interface ForeignerRegistrationResponse {
   success: boolean;
   patient_id: string;
   mbo: string;
-}
-
-// ============================================================
-// TC12-14: Visit Management
-// ============================================================
-
-export interface CreateVisitRequest {
-  patient_id: string;
-  patient_mbo: string;
-  period_start: string;
-  admission_type_code?: string;
-}
-
-export interface VisitResponse {
-  mock: boolean;
-  success: boolean;
-  visit_id: string;
-  status?: string;
-  created_at?: string;
-}
-
-export interface VisitActionResponse {
-  mock: boolean;
-  success: boolean;
-  visit_id?: string;
-  status?: string;
 }
 
 // ============================================================

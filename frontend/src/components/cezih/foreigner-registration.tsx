@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Globe, Loader2, CheckCircle } from "lucide-react"
+import { Globe, Loader2, CheckCircle, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
+import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -139,10 +140,18 @@ export function ForeignerRegistration() {
 
         {register.data && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            <div className="text-sm">
+            <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
+            <div className="text-sm flex-1">
               <span className="font-medium">Registrirano!</span> MBO:{" "}
               <span className="font-mono">{register.data.mbo}</span>
+              {register.data.local_patient_id && (
+                <Link
+                  href={`/pacijenti/${register.data.local_patient_id}`}
+                  className="ml-2 inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline"
+                >
+                  Pogledaj kartoteku <ExternalLink className="h-3 w-3" />
+                </Link>
+              )}
             </div>
           </div>
         )}

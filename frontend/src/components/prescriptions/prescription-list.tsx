@@ -51,7 +51,7 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
   const [formOpen, setFormOpen] = useState(false)
   const [viewId, setViewId] = useState<string | null>(null)
 
-  const { canPerformCezihOps } = usePermissions()
+  const { canPerformCezihOps, canUseHzzo } = usePermissions()
   const { data, isLoading } = usePrescriptions(
     patientId,
     statusFilter && statusFilter !== "all" ? statusFilter : undefined,
@@ -141,8 +141,7 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
                       >
                         <EyeIcon className="h-4 w-4" />
                       </Button>
-                      {isDraft && canPerformCezihOps && (
-                        <>
+                      {isDraft && canPerformCezihOps && canUseHzzo && (
                           <Button
                             variant="ghost"
                             size="icon-sm"
@@ -152,6 +151,8 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
                           >
                             <Send className="h-4 w-4" />
                           </Button>
+                        )}
+                        {isDraft && (
                           <Button
                             variant="ghost"
                             size="icon-sm"
@@ -161,8 +162,7 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
-                        </>
-                      )}
+                        )}
                     </div>
                   </TableCell>
                 </TableRow>

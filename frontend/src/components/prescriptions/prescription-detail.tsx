@@ -25,6 +25,7 @@ import {
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { MockBadge } from "@/components/cezih/mock-badge"
 import { useSendPrescription, useStornoPrescription, useDeletePrescription } from "@/lib/hooks/use-prescriptions"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import { formatDateTimeHR } from "@/lib/utils"
 import type { Prescription } from "@/lib/types"
 
@@ -44,6 +45,7 @@ export function PrescriptionDetail({ open, onOpenChange, prescription }: Prescri
   const sendPrescription = useSendPrescription()
   const stornoPrescription = useStornoPrescription()
   const deletePrescription = useDeletePrescription()
+  const { canUseHzzo } = usePermissions()
   const [confirmStorno, setConfirmStorno] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -167,18 +169,20 @@ export function PrescriptionDetail({ open, onOpenChange, prescription }: Prescri
           <div className="flex gap-2">
             {isDraft && (
               <>
-                <Button
-                  size="sm"
-                  onClick={handleSend}
-                  disabled={sendPrescription.isPending}
-                >
-                  {sendPrescription.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="mr-2 h-4 w-4" />
-                  )}
-                  Pošalji na CEZIH
-                </Button>
+                {canUseHzzo && (
+                  <Button
+                    size="sm"
+                    onClick={handleSend}
+                    disabled={sendPrescription.isPending}
+                  >
+                    {sendPrescription.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="mr-2 h-4 w-4" />
+                    )}
+                    Pošalji na CEZIH
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -191,7 +195,7 @@ export function PrescriptionDetail({ open, onOpenChange, prescription }: Prescri
                 </Button>
               </>
             )}
-            {isSent && (
+            {isSent && canUseHzzo && (
               <Button
                 variant="outline"
                 size="sm"

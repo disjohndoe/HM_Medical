@@ -1,6 +1,6 @@
 "use client"
 
-import { Shield, FileText, Pill, ArrowDownToLine, Clock, Calendar, Folder, UserPlus } from "lucide-react"
+import { Shield, FileText, Pill, Clock, Folder, UserPlus } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -12,13 +12,7 @@ import { CEZIH_ACTION_LABELS, CEZIH_ACTION_COLORS } from "@/lib/constants"
 const ACTION_ICONS: Record<string, typeof Shield> = {
   insurance_check: Shield,
   e_nalaz_send: FileText,
-  e_uputnica_retrieve: ArrowDownToLine,
   e_recept_send: Pill,
-  visit_create: Calendar,
-  visit_update: Calendar,
-  visit_close: Calendar,
-  visit_reopen: Calendar,
-  visit_cancel: Calendar,
   case_create: Folder,
   case_retrieve: Folder,
   case_update: Folder,
@@ -39,7 +33,6 @@ function formatDetail(details: Record<string, string>): string | null {
   if (details.case_id) return `ID: ${details.case_id}`
   if (details.recept_id) return `ID: ${details.recept_id}`
   if (details.mbo) return `MBO: ${details.mbo}`
-  if (details.count) return `${details.count} uputnica`
   return null
 }
 

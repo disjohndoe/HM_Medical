@@ -6,15 +6,14 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { PLAN_TIER, CEZIH_STATUS, CEZIH_STATUS_COLORS, NAV_ITEMS } from "@/lib/constants";
-import { useCezihStatus } from "@/lib/hooks/use-cezih";
+import { PLAN_TIER, NAV_ITEMS } from "@/lib/constants";
+import { useCezihConnectionDisplay } from "@/lib/hooks/use-cezih";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 
 export function Sidebar() {
   const pathname = usePathname();
   const { tenant } = useAuth();
-  const { data: cezihData } = useCezihStatus();
-  const isDemo = cezihData && !cezihData.connected && cezihData.mock;
+  const cezih = useCezihConnectionDisplay();
   const perms = usePermissions();
 
   return (
@@ -61,11 +60,11 @@ export function Sidebar() {
       <div className="px-4 py-3 flex items-center gap-2">
         <span className="text-xs text-muted-foreground">CEZIH</span>
         <div
-          className={cn("h-2 w-2 rounded-full", isDemo ? "bg-orange-400" : CEZIH_STATUS_COLORS[tenant?.cezih_status ?? "nepovezano"])}
-          title={isDemo ? "Nije povezano (DEMO)" : (tenant?.cezih_status ?? "Nije povezano")}
+          className={cn("h-2 w-2 rounded-full", cezih.dotColor)}
+          title={cezih.label}
         />
         <span className="text-xs text-muted-foreground">
-          {isDemo ? "Nije povezano (DEMO)" : (CEZIH_STATUS[tenant?.cezih_status ?? "nepovezano"] ?? "Nije povezano")}
+          {cezih.label}
         </span>
       </div>
     </aside>

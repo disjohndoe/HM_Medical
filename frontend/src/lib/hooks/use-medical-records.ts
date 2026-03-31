@@ -31,6 +31,16 @@ export function useMedicalRecords(
   })
 }
 
+export function useCezihUnsentRecords() {
+  return useQuery({
+    queryKey: ["medical-records", "cezih-unsent"],
+    queryFn: () =>
+      api.get<PaginatedResponse<MedicalRecord>>(
+        "/medical-records?cezih_sent=false&limit=100"
+      ),
+  })
+}
+
 export function useMedicalRecord(id: string) {
   return useQuery({
     queryKey: ["medical-records", id],

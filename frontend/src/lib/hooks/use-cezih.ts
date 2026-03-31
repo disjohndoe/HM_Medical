@@ -10,13 +10,11 @@ import type {
   CezihStatusResponse,
   CodeSystemItem,
   CreateCaseRequest,
-  CreateVisitRequest,
   DocumentActionResponse,
   DocumentSearchItem,
   ENalazResponse,
   EReceptResponse,
   EReceptStornoResponse,
-  EUputniceResponse,
   ForeignerRegistrationRequest,
   ForeignerRegistrationResponse,
   InsuranceCheckResponse,
@@ -26,8 +24,6 @@ import type {
   PatientCezihSummary,
   PractitionerItem,
   ValueSetExpandResponse,
-  VisitActionResponse,
-  VisitResponse,
 } from "@/lib/types"
 
 export function useCezihStatus() {
@@ -35,6 +31,44 @@ export function useCezihStatus() {
     queryKey: ["cezih", "status"],
     queryFn: () => api.get<CezihStatusResponse>("/cezih/status"),
   })
+}
+
+/**
+ * Single source of truth for CEZIH connection status display.
+ * All components (sidebar, dashboard, CEZIH settings) should use this hook
+ * instead of computing the display locally.
+ *
+ * TODO: When AKD smart card auth is live, connected_doctor/connected_clinic
+ * will be populated from the card identity via the local agent, replacing
+ * the current fallback (logged-in user + tenant name).
+ */
+export function useCezihConnectionDisplay() {
+  const { data, isLoading } = useCezihStatus()
+
+  const isConnected = data?.connected || data?.mock
+  const isDemo = data ? !data.connected && data.mock : false
+  const dotColor = isConnected ? "bg-green-500" : "bg-muted-foreground/50"
+
+  let label = "Nije povezano"
+  if (data?.connected) {
+    label = "Povezano"
+  } else if (data?.mock) {
+    label = "Povezano"
+  }
+
+  const suffix = isDemo ? " (DEMO)" : ""
+  const fullLabel = `${label}${suffix}`
+
+  return {
+    isLoading,
+    isConnected,
+    isDemo,
+    dotColor,
+    label: fullLabel,
+    connectedDoctor: data?.connected_doctor ?? null,
+    connectedClinic: data?.connected_clinic ?? null,
+    raw: data,
+  }
 }
 
 export function useInsuranceCheck() {
@@ -56,39 +90,16 @@ export function useSendENalaz() {
     mutationFn: ({
       patient_id,
       record_id,
-      uputnica_id,
     }: {
       patient_id: string
       record_id: string
-      uputnica_id?: string
     }) =>
-      api.post<ENalazResponse>("/cezih/e-nalaz", { patient_id, record_id, uputnica_id }),
+      api.post<ENalazResponse>("/cezih/e-nalaz", { patient_id, record_id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["medical-records"] })
-      queryClient.invalidateQueries({ queryKey: ["cezih", "euputnice"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"] })
-    },
-  })
-}
-
-export function useEUputnice() {
-  return useQuery({
-    queryKey: ["cezih", "euputnice"],
-    queryFn: () => api.get<EUputniceResponse>("/cezih/e-uputnice"),
-  })
-}
-
-export function useRetrieveEUputnice() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: () =>
-      api.post<EUputniceResponse>("/cezih/e-uputnica/preuzmi", {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cezih", "euputnice"] })
-      queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
   })
 }
@@ -238,74 +249,6 @@ export function useRegisterForeigner() {
     mutationFn: (data: ForeignerRegistrationRequest) =>
       api.post<ForeignerRegistrationResponse>("/cezih/patients/foreigner", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cezih", "activity"] }),
-  })
-}
-
-
-// ============================================================
-// TC12-14: Visit Management
-// ============================================================
-
-export function useCreateVisit() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: CreateVisitRequest) =>
-      api.post<VisitResponse>("/cezih/visits", data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
-    },
-  })
-}
-
-export function useUpdateVisit() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ visitId, ...data }: { visitId: string; period_start?: string; admission_type_code?: string }) =>
-      api.put<VisitActionResponse>(`/cezih/visits/${visitId}`, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-    },
-  })
-}
-
-export function useCloseVisit() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ visitId, ...data }: { visitId: string; period_end: string; diagnosis_case_id?: string }) =>
-      api.post<VisitActionResponse>(`/cezih/visits/${visitId}/close`, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
-    },
-  })
-}
-
-export function useReopenVisit() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (visitId: string) =>
-      api.post<VisitActionResponse>(`/cezih/visits/${visitId}/reopen`, {}),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-    },
-  })
-}
-
-export function useCancelVisit() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (visitId: string) =>
-      api.delete<VisitActionResponse>(`/cezih/visits/${visitId}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
-    },
   })
 }
 

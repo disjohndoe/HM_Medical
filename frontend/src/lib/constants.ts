@@ -73,9 +73,14 @@ export const PROCEDURE_KATEGORIJA_OPTIONS = Object.entries(PROCEDURE_KATEGORIJA)
 // --- Medical Records ---
 
 export const RECORD_TIP: Record<string, string> = {
+  // CEZIH mandatory types (čl. 23, NN 14/2019)
+  ambulantno_izvjesce: "Ambulantno izvješće",
+  specijalisticki_nalaz: "Specijalistički nalaz",
+  otpusno_pismo: "Otpusno pismo",
+  // General types
   nalaz: "Nalaz",
   dijagnoza: "Dijagnoza",
-  "mišljenje": "Mišljenje",
+  misljenje: "Mišljenje",
   preporuka: "Preporuka",
   epikriza: "Epikriza",
   anamneza: "Anamneza",
@@ -85,10 +90,29 @@ export const RECORD_TIP_OPTIONS = Object.entries(RECORD_TIP).map(
   ([value, label]) => ({ value, label })
 );
 
+// Types that must be sent to CEZIH when created
+export const CEZIH_MANDATORY_TYPES = new Set([
+  "ambulantno_izvjesce",
+  "specijalisticki_nalaz",
+  "otpusno_pismo",
+]);
+
+// Types eligible for CEZIH submission
+export const CEZIH_ELIGIBLE_TYPES = new Set([
+  "ambulantno_izvjesce",
+  "specijalisticki_nalaz",
+  "otpusno_pismo",
+  "nalaz",
+  "epikriza",
+]);
+
 export const RECORD_TIP_COLORS: Record<string, string> = {
+  ambulantno_izvjesce: "bg-emerald-100 text-emerald-800",
+  specijalisticki_nalaz: "bg-indigo-100 text-indigo-800",
+  otpusno_pismo: "bg-rose-100 text-rose-800",
   nalaz: "bg-blue-100 text-blue-800",
   dijagnoza: "bg-red-100 text-red-800",
-  "mišljenje": "bg-purple-100 text-purple-800",
+  misljenje: "bg-purple-100 text-purple-800",
   preporuka: "bg-green-100 text-green-800",
   epikriza: "bg-amber-100 text-amber-800",
   anamneza: "bg-cyan-100 text-cyan-800",
@@ -171,14 +195,8 @@ export const RECORD_SENSITIVITY_COLORS: Record<string, string> = {
 export const CEZIH_ACTION_LABELS: Record<string, string> = {
   insurance_check: "Provjera osiguranja",
   e_nalaz_send: "Slanje e-Nalaza",
-  e_uputnica_retrieve: "Dohvat e-Uputnica",
   e_recept_send: "Slanje e-Recepta",
   e_recept_cancel: "Storno e-Recepta",
-  visit_create: "Kreiranje posjete",
-  visit_update: "Ažuriranje posjete",
-  visit_close: "Zatvaranje posjete",
-  visit_reopen: "Ponovno otvaranje posjete",
-  visit_cancel: "Storno posjete",
   case_create: "Kreiranje slučaja",
   case_retrieve: "Dohvat slučajeva",
   case_update: "Ažuriranje slučaja",
@@ -209,14 +227,8 @@ export const CEZIH_ACTION_LABELS: Record<string, string> = {
 export const CEZIH_ACTION_COLORS: Record<string, string> = {
   insurance_check: "bg-blue-100 text-blue-800 border-blue-200",
   e_nalaz_send: "bg-green-100 text-green-800 border-green-200",
-  e_uputnica_retrieve: "bg-purple-100 text-purple-800 border-purple-200",
   e_recept_send: "bg-orange-100 text-orange-800 border-orange-200",
   e_recept_cancel: "bg-red-100 text-red-800 border-red-200",
-  visit_create: "bg-teal-100 text-teal-800 border-teal-200",
-  visit_update: "bg-teal-100 text-teal-800 border-teal-200",
-  visit_close: "bg-teal-100 text-teal-800 border-teal-200",
-  visit_reopen: "bg-teal-100 text-teal-800 border-teal-200",
-  visit_cancel: "bg-red-100 text-red-800 border-red-200",
   case_create: "bg-indigo-100 text-indigo-800 border-indigo-200",
   case_retrieve: "bg-indigo-100 text-indigo-800 border-indigo-200",
   case_update: "bg-indigo-100 text-indigo-800 border-indigo-200",
@@ -242,6 +254,7 @@ import {
   CalendarDays,
   FileText,
   Shield,
+  Send,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -257,7 +270,8 @@ export const NAV_ITEMS: {
   { href: "/pacijenti", label: "Pacijenti", icon: Users },
   { href: "/termini", label: "Termini", icon: CalendarDays },
   { href: "/postupci", label: "Postupci", icon: FileText },
-  { href: "/cezih", label: "CEZIH", icon: Shield, perm: "canViewCezih" },
+  { href: "/cezih-nalazi", label: "CEZIH Nalazi", icon: Send, perm: "canPerformCezihOps" },
+  { href: "/cezih", label: "CEZIH Postavke", icon: Shield, perm: "canViewCezih" },
   { href: "/postavke", label: "Postavke", icon: Settings, perm: "canViewSettings" },
 ];
 

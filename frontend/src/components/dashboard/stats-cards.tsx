@@ -6,10 +6,11 @@ import { CalendarDays, Users, CalendarCheck, UserPlus } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useDashboardStats } from "@/lib/hooks/use-dashboard"
-import { CEZIH_STATUS } from "@/lib/constants"
+import { useCezihConnectionDisplay } from "@/lib/hooks/use-cezih"
 
 export function StatsCards() {
   const { data: stats, isLoading } = useDashboardStats()
+  const cezih = useCezihConnectionDisplay()
 
   if (isLoading) {
     return (
@@ -79,13 +80,15 @@ export function StatsCards() {
             <p className="text-sm font-medium text-muted-foreground">
               CEZIH status
             </p>
+            <div className={`h-2.5 w-2.5 rounded-full ${cezih.dotColor}`} />
           </div>
-          <p className="text-2xl font-bold mt-2">
-            {CEZIH_STATUS[stats.cezih_status] ?? stats.cezih_status}
-            {stats.cezih_status === "nepovezano" && (
-              <span className="text-sm font-normal text-muted-foreground"> (DEMO)</span>
-            )}
-          </p>
+          <p className="text-2xl font-bold mt-2">{cezih.label}</p>
+          {cezih.connectedDoctor && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {cezih.connectedDoctor}
+              {cezih.connectedClinic && <> via {cezih.connectedClinic}</>}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

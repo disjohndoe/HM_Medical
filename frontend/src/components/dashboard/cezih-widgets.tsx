@@ -50,10 +50,10 @@ export function CezihDashboardWidgets() {
       href: "/cezih",
     },
     {
-      label: "Otvorene uputnice",
-      value: stats.otvorene_uputnice,
+      label: "Otvoreni CEZIH nalazi",
+      value: stats.neposlani_nalazi,
       icon: FileText,
-      href: "/cezih",
+      href: "/cezih-nalazi",
     },
     {
       label: "Zadnja sinkronizacija",

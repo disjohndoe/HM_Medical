@@ -28,6 +28,9 @@ export interface Permissions {
   // CEZIH operations (requires formal authorization + personal credential)
   canPerformCezihOps: boolean
 
+  // HZZO contract features (e-Recept, e-Uputnica)
+  canUseHzzo: boolean
+
   // Access control
   canSetRecordSensitivity: boolean
 }
@@ -47,6 +50,7 @@ const ROLE_PERMISSIONS: Record<Role, Permissions> = {
     canDeleteProcedure: true,
     canUploadDocuments: true,
     canPerformCezihOps: true,
+    canUseHzzo: false,
     canSetRecordSensitivity: true,
   },
   doctor: {
@@ -63,6 +67,7 @@ const ROLE_PERMISSIONS: Record<Role, Permissions> = {
     canDeleteProcedure: true,
     canUploadDocuments: true,
     canPerformCezihOps: true,
+    canUseHzzo: false,
     canSetRecordSensitivity: true,
   },
   nurse: {
@@ -79,6 +84,7 @@ const ROLE_PERMISSIONS: Record<Role, Permissions> = {
     canDeleteProcedure: false,
     canUploadDocuments: true,
     canPerformCezihOps: false,
+    canUseHzzo: false,
     canSetRecordSensitivity: false,
   },
   receptionist: {
@@ -95,6 +101,7 @@ const ROLE_PERMISSIONS: Record<Role, Permissions> = {
     canDeleteProcedure: false,
     canUploadDocuments: false,
     canPerformCezihOps: false,
+    canUseHzzo: false,
     canSetRecordSensitivity: false,
   },
 }
@@ -104,6 +111,8 @@ export function usePermissions(): Permissions {
   const role = (user?.role as Role) ?? "receptionist"
   const base = ROLE_PERMISSIONS[role] ?? ROLE_PERMISSIONS.receptionist
 
+  const hasHzzoContract = user?.tenant?.has_hzzo_contract ?? false
+
   // Admin gets CEZIH + clinical access if card is bound (formal authorization proxy)
   if (role === "admin" && user?.card_certificate_oib) {
     return {
@@ -112,9 +121,18 @@ export function usePermissions(): Permissions {
       canViewCezih: true,
       canViewClinicalData: true,
       canPerformCezihOps: true,
+      canUseHzzo: hasHzzoContract,
       canSetRecordSensitivity: true,
     }
   }
 
-  return base
+  // Doctors/nurses with CEZIH ops: also check HZZO contract
+  if (base.canPerformCezihOps) {
+    return {
+      ...base,
+      canUseHzzo: hasHzzoContract,
+    }
+  }
+
+  return { ...base, canUseHzzo: false }
 }
