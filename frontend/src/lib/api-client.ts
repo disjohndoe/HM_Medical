@@ -52,6 +52,7 @@ function handleAuthFailure(): never {
   localStorage.removeItem("refresh_token");
   // MISSING 2: store reason so login page can show explanation
   localStorage.setItem("auth_redirect_reason", "session_expired");
+  localStorage.setItem("auth_redirect_reason_ts", Date.now().toString());
   window.location.href = "/prijava";
   throw new Error("Sesija je istekla");
 }
@@ -76,7 +77,7 @@ async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Pro
     throw new Error("Greška u komunikaciji s poslužiteljem. Provjerite mrežnu vezu i pokušajte ponovo.");
   }
 
-  if (res.status === 401) {
+  if (res.status === 401 && !endpoint.startsWith("/auth/")) {
     const refreshToken = localStorage.getItem("refresh_token");
     if (refreshToken) {
       try {

@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("refresh_token", res.refresh_token);
     // Clear any previous auth redirect reason on successful login
     localStorage.removeItem("auth_redirect_reason");
+    localStorage.removeItem("auth_redirect_reason_ts");
     if (res.user) {
       setUser(res.user);
     }
