@@ -11,6 +11,13 @@ class RegisterRequest(BaseModel):
     ime: str
     prezime: str
 
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Lozinka mora imati najmanje 8 znakova")
+        return v
+
 
 class LoginRequest(BaseModel):
     email: EmailStr

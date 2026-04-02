@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import sys
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INSECURE_JWT_DEFAULT = "change-me-in-production-use-a-long-random-string"
 
 
 class Settings(BaseSettings):
@@ -19,9 +22,11 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/medical_mvp"
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
 
     # Security
-    JWT_SECRET_KEY: str = "change-me-in-production-use-a-long-random-string"
+    JWT_SECRET_KEY: str = _INSECURE_JWT_DEFAULT
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -52,13 +57,25 @@ class Settings(BaseSettings):
     CEZIH_OID: str = ""  # OID informacijskog sustava (urn:oid:...)
 
     @property
+    def is_production(self) -> bool:
+        return self.APP_ENV == "production"
+
+    @property
+    def db_echo(self) -> bool:
+        return self.APP_DEBUG and not self.is_production
+
+    @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    if s.is_production and s.JWT_SECRET_KEY == _INSECURE_JWT_DEFAULT:
+        print("FATAL: JWT_SECRET_KEY must be changed in production. Generate one with: openssl rand -hex 32", file=sys.stderr)
+        sys.exit(1)
+    return s
 
 
 settings = get_settings()
