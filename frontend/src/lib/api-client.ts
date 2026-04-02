@@ -50,6 +50,7 @@ function extractErrorMessage(detail: unknown): string {
 function handleAuthFailure(): never {
   localStorage.removeItem("access_token");
   localStorage.removeItem("refresh_token");
+  document.cookie = "has_session=; path=/; SameSite=Lax; max-age=0";
   // MISSING 2: store reason so login page can show explanation
   localStorage.setItem("auth_redirect_reason", "session_expired");
   localStorage.setItem("auth_redirect_reason_ts", Date.now().toString());

@@ -19,6 +19,14 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const LOGOUT_MAX_RETRIES = 2;
 
+function setSessionCookie(active: boolean) {
+  if (active) {
+    document.cookie = "has_session=1; path=/; SameSite=Lax; max-age=604800";
+  } else {
+    document.cookie = "has_session=; path=/; SameSite=Lax; max-age=0";
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
@@ -27,6 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleTokenResponse = useCallback((res: TokenResponse) => {
     localStorage.setItem("access_token", res.access_token);
     localStorage.setItem("refresh_token", res.refresh_token);
+    setSessionCookie(true);
     // Clear any previous auth redirect reason on successful login
     localStorage.removeItem("auth_redirect_reason");
     localStorage.removeItem("auth_redirect_reason_ts");
@@ -38,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearAuth = useCallback(() => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+    setSessionCookie(false);
     setUser(null);
   }, []);
 
@@ -51,7 +61,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     api
       .get<User>("/auth/me")
-      .then(setUser)
+      .then((u) => {
+        setUser(u);
+        setSessionCookie(true);
+      })
       .catch(() => clearAuth())
       .finally(() => setIsLoading(false));
   }, [clearAuth]);
