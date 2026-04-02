@@ -100,21 +100,28 @@ export default function KorisniciPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Korisnici">
-        {!usage || usage.users.current < usage.users.max ? (
-          <Button
-            onClick={() => {
-              setEditingUser(null)
-              setDialogOpen(true)
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Novi korisnik
-          </Button>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Dosegnut limit ({usage.users.max}/{usage.users.max} korisnika)
-          </p>
-        )}
+        <div className="flex items-center gap-3">
+          {usage && (
+            <span className="text-sm text-muted-foreground">
+              {usage.users.current} / {usage.users.max} korisnika
+            </span>
+          )}
+          {!usage || usage.users.current < usage.users.max ? (
+            <Button
+              onClick={() => {
+                setEditingUser(null)
+                setDialogOpen(true)
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Novi korisnik
+            </Button>
+          ) : (
+            <p className="text-sm text-destructive font-medium">
+              Dosegnut limit
+            </p>
+          )}
+        </div>
       </PageHeader>
 
       <Card>

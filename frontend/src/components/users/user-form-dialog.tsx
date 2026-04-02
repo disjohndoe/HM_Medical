@@ -84,7 +84,7 @@ export function UserFormDialog({
     prezime: user?.prezime ?? "",
     titula: user?.titula ?? null,
     telefon: user?.telefon ?? null,
-    role: user?.role ?? "doktor",
+    role: user?.role ?? "doctor",
     practitioner_id: user?.practitioner_id ?? null,
   }), [user])
 
@@ -187,8 +187,8 @@ export function UserFormDialog({
             <div className="space-y-2">
               <Label>Uloga</Label>
               <Select
-                defaultValue={user?.role ?? "doktor"}
-                onValueChange={(v) => setValue("role", v ?? "doktor")}
+                defaultValue={user?.role ?? "doctor"}
+                onValueChange={(v) => setValue("role", v ?? "doctor")}
               >
                 <SelectTrigger>
                   <SelectValue />
