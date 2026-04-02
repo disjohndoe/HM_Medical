@@ -9,17 +9,21 @@ import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/shared/page-header"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { PatientSearch } from "@/components/patients/patient-search"
 import { PatientTable } from "@/components/patients/patient-table"
 import { useDeletePatient, usePatients } from "@/lib/hooks/use-patients"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import type { Patient } from "@/lib/types"
 
+const PAGE_SIZE = 20
+
 export default function PacijentiPage() {
   const [search, setSearch] = useState("")
+  const [page, setPage] = useState(0)
   const [deleteTarget, setDeleteTarget] = useState<Patient | null>(null)
 
-  const { data, isLoading, error } = usePatients(search)
+  const { data, isLoading, error } = usePatients(search, page * PAGE_SIZE, PAGE_SIZE)
   const deletePatient = useDeletePatient()
   const { canDeletePatient } = usePermissions()
 
@@ -60,7 +64,7 @@ export default function PacijentiPage() {
         </Button>
       </PageHeader>
 
-      <PatientSearch value={search} onChange={setSearch} />
+      <PatientSearch value={search} onChange={(v) => { setSearch(v); setPage(0) }} />
 
       {isLoading ? (
         <LoadingSpinner text="Učitavanje pacijenata..." />
@@ -71,9 +75,12 @@ export default function PacijentiPage() {
             onDelete={canDeletePatient ? handleDelete : undefined}
           />
           {data && data.total > 0 && (
-            <p className="text-sm text-muted-foreground">
-              Ukupno {data.total} pacijenata
-            </p>
+            <TablePagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={data.total}
+              onPageChange={setPage}
+            />
           )}
         </>
       )}

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { UserFormDialog, type UserFormData } from "@/components/users/user-form-dialog"
 import {
   useUsers,
@@ -29,8 +30,11 @@ import { usePlanUsage } from "@/lib/hooks/use-settings"
 import { formatDateTimeHR } from "@/lib/utils"
 import type { User, UserCreate } from "@/lib/types"
 
+const PAGE_SIZE = 20
+
 export default function KorisniciPage() {
-  const { data: usersData, isLoading } = useUsers()
+  const [page, setPage] = useState(0)
+  const { data: usersData, isLoading } = useUsers(page * PAGE_SIZE, PAGE_SIZE)
   const createUser = useCreateUser()
   const updateUser = useUpdateUser()
   const deactivateUser = useDeactivateUser()
@@ -203,6 +207,15 @@ export default function KorisniciPage() {
           )}
         </CardContent>
       </Card>
+
+      {usersData && usersData.total > 0 && (
+        <TablePagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={usersData.total}
+          onPageChange={setPage}
+        />
+      )}
 
       <UserFormDialog
         open={dialogOpen}

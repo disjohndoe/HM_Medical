@@ -15,6 +15,7 @@ import {
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { ProcedureTable } from "@/components/procedures/procedure-table"
 import { ProcedureForm } from "@/components/procedures/procedure-form"
 import { useProcedures, useDeleteProcedure } from "@/lib/hooks/use-procedures"
@@ -22,9 +23,12 @@ import { usePermissions } from "@/lib/hooks/use-permissions"
 import { PROCEDURE_KATEGORIJA_OPTIONS } from "@/lib/constants"
 import type { Procedure } from "@/lib/types"
 
+const PAGE_SIZE = 20
+
 export default function PostupciPage() {
   const [search, setSearch] = useState("")
   const [kategorija, setKategorija] = useState<string>("")
+  const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [editingProcedure, setEditingProcedure] = useState<Procedure | undefined>()
   const [deleteTarget, setDeleteTarget] = useState<Procedure | null>(null)
@@ -32,8 +36,8 @@ export default function PostupciPage() {
   const { data, isLoading } = useProcedures(
     kategorija || undefined,
     search || undefined,
-    0,
-    100,
+    page * PAGE_SIZE,
+    PAGE_SIZE,
   )
   const deleteMutation = useDeleteProcedure()
   const { canCreateProcedure, canEditProcedure, canDeleteProcedure } = usePermissions()
@@ -75,11 +79,11 @@ export default function PostupciPage() {
           <Input
             placeholder="Pretraži po šifri, nazivu ili opisu..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(0) }}
             className="pl-9"
           />
         </div>
-        <Select value={kategorija} onValueChange={(v) => setKategorija(v ?? "")}>
+        <Select value={kategorija} onValueChange={(v) => { setKategorija(v ?? ""); setPage(0) }}>
           <SelectTrigger className="w-full sm:w-[200px]">
             <SelectValue placeholder="Sve kategorije" />
           </SelectTrigger>
@@ -96,11 +100,21 @@ export default function PostupciPage() {
       {isLoading ? (
         <LoadingSpinner text="Učitavanje postupaka..." />
       ) : (
-        <ProcedureTable
-          procedures={data?.items ?? []}
-          onEdit={canEditProcedure ? handleEdit : undefined}
-          onDelete={canDeleteProcedure ? setDeleteTarget : undefined}
-        />
+        <>
+          <ProcedureTable
+            procedures={data?.items ?? []}
+            onEdit={canEditProcedure ? handleEdit : undefined}
+            onDelete={canDeleteProcedure ? setDeleteTarget : undefined}
+          />
+          {data && data.total > 0 && (
+            <TablePagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={data.total}
+              onPageChange={setPage}
+            />
+          )}
+        </>
       )}
 
       <ProcedureForm
