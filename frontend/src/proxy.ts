@@ -19,17 +19,19 @@ export function proxy(request: NextRequest) {
     (path) => pathname === path || pathname.startsWith(path + "/")
   );
 
-  // Check for access_token cookie or rely on client-side localStorage check
-  // Since tokens are in localStorage (client-side), we use a lightweight
-  // session marker cookie set by the auth flow
+  // Validate httpOnly cookie presence — actual JWT validation happens on the backend
+  // The access_token cookie is set by the backend as httpOnly, so JavaScript cannot forge it.
+  // This provides server-side route protection without needing the JWT secret on the frontend.
+  const hasAccessToken = request.cookies.has("access_token");
   const hasSession = request.cookies.get("has_session")?.value === "1";
+  const isAuthenticated = hasAccessToken || hasSession;
 
-  if (!isPublicRoute && !hasSession) {
+  if (!isPublicRoute && !isAuthenticated) {
     const loginUrl = new URL("/prijava", request.url);
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isPublicRoute && hasSession) {
+  if (isPublicRoute && isAuthenticated) {
     const dashboardUrl = new URL("/", request.url);
     return NextResponse.redirect(dashboardUrl);
   }

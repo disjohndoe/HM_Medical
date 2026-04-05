@@ -20,7 +20,12 @@ const registerSchema = z
     ime: z.string().min(2, "Ime je obavezno"),
     prezime: z.string().min(2, "Prezime je obavezno"),
     email: z.email("Unesite ispravnu email adresu"),
-    password: z.string().min(8, "Lozinka mora imati najmanje 8 znakova"),
+    password: z.string()
+      .min(8, "Lozinka mora imati najmanje 8 znakova")
+      .regex(/[A-Z]/, "Lozinka mora sadržavati barem jedno veliko slovo")
+      .regex(/[a-z]/, "Lozinka mora sadržavati barem jedno malo slovo")
+      .regex(/\d/, "Lozinka mora sadržavati barem jedan broj")
+      .regex(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]/, "Lozinka mora sadržavati barem jedan posebni znak"),
     confirmPassword: z.string().min(1, "Potvrda lozinke je obavezna"),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -110,6 +115,9 @@ export function RegisterForm() {
           <div className="space-y-2">
             <Label htmlFor="password">Lozinka</Label>
             <Input id="password" type="password" {...register("password")} />
+            <p className="text-xs text-muted-foreground">
+              Najmanje 8 znakova, veliko slovo, malo slovo, broj i posebni znak (+, *, $, ! ...)
+            </p>
             {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
           </div>
           <div className="space-y-2">

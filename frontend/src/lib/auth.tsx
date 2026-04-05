@@ -32,9 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const handleTokenResponse = useCallback((res: TokenResponse) => {
-    localStorage.setItem("access_token", res.access_token);
-    localStorage.setItem("refresh_token", res.refresh_token);
+  const handleAuthSuccess = useCallback((res: TokenResponse) => {
     setSessionCookie(true);
     // Clear any previous auth redirect reason on successful login
     localStorage.removeItem("auth_redirect_reason");
@@ -45,20 +43,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearAuth = useCallback(() => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
     setSessionCookie(false);
     setUser(null);
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (!token) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate loading state from localStorage
-      setIsLoading(false);
-      return;
-    }
-
+    // Check session via /auth/me — cookies are sent automatically with credentials: 'include'
     api
       .get<User>("/auth/me")
       .then((u) => {
@@ -71,29 +61,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (data: LoginRequest) => {
     const res = await api.post<TokenResponse>("/auth/login", data);
-    handleTokenResponse(res);
+    handleAuthSuccess(res);
     // Clear any stale query cache so dashboard fetches fresh data for this session
     queryClient.clear();
   };
 
   const register = async (data: RegisterRequest) => {
     const res = await api.post<TokenResponse>("/auth/register", data);
-    handleTokenResponse(res);
+    handleAuthSuccess(res);
   };
 
   const logout = async () => {
-    const refreshToken = localStorage.getItem("refresh_token");
-    if (refreshToken) {
-      // BUG 4 fix: retry logout to avoid ghost sessions
-      for (let attempt = 0; attempt <= LOGOUT_MAX_RETRIES; attempt++) {
-        try {
-          await api.post("/auth/logout", { refresh_token: refreshToken });
-          break; // success
-        } catch {
-          if (attempt === LOGOUT_MAX_RETRIES) {
-            // All retries failed — clear locally anyway.
-            // Ghost session will be cleaned up by token expiry or cleanup job.
-          }
+    // refresh_token is sent via httpOnly cookie — no need to read from localStorage
+    for (let attempt = 0; attempt <= LOGOUT_MAX_RETRIES; attempt++) {
+      try {
+        await api.post("/auth/logout", {});
+        break; // success
+      } catch {
+        if (attempt === LOGOUT_MAX_RETRIES) {
+          // All retries failed — clear locally anyway.
+          // Ghost session will be cleaned up by token expiry or cleanup job.
         }
       }
     }

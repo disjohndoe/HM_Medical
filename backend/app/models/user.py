@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,3 +28,5 @@ class User(BaseTenantModel):
     card_certificate_oib: Mapped[str | None] = mapped_column(String(11), nullable=True)
     card_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     practitioner_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

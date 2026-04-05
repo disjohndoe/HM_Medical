@@ -25,18 +25,17 @@ export function useUploadDocument() {
       kategorija: string
     }) => {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
-      const accessToken = localStorage.getItem("access_token")
 
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("patient_id", patientId)
+      formData.append("kategorija", kategorija)
 
       const res = await fetch(
-        `${API_BASE}/documents/upload?patient_id=${patientId}&kategorija=${kategorija}`,
+        `${API_BASE}/documents/upload`,
         {
           method: "POST",
-          headers: {
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          },
+          credentials: "include",
           body: formData,
         }
       )

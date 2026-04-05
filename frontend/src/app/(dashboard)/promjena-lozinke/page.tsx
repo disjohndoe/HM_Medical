@@ -17,7 +17,12 @@ import { useMutation } from "@tanstack/react-query"
 const passwordSchema = z
   .object({
     old_password: z.string().min(1, "Stara lozinka je obavezna"),
-    new_password: z.string().min(8, "Nova lozinka mora imati najmanje 8 znakova"),
+    new_password: z.string()
+      .min(8, "Nova lozinka mora imati najmanje 8 znakova")
+      .regex(/[A-Z]/, "Lozinka mora sadržavati barem jedno veliko slovo")
+      .regex(/[a-z]/, "Lozinka mora sadržavati barem jedno malo slovo")
+      .regex(/\d/, "Lozinka mora sadržavati barem jedan broj")
+      .regex(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]/, "Lozinka mora sadržavati barem jedan posebni znak"),
     confirm_password: z.string().min(1, "Potvrdite novu lozinku"),
   })
   .refine((data) => data.new_password === data.confirm_password, {
@@ -64,7 +69,7 @@ export default function PromjenaLozinkePage() {
         <CardHeader>
           <CardTitle className="text-lg">Nova lozinka</CardTitle>
           <CardDescription>
-            Unesite staru lozinku i odaberite novu. Minimalno 8 znakova.
+            Unesite staru lozinku i odaberite novu.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -80,6 +85,9 @@ export default function PromjenaLozinkePage() {
             <div className="space-y-2">
               <Label htmlFor="new_password">Nova lozinka</Label>
               <Input id="new_password" type="password" {...register("new_password")} />
+              <p className="text-xs text-muted-foreground">
+                Najmanje 8 znakova, veliko slovo, malo slovo, broj i posebni znak (+, *, $, ! ...)
+              </p>
               {errors.new_password && (
                 <p className="text-xs text-destructive">{errors.new_password.message}</p>
               )}

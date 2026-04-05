@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -37,7 +37,11 @@ export function LoginForm() {
   const [error, setError] = useState("");
 
   // Show reason for redirect (kicked session, expired token)
-  const [info] = useState(() => getAuthExpiredMessage());
+  // Deferred to useEffect to avoid SSR/client hydration mismatch (localStorage is client-only)
+  const [info, setInfo] = useState<string | null>(null);
+  useEffect(() => {
+    setInfo(getAuthExpiredMessage());
+  }, []);
 
   const {
     register,

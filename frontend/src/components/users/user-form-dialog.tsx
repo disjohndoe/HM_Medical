@@ -30,7 +30,29 @@ import { toast } from "sonner"
 
 const userSchema = z.object({
   email: z.string().email("Neispravan email"),
-  password: z.string().min(6, "Lozinka mora imati najmanje 6 znakova").optional().or(z.literal("")),
+  password: z.string()
+    .optional()
+    .or(z.literal(""))
+    .refine(
+      (val) => !val || val.length >= 8,
+      "Lozinka mora imati najmanje 8 znakova"
+    )
+    .refine(
+      (val) => !val || /[A-Z]/.test(val),
+      "Lozinka mora sadržavati barem jedno veliko slovo"
+    )
+    .refine(
+      (val) => !val || /[a-z]/.test(val),
+      "Lozinka mora sadržavati barem jedno malo slovo"
+    )
+    .refine(
+      (val) => !val || /\d/.test(val),
+      "Lozinka mora sadržavati barem jedan broj"
+    )
+    .refine(
+      (val) => !val || /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]/.test(val),
+      "Lozinka mora sadržavati barem jedan posebni znak"
+    ),
   ime: z.string().min(1, "Ime je obavezno"),
   prezime: z.string().min(1, "Prezime je obavezno"),
   titula: z.string().nullable().optional(),
@@ -172,6 +194,9 @@ export function UserFormDialog({
               type="password"
               {...register("password")}
             />
+            <p className="text-xs text-muted-foreground">
+              Najmanje 8 znakova, veliko slovo, malo slovo, broj i posebni znak (+, *, $, ! ...)
+            </p>
             {errors.password && (
               <p className="text-xs text-destructive">
                 {errors.password.message}

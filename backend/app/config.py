@@ -5,7 +5,16 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_INSECURE_JWT_DEFAULT = "change-me-in-production-use-a-long-random-string"
+_WEAK_SECRET_PATTERNS = [
+    "dev-secret",
+    "change-me",
+    "not-for-production",
+    "secret-key",
+    "changeme",
+    "default-secret",
+    "example",
+    "test-secret",
+]
 
 
 class Settings(BaseSettings):
@@ -13,11 +22,12 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # Application
     APP_ENV: str = "development"
-    APP_DEBUG: bool = True
+    APP_DEBUG: bool = False
     APP_VERSION: str = "0.1.0"
 
     # Database
@@ -25,8 +35,8 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
 
-    # Security
-    JWT_SECRET_KEY: str = _INSECURE_JWT_DEFAULT
+    # Security — JWT_SECRET_KEY is REQUIRED, no insecure default
+    JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -69,16 +79,37 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 
-@lru_cache
-def get_settings() -> Settings:
-    s = Settings()
-    if s.is_production and s.JWT_SECRET_KEY == _INSECURE_JWT_DEFAULT:
+def _validate_jwt_secret(secret: str) -> None:
+    """Validate JWT secret strength. Only called in production."""
+    secret_lower = secret.lower()
+    for pattern in _WEAK_SECRET_PATTERNS:
+        if pattern in secret_lower:
+            print(
+                f"FATAL: JWT_SECRET_KEY contains weak pattern '{pattern}'. "
+                "Generate a strong secret with: openssl rand -hex 32",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    if len(secret) < 32:
         print(
-            "FATAL: JWT_SECRET_KEY must be changed in production. "
-            "Generate one with: openssl rand -hex 32",
+            "FATAL: JWT_SECRET_KEY must be at least 32 characters. "
+            "Generate with: openssl rand -hex 32",
             file=sys.stderr,
         )
         sys.exit(1)
+    if len(set(secret)) < 8:
+        print(
+            "FATAL: JWT_SECRET_KEY has insufficient entropy.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+@lru_cache
+def get_settings() -> Settings:
+    s = Settings()
+    if s.is_production:
+        _validate_jwt_secret(s.JWT_SECRET_KEY)
     return s
 
 

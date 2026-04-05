@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.tenant import Tenant
@@ -17,27 +18,69 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    """Set httpOnly cookies for JWT tokens."""
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/api",
+        max_age=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        path="/api/auth",
+        max_age=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    """Clear httpOnly auth cookies."""
+    response.delete_cookie("access_token", path="/api")
+    response.delete_cookie("refresh_token", path="/api/auth")
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("3/hour")
-async def register(request: Request, data: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    return await auth_service.register(db, data)
+async def register(request: Request, response: Response, data: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    result = await auth_service.register(db, data)
+    _set_auth_cookies(response, result.access_token, result.refresh_token)
+    return result
 
 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/5minutes")
-async def login(request: Request, data: LoginRequest, db: AsyncSession = Depends(get_db)):
-    return await auth_service.login(db, data.email, data.password)
+async def login(request: Request, response: Response, data: LoginRequest, db: AsyncSession = Depends(get_db)):
+    result = await auth_service.login(db, data.email, data.password)
+    _set_auth_cookies(response, result.access_token, result.refresh_token)
+    return result
 
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")
-async def refresh(request: Request, data: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    return await auth_service.refresh(db, data.refresh_token)
+async def refresh(request: Request, response: Response, data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    # Dual-source: try cookie first, then request body (backward compat)
+    refresh_token = request.cookies.get("refresh_token") or data.refresh_token
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Nedostaje refresh token")
+    result = await auth_service.refresh(db, refresh_token)
+    _set_auth_cookies(response, result.access_token, result.refresh_token)
+    return result
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    await auth_service.logout(db, data.refresh_token)
+async def logout(request: Request, response: Response, data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    # Dual-source: try cookie first, then request body
+    refresh_token = request.cookies.get("refresh_token") or data.refresh_token
+    if refresh_token:
+        await auth_service.logout(db, refresh_token)
+    _clear_auth_cookies(response)
 
 
 @router.get("/me", response_model=UserReadWithTenant)
@@ -49,7 +92,9 @@ async def get_me(current_user: User = Depends(get_current_user), db: AsyncSessio
 
 
 @router.post("/change-password")
+@limiter.limit("5/hour")
 async def change_password(
+    request: Request,
     data: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -67,7 +112,9 @@ async def change_password(
 
 
 @router.get("/sessions")
+@limiter.limit("30/minute")
 async def list_sessions(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -76,7 +123,9 @@ async def list_sessions(
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 async def revoke_session(
+    request: Request,
     session_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -90,19 +139,24 @@ async def revoke_session(
 
 
 @router.post("/sessions/revoke-others", status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def revoke_other_sessions(
+    request: Request,
     data: RefreshRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke all sessions except the caller's current one."""
-    current_hash = hash_refresh_token(data.refresh_token)
+    refresh_token = data.refresh_token
+    current_hash = hash_refresh_token(refresh_token)
     count = await auth_service.revoke_other_sessions(db, current_user.tenant_id, current_hash)
     return {"revoked_count": count}
 
 
 @router.post("/sessions/cleanup", status_code=status.HTTP_200_OK)
+@limiter.limit("6/hour")
 async def cleanup_tokens(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

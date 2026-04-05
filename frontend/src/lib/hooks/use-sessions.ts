@@ -35,9 +35,9 @@ export function useRevokeOtherSessions() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => {
-      const refreshToken = localStorage.getItem("refresh_token")
+      // refresh_token is sent via httpOnly cookie — backend reads it from cookie
       return api.post<{ revoked_count: number }>("/auth/sessions/revoke-others", {
-        refresh_token: refreshToken,
+        refresh_token: "cookie",
       })
     },
     onSuccess: () => {

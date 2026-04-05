@@ -80,11 +80,32 @@ async def login(db: AsyncSession, email: str, password: str) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(password, user.hashed_password):
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Neispravni podaci za prijavu")
+
+    # Check account lockout
+    if user.locked_until and user.locked_until > datetime.now(UTC):
+        remaining = int((user.locked_until - datetime.now(UTC)).total_seconds() / 60)
+        raise HTTPException(
+            status_code=423,
+            detail=f"Račun je zaključan. Pokušajte ponovo za {remaining} minuta.",
+        )
+
+    if not verify_password(password, user.hashed_password):
+        # Increment failed attempts — lock after 5
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        if user.failed_login_attempts >= 5:
+            user.locked_until = datetime.now(UTC) + timedelta(minutes=30)
+        await db.flush()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Neispravni podaci za prijavu")
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Korisnik je deaktiviran")
+
+    # Reset failed attempts on successful login
+    if user.failed_login_attempts:
+        user.failed_login_attempts = 0
+        user.locked_until = None
 
     # Check tenant active
     tenant = await db.get(Tenant, user.tenant_id)

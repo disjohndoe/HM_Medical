@@ -62,18 +62,19 @@ services:
       - ./backups:/backups
     environment:
       PGPASSWORD: ${DB_PASSWORD}
+      BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:?Set BACKUP_PASSPHRASE for encrypted backups}
     entrypoint: |
       sh -c 'while true; do
         TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
-        BACKUP_FILE="/backups/medical_mvp_$$TIMESTAMP.gz"
-        pg_dump -h db -U postgres medical_mvp | gzip > "$$BACKUP_FILE"
+        BACKUP_FILE="/backups/medical_mvp_$$TIMESTAMP.gz.gpg"
+        pg_dump -h db -U postgres medical_mvp | gzip | gpg --batch --yes --passphrase "$$BACKUP_PASSPHRASE" --symmetric --cipher-algo AES256 -o "$$BACKUP_FILE"
         BACKUP_SIZE=$$(stat -c%s "$$BACKUP_FILE" 2>/dev/null || echo 0)
         if [ "$$BACKUP_SIZE" -lt 1024 ]; then
           echo "[$$TIMESTAMP] WARNING: Backup may be empty ($$BACKUP_SIZE bytes)"
         else
-          echo "[$$TIMESTAMP] Backup completed ($$BACKUP_SIZE bytes)"
+          echo "[$$TIMESTAMP] Backup completed and encrypted ($$BACKUP_SIZE bytes)"
         fi
-        ls -t /backups/medical_mvp_*.gz 2>/dev/null | tail -n +31 | xargs rm -f 2>/dev/null
+        ls -t /backups/medical_mvp_*.gpg 2>/dev/null | tail -n +31 | xargs rm -f 2>/dev/null
         sleep 14400
       done'
     depends_on:
@@ -90,7 +91,7 @@ services:
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
-      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/medical_mvp
+      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/medical_mvp?sslmode=require
       CORS_ORIGINS: https://${DOMAIN}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
     depends_on:
