@@ -174,7 +174,13 @@ export default function TerminiPage() {
               ]}
             >
               <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Svi doktori" />
+                <SelectValue placeholder="Svi doktori">
+                  {(() => {
+                    if (!doktorId) return undefined
+                    const d = doctors.find((doc) => doc.id === doktorId)
+                    return d ? `${d.prezime} ${d.ime}` : undefined
+                  })()}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Svi doktori</SelectItem>

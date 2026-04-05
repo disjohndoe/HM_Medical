@@ -216,7 +216,9 @@ export function UserFormDialog({
                 onValueChange={(v) => setValue("role", v ?? "doctor")}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>
+                    {USER_ROLE_OPTIONS.find((o) => o.value === (watch("role") ?? user?.role ?? "doctor"))?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {USER_ROLE_OPTIONS.map((opt) => (

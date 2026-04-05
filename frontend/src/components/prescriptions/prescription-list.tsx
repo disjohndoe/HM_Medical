@@ -85,7 +85,9 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
       <div className="flex items-center justify-between">
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "")}>
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Svi statusi" />
+            <SelectValue placeholder="Svi statusi">
+              {statusFilter ? STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {STATUS_OPTIONS.map((opt) => (

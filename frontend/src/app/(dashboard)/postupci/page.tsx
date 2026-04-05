@@ -85,7 +85,9 @@ export default function PostupciPage() {
         </div>
         <Select value={kategorija} onValueChange={(v) => { setKategorija(v ?? ""); setPage(0) }}>
           <SelectTrigger className="w-full sm:w-[200px]">
-            <SelectValue placeholder="Sve kategorije" />
+            <SelectValue placeholder="Sve kategorije">
+              {kategorija ? PROCEDURE_KATEGORIJA_OPTIONS.find((o) => o.value === kategorija)?.label : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {PROCEDURE_KATEGORIJA_OPTIONS.map((opt) => (

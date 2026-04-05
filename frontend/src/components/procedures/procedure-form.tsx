@@ -143,7 +143,9 @@ export function ProcedureForm({ open, onOpenChange, procedure }: ProcedureFormPr
                 onValueChange={(v) => setValue("kategorija", v ?? "")}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Odaberite kategoriju" />
+                  <SelectValue placeholder="Odaberite kategoriju">
+                    {PROCEDURE_KATEGORIJA_OPTIONS.find((o) => o.value === kategorijaValue)?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {PROCEDURE_KATEGORIJA_OPTIONS.map((opt) => (

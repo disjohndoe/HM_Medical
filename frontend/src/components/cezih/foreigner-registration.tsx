@@ -89,7 +89,9 @@ export function ForeignerRegistration() {
             <Label>Spol</Label>
             <Select value={form.spol} onValueChange={(v) => v && update("spol", v)}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>
+                  {{ male: "Muški", female: "Ženski", unknown: "Nepoznato" }[form.spol]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="male">Muški</SelectItem>

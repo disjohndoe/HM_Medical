@@ -256,8 +256,14 @@ export function AppointmentForm({
               <SelectTrigger>
                 <SelectValue placeholder="Odaberite doktora">
                   {(() => {
-                    const d = doctors.find((doc) => doc.id === watch("doktor_id"))
-                    return d ? `${d.titula ? `${d.titula} ` : ""}${d.prezime} ${d.ime}` : undefined
+                    const id = watch("doktor_id")
+                    if (!id) return undefined
+                    const d = doctors.find((doc) => doc.id === id)
+                    if (d) return `${d.titula ? `${d.titula} ` : ""}${d.prezime} ${d.ime}`
+                    // Fallback: use denormalized name from appointment (e.g. deactivated doctor)
+                    if (appointment?.doktor_id === id && appointment.doktor_prezime)
+                      return `${appointment.doktor_prezime} ${appointment.doktor_ime ?? ""}`.trim()
+                    return "Učitavanje..."
                   })()}
                 </SelectValue>
               </SelectTrigger>
@@ -301,12 +307,19 @@ export function AppointmentForm({
                 onValueChange={(v) => setValue("trajanje_minuta", Number(v ?? 30))}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>
+                    {(() => {
+                      const m = trajanjeValue ?? 30
+                      if (m >= 60 && m % 60 === 0) return `${m / 60} h`
+                      if (m >= 60) return `${Math.floor(m / 60)} h ${m % 60} min`
+                      return `${m} min`
+                    })()}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {DURATION_OPTIONS.map((d) => (
                     <SelectItem key={d} value={String(d)}>
-                      {d} min
+                      {d >= 60 && d % 60 === 0 ? `${d / 60} h` : d >= 60 ? `${Math.floor(d / 60)} h ${d % 60} min` : `${d} min`}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -319,7 +332,9 @@ export function AppointmentForm({
                 onValueChange={(v) => setValue("vrsta", v ?? "pregled")}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>
+                    {APPOINTMENT_VRSTA[vrstaValue ?? "pregled"] ?? vrstaValue}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(APPOINTMENT_VRSTA).map(([key, label]) => (
@@ -341,7 +356,9 @@ export function AppointmentForm({
                 onValueChange={(v) => setValue("status", v ?? undefined)}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>
+                    {APPOINTMENT_STATUS[(statusValue ?? appointment?.status) as keyof typeof APPOINTMENT_STATUS]}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(APPOINTMENT_STATUS).map(([key, label]) => (

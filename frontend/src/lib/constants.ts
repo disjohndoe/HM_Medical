@@ -49,7 +49,7 @@ export const WORKING_HOURS_START = 8;
 export const WORKING_HOURS_END = 20;
 export const SLOT_GRANULARITY = 15;
 
-export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120] as const;
+export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330] as const;
 
 // --- Procedures ---
 

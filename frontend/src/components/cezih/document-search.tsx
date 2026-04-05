@@ -142,7 +142,9 @@ export function DocumentSearch() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Select value={docType} onValueChange={(v) => setDocType(v ?? "")}>
               <SelectTrigger>
-                <SelectValue placeholder="Tip dokumenta" />
+                <SelectValue placeholder="Tip dokumenta">
+                  {{ nalaz: "Nalaz", uputnica: "Uputnica" }[docType] || undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="nalaz">Nalaz</SelectItem>
@@ -163,7 +165,9 @@ export function DocumentSearch() {
             />
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "")}>
               <SelectTrigger>
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder="Status">
+                  {{ current: "Otvorena", superseded: "Zatvorena", "entered-in-error": "Pogreška" }[statusFilter] || undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="current">Otvorena</SelectItem>

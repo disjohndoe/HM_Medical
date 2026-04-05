@@ -63,7 +63,9 @@ export function RecordList({ patientId }: RecordListProps) {
       <div className="flex items-center justify-between">
         <Select value={tipFilter} onValueChange={(v) => setTipFilter(v ?? "")}>
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Svi tipovi" />
+            <SelectValue placeholder="Svi tipovi">
+              {tipFilter ? recordTypes.find((rt) => rt.slug === tipFilter)?.label : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {recordTypes.map((rt) => (

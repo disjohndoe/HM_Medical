@@ -44,6 +44,7 @@ export function RegisterForm() {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<RegisterForm>({
     resolver: standardSchemaResolver(registerSchema),
@@ -86,7 +87,9 @@ export function RegisterForm() {
             <Label htmlFor="vrsta">Vrsta ustanove</Label>
             <Select defaultValue="ordinacija" onValueChange={(v) => setValue("vrsta", v as RegisterForm["vrsta"])}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue>
+                  {{ ordinacija: "Privatna ordinacija", poliklinika: "Poliklinika", dom_zdravlja: "Dom zdravlja" }[watch("vrsta") ?? "ordinacija"]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ordinacija">Privatna ordinacija</SelectItem>

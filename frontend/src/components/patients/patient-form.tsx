@@ -172,7 +172,9 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
               onValueChange={(v) => setValue("spol", v || null)}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Odaberite spol" />
+                <SelectValue placeholder="Odaberite spol">
+                  {SPOL_OPTIONS.find((o) => o.value === spolValue)?.label}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {SPOL_OPTIONS.map((opt) => (
