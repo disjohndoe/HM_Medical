@@ -53,6 +53,7 @@ docs/
 test_podaci/
 testni_pacijent.txt
 backend/test_signed.pdf
+*test*.*
 
 # Screenshots/snapshots
 snapshot*.txt
