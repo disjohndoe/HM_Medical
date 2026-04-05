@@ -29,11 +29,12 @@ interface CezihStatusResponse {
   last_heartbeat: string | null
 }
 
-export function useCezihStatus() {
+export function useCezihStatus(enabled = true) {
   return useQuery({
     queryKey: ["settings", "cezih-status"],
     queryFn: () => api.get<CezihStatusResponse>("/settings/cezih-status"),
-    refetchInterval: 5000,
+    refetchInterval: enabled ? 15_000 : false,
+    enabled,
   })
 }
 

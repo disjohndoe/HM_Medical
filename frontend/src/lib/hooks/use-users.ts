@@ -79,10 +79,11 @@ export function useAutoBindCard() {
   })
 }
 
-export function useCardStatus() {
+export function useCardStatus(enabled = true) {
   return useQuery({
     queryKey: ["card-status"],
     queryFn: () => api.get<CardStatusResponse>("/settings/card-status"),
-    refetchInterval: 5000,
+    refetchInterval: enabled ? 10_000 : false,
+    enabled,
   })
 }
