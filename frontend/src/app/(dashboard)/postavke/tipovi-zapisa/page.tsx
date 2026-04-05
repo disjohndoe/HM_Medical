@@ -112,17 +112,6 @@ export default function TipoviZapisaPage() {
     )
   }
 
-  const handleToggleActive = (id: string, currentActive: boolean, isSystem: boolean) => {
-    if (isSystem) return
-    updateMutation.mutate(
-      { id, data: { is_active: !currentActive } },
-      {
-        onSuccess: () => toast.success(currentActive ? "Tip deaktiviran" : "Tip aktiviran"),
-        onError: (err) => toast.error(err.message),
-      }
-    )
-  }
-
   const handleDelete = (id: string) => {
     if (!confirm("Sigurno želite obrisati ovaj tip zapisa?")) return
     deleteMutation.mutate(id, {
