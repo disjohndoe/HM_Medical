@@ -1,7 +1,6 @@
 "use client";
 
 export default function GlobalError({
-  error,
   unstable_retry,
 }: {
   error: Error & { digest?: string };

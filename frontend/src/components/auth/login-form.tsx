@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -19,22 +19,25 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+function getAuthExpiredMessage(): string | null {
+  if (typeof window === "undefined") return null;
+  const reason = localStorage.getItem("auth_redirect_reason");
+  const ts = Number(localStorage.getItem("auth_redirect_reason_ts") || "0");
+  localStorage.removeItem("auth_redirect_reason");
+  localStorage.removeItem("auth_redirect_reason_ts");
+  if (reason === "session_expired" && Date.now() - ts < 30_000) {
+    return "Vaša sesija je istekla. Prijavite se ponovo.";
+  }
+  return null;
+}
+
 export function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
   const [error, setError] = useState("");
 
   // Show reason for redirect (kicked session, expired token)
-  const [info, setInfo] = useState("");
-  useEffect(() => {
-    const reason = localStorage.getItem("auth_redirect_reason");
-    const ts = Number(localStorage.getItem("auth_redirect_reason_ts") || "0");
-    localStorage.removeItem("auth_redirect_reason");
-    localStorage.removeItem("auth_redirect_reason_ts");
-    if (reason === "session_expired" && Date.now() - ts < 30_000) {
-      setInfo("Vaša sesija je istekla. Prijavite se ponovo.");
-    }
-  }, []);
+  const [info] = useState(() => getAuthExpiredMessage());
 
   const {
     register,
