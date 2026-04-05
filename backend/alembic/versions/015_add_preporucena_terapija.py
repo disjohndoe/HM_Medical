@@ -10,6 +10,7 @@ the family doctor can issue an e-Recept with RS (preporuka specijalista) code.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "015_preporucena_terapija"

@@ -10,6 +10,7 @@ the cezih_visits table and appointment.cezih_visit_id has been deleted.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "017_drop_cezih_visits"

@@ -11,6 +11,7 @@ Admins can add custom types per tenant. CEZIH mandatory types are locked.
 import uuid
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "018_add_record_types_table"
@@ -62,8 +63,10 @@ def upgrade() -> None:
             connection.execute(
                 sa.text(
                     "INSERT INTO record_types "
-                    "(id, tenant_id, slug, label, color, is_system, is_cezih_mandatory, is_cezih_eligible, is_active, sort_order) "
-                    "VALUES (:id, :tenant_id, :slug, :label, :color, true, :is_cezih_mandatory, :is_cezih_eligible, true, :sort_order)"
+                    "(id, tenant_id, slug, label, color, is_system, "
+                    "is_cezih_mandatory, is_cezih_eligible, is_active, sort_order) "
+                    "VALUES (:id, :tenant_id, :slug, :label, :color, true, "
+                    ":is_cezih_mandatory, :is_cezih_eligible, true, :sort_order)"
                 ),
                 {
                     "id": str(uuid.uuid4()),

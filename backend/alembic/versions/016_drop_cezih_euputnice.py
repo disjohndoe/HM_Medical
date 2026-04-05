@@ -9,6 +9,7 @@ application code referencing the table has been deleted.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "016_drop_cezih_euputnice"
