@@ -32,11 +32,12 @@ pub fn run() {
                 .expect("HM_TENANT_ID environment variable required");
             let agent_secret = std::env::var("HM_AGENT_SECRET")
                 .expect("HM_AGENT_SECRET environment variable required");
+            let agent_id = std::env::var("HM_AGENT_ID").ok();
 
             info!("Starting agent — backend: {}, tenant: {}", backend_url, &tenant_id[..8]);
 
             // Spawn WebSocket connection
-            websocket::spawn_connection_task(backend_url, tenant_id, agent_secret, shared_state.clone());
+            websocket::spawn_connection_task(backend_url, tenant_id, agent_secret, agent_id, shared_state.clone());
 
             // System tray
             let open_item = MenuItem::with_id(app, "open", "Otvori", true, None::<&str>)?;

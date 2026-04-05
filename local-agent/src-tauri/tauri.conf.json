@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "HM Digital Agent",
   "version": "0.1.0",
-  "identifier": "com.hmdigital.agent",
+  "identifier": "hr.hmdigital.medical",
   "build": {
     "frontendDist": "../dist"
   },

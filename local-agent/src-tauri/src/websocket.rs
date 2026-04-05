@@ -20,6 +20,7 @@ pub struct ConnectionState {
     pub vpn_name: Option<String>,
     pub reader_available: bool,
     pub last_error: Option<String>,
+    pub agent_id: Option<String>,
 }
 
 impl Default for ConnectionState {
@@ -32,6 +33,7 @@ impl Default for ConnectionState {
             vpn_name: None,
             reader_available: false,
             last_error: None,
+            agent_id: None,
         }
     }
 }
@@ -57,17 +59,25 @@ pub fn spawn_connection_task(
     backend_url: String,
     tenant_id: String,
     agent_secret: String,
+    initial_agent_id: Option<String>,
     state: SharedState,
 ) {
     tokio::spawn(async move {
         let mut backoff = Duration::from_secs(1);
         let max_backoff = Duration::from_secs(60);
 
+        // Agent ID persists across reconnections within this process
+        let mut agent_id: Option<String> = initial_agent_id;
+
         loop {
-            let ws_url = format!(
+            let mut ws_url = format!(
                 "{}ws/agent?tenant_id={}&agent_secret={}",
                 backend_url, tenant_id, agent_secret
             );
+            // Include agent_id for reconnection if we have one
+            if let Some(ref id) = agent_id {
+                ws_url.push_str(&format!("&agent_id={}", id));
+            }
 
             info!("Connecting to {}", ws_url);
 
@@ -96,6 +106,13 @@ pub fn spawn_connection_task(
                                             match msg_type {
                                                 "connected" => {
                                                     info!("Server confirmed connection: {}", parsed.get("message").and_then(|m| m.as_str()).unwrap_or(""));
+                                                    // Persist agent_id from server
+                                                    if let Some(id) = parsed.get("agent_id").and_then(|v| v.as_str()) {
+                                                        agent_id = Some(id.to_string());
+                                                        let mut s = state.write().await;
+                                                        s.agent_id = Some(id.to_string());
+                                                        info!("Agent ID: {}", id);
+                                                    }
                                                     // Send initial status
                                                     let status = build_status_message();
                                                     let _ = write.send(Message::Text(status.to_string().into())).await;
@@ -175,7 +192,7 @@ pub fn spawn_connection_task(
                 }
             }
 
-            // Wait before reconnecting
+            // Wait before reconnecting (agent_id preserved for next attempt)
             info!("Reconnecting in {:?}...", backoff);
             tokio::time::sleep(backoff).await;
             backoff = (backoff * 2).min(max_backoff);
