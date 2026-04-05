@@ -18,12 +18,17 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
         .manage(shared_state.clone())
         .setup(move |app| {
             // Initialize logger
             let _ = env_logger::Builder::from_env(
                 env_logger::Env::default().default_filter_or("info"),
             ).try_init();
+
+            // Register updater plugin (desktop only)
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Read config from env vars (MVP) or config.json (production)
             let backend_url = std::env::var("HM_BACKEND_URL")
@@ -34,7 +39,7 @@ pub fn run() {
                 .expect("HM_AGENT_SECRET environment variable required");
             let agent_id = std::env::var("HM_AGENT_ID").ok();
 
-            info!("Starting agent — backend: {}, tenant: {}", backend_url, &tenant_id[..8]);
+            info!("Starting agent — backend: {}, tenant: {}", backend_url, &tenant_id[..tenant_id.len().min(8)]);
 
             // Spawn WebSocket connection
             websocket::spawn_connection_task(backend_url, tenant_id, agent_secret, agent_id, shared_state.clone());

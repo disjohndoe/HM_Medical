@@ -62,7 +62,7 @@ pub fn spawn_connection_task(
     initial_agent_id: Option<String>,
     state: SharedState,
 ) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let mut backoff = Duration::from_secs(1);
         let max_backoff = Duration::from_secs(60);
 
@@ -76,8 +76,7 @@ pub fn spawn_connection_task(
 
             match tokio_tungstenite::connect_async(&ws_url).await {
                 Ok((ws_stream, _)) => {
-                    info!("WebSocket connected");
-                    backoff = Duration::from_secs(1);
+                    info!("WebSocket TCP connected (awaiting auth confirmation)");
 
                     let (mut write, mut read) = ws_stream.split();
 
@@ -93,10 +92,9 @@ pub fn spawn_connection_task(
                         break;
                     }
 
-                    // Update shared state
+                    // Don't set ws_connected yet — wait for server "connected" confirmation
                     {
                         let mut s = state.write().await;
-                        s.ws_connected = true;
                         s.last_error = None;
                     }
                     let mut status_interval = tokio::time::interval(Duration::from_secs(30));
@@ -111,6 +109,12 @@ pub fn spawn_connection_task(
                                             match msg_type {
                                                 "connected" => {
                                                     info!("Server confirmed connection: {}", parsed.get("message").and_then(|m| m.as_str()).unwrap_or(""));
+                                                    // Auth confirmed — NOW mark as connected and reset backoff
+                                                    backoff = Duration::from_secs(1);
+                                                    {
+                                                        let mut s = state.write().await;
+                                                        s.ws_connected = true;
+                                                    }
                                                     // Persist agent_id from server
                                                     if let Some(id) = parsed.get("agent_id").and_then(|v| v.as_str()) {
                                                         agent_id = Some(id.to_string());

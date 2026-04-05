@@ -35,12 +35,25 @@
       height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
+      background: #94a3b8;
     }
     .dot.green { background: #22c55e; }
     .dot.red { background: #ef4444; }
     .dot.gray { background: #94a3b8; }
+    .dot.blue { background: #3b82f6; }
     .label { flex: 1; }
     .detail { color: #64748b; font-size: 11px; }
+    button {
+      padding: 2px 10px;
+      font-size: 11px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    button:hover { background: #2563eb; }
     .error {
       margin-top: 8px;
       padding: 8px;
@@ -71,6 +84,13 @@
     <span class="dot" id="vpn-dot"></span>
     <span class="label" id="vpn-label">VPN</span>
     <span class="detail" id="vpn-detail"></span>
+  </div>
+
+  <div class="status-row" id="update-row" style="display: none;">
+    <span class="dot" id="update-dot"></span>
+    <span class="label" id="update-label">Ažuriranje</span>
+    <span class="detail" id="update-detail"></span>
+    <button id="restart-btn" style="display: none;" onclick="restartNow()">Restart</button>
   </div>
 
   <div class="error" id="error-box" style="display: none;"></div>
