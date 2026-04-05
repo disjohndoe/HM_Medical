@@ -104,6 +104,8 @@ class PatientCezihENalaz(BaseModel):
     reference_id: str | None = None
     cezih_sent_at: datetime | None = None
     cezih_storno: bool = False
+    cezih_signed: bool = False
+    cezih_signed_at: datetime | None = None
 
 
 class PatientCezihERecept(BaseModel):

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from app.constants import get_cezih_document_coding
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
 from app.services.cezih.message_builder import (
@@ -16,7 +17,6 @@ from app.services.cezih.message_builder import (
     build_message_bundle,
     parse_message_response,
 )
-from app.constants import get_cezih_document_coding
 from app.services.cezih.models import (
     FHIRBundle,
     FHIRBundleEntry,
@@ -26,6 +26,7 @@ from app.services.cezih.models import (
     FHIRPatient,
     FHIRReference,
 )
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ async def send_enalaz(
     client: httpx.AsyncClient,
     patient_data: dict,
     record_data: dict,
+    practitioner_id: str | None = None,
 ) -> dict:
     """Send clinical document / finding (ITI-65 MHD).
 
@@ -159,9 +161,14 @@ async def send_enalaz(
         entry=[FHIRBundleEntry(resource=doc_ref_dict)],
     )
 
+    # Add digital signature if practitioner_id is provided
+    bundle_dict = bundle.model_dump(by_alias=True)
+    if practitioner_id:
+        bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
+
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
-        json_body=bundle.model_dump(by_alias=True),
+        json_body=bundle_dict,
     )
 
     # Extract reference ID from response
@@ -177,10 +184,16 @@ async def send_enalaz(
     if not ref_id:
         ref_id = f"FHIR-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
 
+    # Extract signature data from the bundle for persistence
+    signature_data = bundle_dict.get("signature", {})
+    signature_base64 = signature_data.get("data", "") if signature_data else ""
+
     return {
         "success": True,
         "reference_id": ref_id,
         "sent_at": datetime.now(UTC).isoformat(),
+        "signature_data": signature_base64,
+        "signed_at": signature_data.get("when") if signature_data else None,
     }
 
 
@@ -666,6 +679,7 @@ async def replace_document(
     original_reference_id: str,
     patient_data: dict,
     record_data: dict,
+    practitioner_id: str | None = None,
 ) -> dict:
     """Replace a clinical document (TC19, ITI-65 with relatesTo)."""
     fhir_client = CezihFhirClient(client)
@@ -691,12 +705,29 @@ async def replace_document(
         timestamp=datetime.now(UTC).isoformat(),
         entry=[FHIRBundleEntry(resource=doc_dict)],
     )
+
+    # Add digital signature if practitioner_id is provided
+    bundle_dict = bundle.model_dump(by_alias=True)
+    if practitioner_id:
+        bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
+
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
-        json_body=bundle.model_dump(by_alias=True),
+        json_body=bundle_dict,
     )
     ref_id = response.get("id", f"FHIR-R-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}")
-    return {"success": True, "new_reference_id": ref_id, "replaced_reference_id": original_reference_id}
+
+    # Extract signature data from the bundle for persistence
+    signature_data = bundle_dict.get("signature", {})
+    signature_base64 = signature_data.get("data", "") if signature_data else ""
+
+    return {
+        "success": True,
+        "new_reference_id": ref_id,
+        "replaced_reference_id": original_reference_id,
+        "signature_data": signature_base64,
+        "signed_at": signature_data.get("when") if signature_data else None,
+    }
 
 
 # ============================================================
