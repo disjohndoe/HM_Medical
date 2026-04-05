@@ -14,15 +14,29 @@ from app.services.agent_connection_manager import agent_manager
 
 logger = logging.getLogger(__name__)
 
+AUTH_TIMEOUT_SECONDS = 10
+
 router = APIRouter()
 
 
 @router.websocket("/ws/agent")
 async def agent_websocket(websocket: WebSocket):
-    # Extract auth params from query string
-    tenant_id_str = websocket.query_params.get("tenant_id")
-    agent_secret = websocket.query_params.get("agent_secret")
-    agent_id = websocket.query_params.get("agent_id")  # optional, for reconnection
+    # Auth via first message only (credentials NOT in URL/query params)
+    await websocket.accept()
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS)
+        msg = json.loads(raw)
+    except (asyncio.TimeoutError, json.JSONDecodeError):
+        await websocket.close(code=4001, reason="Auth timeout or invalid message")
+        return
+
+    if msg.get("type") != "auth":
+        await websocket.close(code=4001, reason="First message must be auth")
+        return
+
+    tenant_id_str = msg.get("tenant_id")
+    agent_secret = msg.get("agent_secret")
+    agent_id = msg.get("agent_id")
 
     if not tenant_id_str or not agent_secret:
         await websocket.close(code=4001, reason="Missing tenant_id or agent_secret")
@@ -41,8 +55,8 @@ async def agent_websocket(websocket: WebSocket):
             await websocket.close(code=4003, reason="Invalid credentials")
             return
 
-    # Accept and register (agent_id generated server-side if not provided)
-    conn = await agent_manager.connect(tenant_id, websocket, agent_id)
+    # Register connection
+    conn = await agent_manager.register(tenant_id, websocket, agent_id)
     agent_id = conn.agent_id
     await websocket.send_json({
         "type": "connected",

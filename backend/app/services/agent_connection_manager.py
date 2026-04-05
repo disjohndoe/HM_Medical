@@ -31,9 +31,10 @@ class AgentConnectionManager:
     def __init__(self) -> None:
         self._connections: dict[UUID, dict[str, AgentConnection]] = {}
 
-    async def connect(
+    async def register(
         self, tenant_id: UUID, websocket: WebSocket, agent_id: str | None = None
     ) -> AgentConnection:
+        """Register an already-accepted WebSocket connection (message-based auth)."""
         if agent_id is None:
             agent_id = str(_uuid.uuid4())
 
@@ -48,7 +49,6 @@ class AgentConnectionManager:
             except Exception:
                 pass
 
-        await websocket.accept()
         conn = AgentConnection(tenant_id=tenant_id, agent_id=agent_id, websocket=websocket)
         tenant_agents[agent_id] = conn
         logger.info(

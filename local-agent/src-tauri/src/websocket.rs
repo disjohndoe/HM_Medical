@@ -70,15 +70,8 @@ pub fn spawn_connection_task(
         let mut agent_id: Option<String> = initial_agent_id;
 
         loop {
-            let mut ws_url = format!(
-                "{}ws/agent?tenant_id={}&agent_secret={}",
-                backend_url, tenant_id, agent_secret
-            );
-            // Include agent_id for reconnection if we have one
-            if let Some(ref id) = agent_id {
-                ws_url.push_str(&format!("&agent_id={}", id));
-            }
-
+            // Connect WITHOUT credentials in URL — auth is sent as first message
+            let ws_url = format!("{}ws/agent", backend_url);
             info!("Connecting to {}", ws_url);
 
             match tokio_tungstenite::connect_async(&ws_url).await {
@@ -86,14 +79,26 @@ pub fn spawn_connection_task(
                     info!("WebSocket connected");
                     backoff = Duration::from_secs(1);
 
+                    let (mut write, mut read) = ws_stream.split();
+
+                    // Send auth message IMMEDIATELY as first message (credentials NOT in URL)
+                    let auth_msg = json!({
+                        "type": "auth",
+                        "tenant_id": tenant_id,
+                        "agent_secret": agent_secret,
+                        "agent_id": agent_id,
+                    });
+                    if write.send(Message::Text(auth_msg.to_string().into())).await.is_err() {
+                        error!("Failed to send auth message");
+                        break;
+                    }
+
                     // Update shared state
                     {
                         let mut s = state.write().await;
                         s.ws_connected = true;
                         s.last_error = None;
                     }
-
-                    let (mut write, mut read) = ws_stream.split();
                     let mut status_interval = tokio::time::interval(Duration::from_secs(30));
 
                     loop {
