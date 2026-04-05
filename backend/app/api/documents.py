@@ -1,7 +1,8 @@
+import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,11 +23,19 @@ ALLOWED_MIME_TYPES = {
 ALLOWED_EXTENSIONS = {".jpeg", ".jpg", ".png", ".pdf"}
 
 
+def sanitize_filename(filename: str) -> str:
+    """Strip path traversal, control chars, and dangerous patterns from filenames."""
+    filename = filename.replace("/", "").replace("\\", "")
+    filename = re.sub(r"[\x00-\x1f\x7f]", "", filename)
+    filename = filename.lstrip(".-")[:255]
+    return filename or "unnamed"
+
+
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    patient_id: uuid.UUID = Query(...),
-    kategorija: str = Query("ostalo"),
     file: UploadFile = File(...),
+    patient_id: uuid.UUID = Form(...),
+    kategorija: str = Form("ostalo"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -70,7 +79,7 @@ async def upload_document(
     doc = Document(
         tenant_id=current_user.tenant_id,
         patient_id=patient_id,
-        naziv=file.filename,
+        naziv=sanitize_filename(file.filename),
         kategorija=kategorija,
         file_path=str(file_path),
         file_size=len(content),
@@ -128,7 +137,7 @@ async def download_document(
     return FileResponse(
         path=str(file_path),
         media_type=doc.mime_type,
-        filename=doc.naziv,
+        filename=sanitize_filename(doc.naziv),
     )
 
 

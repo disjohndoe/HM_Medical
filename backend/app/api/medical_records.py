@@ -1,6 +1,7 @@
 import uuid
 from datetime import date
 from io import BytesIO
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -16,7 +17,7 @@ from app.schemas.medical_record import (
     MedicalRecordRead,
     MedicalRecordUpdate,
 )
-from app.services import medical_record_service
+from app.services import audit_service, medical_record_service
 from app.services.pdf_generator import NalazPDFGenerator
 from app.services.pdf_signer import sign_pdf
 from app.utils.pagination import PaginatedResponse
@@ -57,7 +58,17 @@ async def create_medical_record(
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
-    return await medical_record_service.create_record(db, current_user.tenant_id, data, current_user.id)
+    record = await medical_record_service.create_record(db, current_user.tenant_id, data, current_user.id)
+    await audit_service.write_audit(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="medical_record_create",
+        resource_type="medical_record",
+        resource_id=record["id"],
+        details={"patient_id": str(data.patient_id), "tip": data.tip},
+    )
+    return record
 
 
 @router.get("/medical-records/{record_id}", response_model=MedicalRecordRead)
@@ -66,9 +77,19 @@ async def get_medical_record(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await medical_record_service.get_record(
+    record = await medical_record_service.get_record(
         db, current_user.tenant_id, record_id, user_role=current_user.role
     )
+    await audit_service.write_audit(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="medical_record_view",
+        resource_type="medical_record",
+        resource_id=record_id,
+        details={"patient_id": str(record["patient_id"])},
+    )
+    return record
 
 
 @router.get("/medical-records/{record_id}/pdf")
@@ -82,15 +103,27 @@ async def download_record_pdf(
         db, current_user.tenant_id, record_id, user_role=current_user.role,
     )
 
+    await audit_service.write_audit(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="medical_record_pdf_download",
+        resource_type="medical_record",
+        resource_id=record_id,
+        details={"patient_id": str(record["patient_id"])},
+    )
+
     tenant = await db.get(Tenant, current_user.tenant_id)
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ustanova nije pronađena")
 
     patient = await db.get(Patient, record["patient_id"])
-    if not patient:
+    if not patient or patient.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
 
     doctor = await db.get(User, record["doktor_id"])
+    if doctor and doctor.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Pristup zabranjen")
 
     generator = NalazPDFGenerator(
         tenant={
@@ -135,23 +168,44 @@ async def download_record_pdf(
             doctor_name=doctor_name,
             location=location,
         )
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Greška pri potpisivanju PDF-a: {e}",
-        ) from e
+            detail="Greška pri potpisivanju PDF-a. Pokušajte ponovo.",
+        ) from None
 
-    tip_slug = record.get("tip", "nalaz")
+    def _to_ascii(s: str) -> str:
+        """Convert Croatian characters to ASCII equivalents."""
+        cro_to_ascii = {
+            'š': 's', 'Š': 'S',
+            'đ': 'dj', 'Đ': 'Dj',
+            'č': 'c', 'Č': 'C',
+            'ć': 'c', 'Ć': 'C',
+            'ž': 'z', 'Ž': 'Z',
+        }
+        for cro, ascii_ch in cro_to_ascii.items():
+            s = s.replace(cro, ascii_ch)
+        return s
+
+    tip_slug = _to_ascii(record.get("tip", "nalaz"))
     ime = patient.ime or ""
     prezime = patient.prezime or "pacijent"
+    ime_ascii = _to_ascii(ime) or "pacijent"
+    prezime_ascii = _to_ascii(prezime) or ""
     datum = record.get("datum", "")
     short_id = str(record_id)[:4]
     filename = f"{tip_slug}_{ime}_{prezime}_{datum}_{short_id}.pdf"
+    # Properly encode filename for HTTP headers (RFC 5987)
+    encoded_filename = quote(filename.encode('utf-8'))
+    # Fallback ASCII filename (transliterated patient name included)
+    ascii_fallback = f"{tip_slug}_{ime_ascii}_{prezime_ascii}_{datum}_{short_id}.pdf"
 
     return StreamingResponse(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded_filename}',
+        },
     )
 
 
@@ -162,4 +216,14 @@ async def update_medical_record(
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
-    return await medical_record_service.update_record(db, current_user.tenant_id, record_id, data)
+    updated = await medical_record_service.update_record(db, current_user.tenant_id, record_id, data)
+    await audit_service.write_audit(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="medical_record_update",
+        resource_type="medical_record",
+        resource_id=record_id,
+        details={"patient_id": str(updated["patient_id"]), "fields_updated": list(data.model_dump(exclude_unset=True).keys())},
+    )
+    return updated
