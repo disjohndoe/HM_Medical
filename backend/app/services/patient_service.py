@@ -23,7 +23,9 @@ async def list_patients(
     )
 
     if search:
-        pattern = f"%{search}%"
+        # Escape SQL wildcards to prevent wildcard injection
+        escaped = search.replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         base = base.where(
             or_(
                 Patient.ime.ilike(pattern),
@@ -107,7 +109,10 @@ async def create_patient(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Pacijent s tim MBO-om vec postoji",
             )
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pacijent s tim podacima vec postoji",
+        ) from None
     await db.refresh(patient)
     return patient
 

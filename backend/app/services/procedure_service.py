@@ -27,7 +27,8 @@ async def list_procedures(
         base = base.where(Procedure.kategorija == kategorija)
 
     if search:
-        pattern = f"%{search}%"
+        escaped = search.replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         base = base.where(
             or_(
                 Procedure.sifra.ilike(pattern),

@@ -12,6 +12,7 @@ Generates professional A4 documents following Croatian healthcare standards:
 from __future__ import annotations
 
 import os
+import re
 from datetime import date
 from io import BytesIO
 
@@ -188,11 +189,10 @@ def _format_date_hr(d: date | str | None) -> str:
     if d is None:
         return "—"
     if isinstance(d, str):
-        try:
-            parts = d.split("-")
+        parts = d.split("-")
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
             return f"{parts[2]}.{parts[1]}.{parts[0]}."
-        except (IndexError, ValueError):
-            return d
+        return d
     return d.strftime("%d.%m.%Y.")
 
 
@@ -214,6 +214,58 @@ def _nl2br(text: str | None) -> str:
     return _escape(text).replace("\n", "<br/>")
 
 
+def _format_phone(raw: str | None) -> str:
+    """Normalize Croatian phone numbers for display on PDF.
+
+    Handles common input formats:
+      +38591234567, 0038591234567, 091/234-567, 091 234 567, 01/234-5678
+    """
+    if not raw:
+        return ""
+    digits = re.sub(r"\D", "", raw)
+
+    # International with 00 prefix → +385 …
+    if digits.startswith("00385"):
+        digits = "385" + digits[5:]
+    # International with + (already stripped to digits starting with 385)
+    if digits.startswith("385") and len(digits) >= 10:
+        rest = digits[3:]  # e.g. "91234567"
+        # Croatian mobile prefixes are 2 digits, landline area codes 1-2 digits
+        if rest[0] == "1":
+            # Zagreb landline: 385 1 XXXXXXX
+            return f"+385 1 {_group_digits(rest[1:])}"
+        prefix = rest[:2]
+        return f"+385 {prefix} {_group_digits(rest[2:])}"
+
+    # Local format starting with 0
+    if digits.startswith("0") and len(digits) >= 8:
+        if digits.startswith("01"):
+            # Zagreb landline: 01 XXXXXXX
+            return f"01 {_group_digits(digits[2:])}"
+        prefix = digits[:3]  # e.g. 091, 092, 098, 020, 021…
+        return f"{prefix} {_group_digits(digits[3:])}"
+
+    # Anything else: return cleaned original (strip extra whitespace)
+    return raw.strip()
+
+
+def _group_digits(s: str) -> str:
+    """Group digits into blocks of 3 (last block may be 2-4)."""
+    if len(s) <= 4:
+        return s
+    # Split into chunks of 3, last chunk gets remainder
+    chunks = []
+    i = 0
+    while i < len(s):
+        remaining = len(s) - i
+        if remaining <= 4:
+            chunks.append(s[i:])
+            break
+        chunks.append(s[i:i + 3])
+        i += 3
+    return " ".join(chunks)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -229,12 +281,12 @@ class NalazPDFGenerator:
         record: dict,
         record_type_label: str | None = None,
     ):
-        self.tenant = tenant
-        self.doctor = doctor
-        self.patient = patient
-        self.record = record
+        self.tenant = tenant or {}
+        self.doctor = doctor or {}
+        self.patient = patient or {}
+        self.record = record or {}
         self.record_type_label = record_type_label or _TIP_LABELS.get(
-            record.get("tip", ""), record.get("tip", "Nalaz")
+            self.record.get("tip", ""), self.record.get("tip", "Nalaz")
         )
         self.styles = _build_styles()
 
@@ -288,7 +340,7 @@ class NalazPDFGenerator:
         grad_line = ""
         if t.get("postanski_broj") or t.get("grad"):
             grad_line = f"{_escape(t.get('postanski_broj', ''))} {_escape(t.get('grad', ''))}".strip()
-        telefon = t.get("telefon", "")
+        telefon = _format_phone(t.get("telefon", ""))
         oib = t.get("oib", "")
         web = t.get("web", "")
 
@@ -504,7 +556,7 @@ class NalazPDFGenerator:
         prezime = _escape(d.get("prezime", ""))
         doctor_name = f"{titula} {ime} {prezime}".strip()
 
-        location_line = f"U {grad}, {datum}" if grad else datum
+        location_line = f"{grad}, {datum}" if grad else datum
 
         footer_left = [
             Paragraph(location_line, s["footer_location"]),
