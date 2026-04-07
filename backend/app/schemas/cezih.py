@@ -241,7 +241,9 @@ class ForeignerRegistrationResponse(BaseModel):
 class CreateVisitRequest(BaseModel):
     patient_id: UUID
     patient_mbo: str
-    visit_type: str = "AMB"  # AMB=ambulantni, EMER=hitni, HH=kućni
+    nacin_prijema: str = "6"      # 1-10, default: 6=Ostalo
+    vrsta_posjete: str = "1"      # 1-3, default: 1=Pacijent prisutan
+    tip_posjete: str = "1"        # 1-3, default: 1=Posjeta LOM
     reason: str | None = None
 
 

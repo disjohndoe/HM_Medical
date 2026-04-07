@@ -686,7 +686,7 @@ async def create_visit(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_visit(
-        data.patient_mbo, data.visit_type, data.reason,
+        data.patient_mbo, data.nacin_prijema, data.vrsta_posjete, data.tip_posjete, data.reason,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         practitioner_id=str(current_user.id),

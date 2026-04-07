@@ -40,10 +40,17 @@ const VISIT_STATUS_LABELS: Record<string, string> = {
   "entered-in-error": "Stornirana",
 }
 
-const VISIT_TYPE_LABELS: Record<string, string> = {
-  "AMB": "Ambulantni",
-  "EMER": "Hitni",
-  "HH": "Kućni",
+const NACIN_PRIJEMA_LABELS: Record<string, string> = {
+  "1": "Hitni prijem",
+  "2": "Uputnica PZZ",
+  "3": "Premještaj iz druge ustanove",
+  "4": "Nastavno liječenje",
+  "5": "Premještaj unutar ustanove",
+  "6": "Ostalo",
+  "7": "Poziv na raniji termin",
+  "8": "Telemedicina",
+  "9": "Interna uputnica",
+  "10": "Program+",
 }
 
 const VISIT_ACTIONS = [
@@ -63,7 +70,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
   const visitAction = useVisitAction()
 
   const [showCreate, setShowCreate] = useState(false)
-  const [visitType, setVisitType] = useState("AMB")
+  const [nacinPrijema, setNacinPrijema] = useState("6")
   const [reason, setReason] = useState("")
   const [actionVisitId, setActionVisitId] = useState<string | null>(null)
 
@@ -71,7 +78,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
 
   const handleCreate = () => {
     createVisit.mutate(
-      { patient_id: patientId, patient_mbo: patientMbo, visit_type: visitType, reason: reason || undefined },
+      { patient_id: patientId, patient_mbo: patientMbo, nacin_prijema: nacinPrijema, reason: reason || undefined },
       {
         onSuccess: (res) => {
           toast.success(`Posjeta kreirana: ${res.visit_id}`)
@@ -115,12 +122,12 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Vrsta posjete</Label>
-                <Select value={visitType} onValueChange={(v) => v && setVisitType(v)}>
+                <Select value={nacinPrijema} onValueChange={(v) => v && setNacinPrijema(v)}>
                   <SelectTrigger className="h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(VISIT_TYPE_LABELS).map(([val, label]) => (
+                    {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
                       <SelectItem key={val} value={val}>{label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -162,7 +169,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
                     <Badge variant="secondary" className={VISIT_STATUS_COLORS[v.status] || ""}>
                       {VISIT_STATUS_LABELS[v.status] || v.status}
                     </Badge>
-                    <Badge variant="outline">{VISIT_TYPE_LABELS[v.visit_type] || v.visit_type}</Badge>
+                    <Badge variant="outline">{NACIN_PRIJEMA_LABELS[v.visit_type] || v.visit_type}</Badge>
                     <span className="text-xs font-mono text-muted-foreground">{v.visit_id}</span>
                   </div>
                 </div>

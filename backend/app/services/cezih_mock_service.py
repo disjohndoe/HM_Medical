@@ -1,5 +1,4 @@
 import base64
-import hashlib
 import json
 from datetime import UTC, datetime
 from uuid import UUID
@@ -10,20 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.audit_log import AuditLog
 from app.models.medical_record import MedicalRecord
 
-_MOCK_NAMES = [
-    ("Ivan", "Horvat", "1985-03-15"),
-    ("Ana", "Kovačević", "1990-07-22"),
-    ("Marko", "Marić", "1978-11-08"),
-    ("Petra", "Jurić", "1995-01-30"),
-    ("Luka", "Novak", "1982-09-12"),
-]
-
-_MOCK_OSIGURAVATELJI = ["HZZO", "HZZO", "HZZO", "Adria Osiguranje", "CROATIA osiguranje"]
-_MOCK_STATUS = ["Aktivan", "Aktivan", "Aktivan", "Aktivan", "Na čekanju"]
-
-
-def _deterministic_index(mbo: str) -> int:
-    return int(hashlib.md5(mbo.encode()).hexdigest(), 16) % len(_MOCK_NAMES)
+# HZZO official test patient (provisioned 2026-04-07)
+_HZZO_PATIENT = ("GORAN", "PACPRIVATNICI19", "1980-01-01")
+_HZZO_MBO = "999990260"
+_HZZO_OIB = "99999900187"
 
 
 async def _write_audit(
@@ -52,8 +41,10 @@ async def mock_insurance_check(
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
 ) -> dict:
-    idx = _deterministic_index(mbo)
-    name = _MOCK_NAMES[idx]
+    if mbo == _HZZO_MBO:
+        name = _HZZO_PATIENT
+    else:
+        name = ("Nepoznat", "Pacijent", "1900-01-01")
 
     result = {
         "mock": True,
@@ -61,8 +52,8 @@ async def mock_insurance_check(
         "ime": name[0],
         "prezime": name[1],
         "datum_rodjenja": name[2],
-        "osiguravatelj": _MOCK_OSIGURAVATELJI[idx],
-        "status_osiguranja": _MOCK_STATUS[idx],
+        "osiguravatelj": "HZZO",
+        "status_osiguranja": "Aktivan",
         "broj_osiguranja": f"HR-{mbo[-6:]}",
     }
 
@@ -274,7 +265,7 @@ def mock_sign_health_check() -> dict:
 # ============================================================
 
 _MOCK_OIDS = {
-    "1.2.3.4.5.6": {"name": "HM Digital Medical", "responsible_org": "HM DIGITAL d.o.o.", "status": "active"},
+    "1.2.162.1.999001464": {"name": "HM DIGITAL ordinacija", "responsible_org": "HM DIGITAL d.o.o.", "status": "active"},
     "2.16.840.1.113883.2.22.1.1": {"name": "HZZO", "responsible_org": "HZZO", "status": "active"},
     "2.16.840.1.113883.2.22": {"name": "CEZIH", "responsible_org": "HZZO", "status": "active"},
 }
@@ -311,10 +302,26 @@ _MOCK_CODE_SYSTEMS: dict[str, list[dict]] = {
         {"code": "L20", "display": "Atopijski dermatitis", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr"},
     ],
     "nacin-prijema": [
-        {"code": "1", "display": "Dnevna bolnica", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
-        {"code": "2", "display": "Hitan prijem", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
-        {"code": "3", "display": "Premještaj", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "1", "display": "Hitni prijem", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "2", "display": "Uputnica PZZ", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "3", "display": "Premještaj iz druge ustanove", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "4", "display": "Nastavno liječenje", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "5", "display": "Premještaj unutar ustanove", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "6", "display": "Ostalo", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "7", "display": "Poziv na raniji termin", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "8", "display": "Telemedicina", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
         {"code": "9", "display": "Interna uputnica", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+        {"code": "10", "display": "Program+", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"},
+    ],
+    "vrsta-posjete": [
+        {"code": "1", "display": "Pacijent prisutan", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/vrsta-posjete"},
+        {"code": "2", "display": "Pacijent udaljeno prisutan", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/vrsta-posjete"},
+        {"code": "3", "display": "Pacijent nije prisutan", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/vrsta-posjete"},
+    ],
+    "hr-tip-posjete": [
+        {"code": "1", "display": "Posjeta LOM", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/hr-tip-posjete"},
+        {"code": "2", "display": "Posjeta SKZZ", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/hr-tip-posjete"},
+        {"code": "3", "display": "Hospitalizacija", "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/hr-tip-posjete"},
     ],
 }
 
@@ -371,19 +378,11 @@ async def mock_expand_value_set(
 # ============================================================
 
 _MOCK_ORGANIZATIONS: list[dict[str, str | bool]] = [
-    {"id": "org-1", "name": "DOM ZDRAVLJA ZAGREB-CENTAR", "hzzo_code": "10001", "active": True},
-    {"id": "org-2", "name": "KBC ZAGREB", "hzzo_code": "10002", "active": True},
-    {"id": "org-3", "name": "POLIKLINIKA RIJEKA", "hzzo_code": "20001", "active": True},
-    {"id": "org-4", "name": "DOM ZDRAVLJA SPLIT", "hzzo_code": "30001", "active": True},
-    {"id": "org-5", "name": "DOM ZDRAVLJA OSIJEK", "hzzo_code": "40001", "active": True},
+    {"id": "org-0", "name": "HM DIGITAL ordinacija", "hzzo_code": "999001464", "active": True},
 ]
 
 _MOCK_PRACTITIONERS: list[dict[str, str | bool]] = [
-    {"id": "pract-1", "family": "Horvat", "given": "Josip", "hzjz_id": "1234567", "active": True},
-    {"id": "pract-2", "family": "Perić", "given": "Marija", "hzjz_id": "2345678", "active": True},
-    {"id": "pract-3", "family": "Tomić", "given": "Ante", "hzjz_id": "3456789", "active": True},
-    {"id": "pract-4", "family": "Matić", "given": "Ivan", "hzjz_id": "4567890", "active": True},
-    {"id": "pract-5", "family": "Herceg", "given": "Lana", "hzjz_id": "5678901", "active": True},
+    {"id": "pract-0", "family": "TESTNIPREZIME55", "given": "TESTNI55", "hzjz_id": "7659059", "active": True},
 ]
 
 
@@ -457,10 +456,10 @@ async def mock_register_foreigner(
 # ============================================================
 
 _MOCK_VISITS: list[dict] = [
-    {"visit_id": "MOCK-V-001", "patient_mbo": "123456789", "status": "in-progress",
-     "visit_type": "AMB", "reason": "Kontrolni pregled", "period_start": "2026-04-07T08:00:00", "period_end": None},
-    {"visit_id": "MOCK-V-002", "patient_mbo": "234567890", "status": "finished",
-     "visit_type": "AMB", "reason": "Kardiološki pregled",
+    {"visit_id": "MOCK-V-001", "patient_mbo": "999990260", "status": "in-progress",
+     "visit_type": "6", "reason": "Kontrolni pregled", "period_start": "2026-04-07T08:00:00", "period_end": None},
+    {"visit_id": "MOCK-V-002", "patient_mbo": "999990260", "status": "finished",
+     "visit_type": "2", "reason": "Kardiološki pregled",
      "period_start": "2026-04-06T09:30:00",
      "period_end": "2026-04-06T10:15:00"},
 ]
@@ -468,7 +467,7 @@ _MOCK_VISITS: list[dict] = [
 
 async def mock_create_visit(
     patient_mbo: str,
-    visit_type: str = "AMB",
+    nacin_prijema: str = "6",
     reason: str | None = None,
     db: AsyncSession | None = None,
     user_id: UUID | None = None,
@@ -484,7 +483,7 @@ async def mock_create_visit(
         await _write_audit(
             db, tenant_id, user_id,
             action="visit_create",
-            details={"mbo": patient_mbo, "visit_id": visit_id, "visit_type": visit_type},
+            details={"mbo": patient_mbo, "visit_id": visit_id, "nacin_prijema": nacin_prijema},
         )
     return result
 
@@ -627,25 +626,17 @@ async def mock_update_case_data(
 
 _MOCK_DOCUMENTS = [
     {"id": "DOC-001", "datum_izdavanja": "2026-03-25",
-     "izdavatelj": "DOM ZDRAVLJA ZAGREB-CENTAR", "svrha": "Kardiološki nalaz",
-     "specijalist": "Dr. Babić", "status": "Otvorena", "type": "specijalisticki_nalaz",
+     "izdavatelj": "HM DIGITAL ordinacija", "svrha": "Kardiološki nalaz",
+     "specijalist": "Dr. TESTNI55", "status": "Otvorena", "type": "specijalisticki_nalaz",
      "patient_mbo": "999990260"},
     {"id": "DOC-002", "datum_izdavanja": "2026-03-20",
-     "izdavatelj": "KBC ZAGREB", "svrha": "RTG snimka — ambulantno izvješće",
-     "specijalist": "Dr. Perić", "status": "Otvorena", "type": "ambulantno_izvjesce",
+     "izdavatelj": "HM DIGITAL ordinacija", "svrha": "RTG snimka — ambulantno izvješće",
+     "specijalist": "Dr. TESTNI55", "status": "Otvorena", "type": "ambulantno_izvjesce",
      "patient_mbo": "999990260"},
     {"id": "DOC-003", "datum_izdavanja": "2026-03-15",
-     "izdavatelj": "POLIKLINIKA RIJEKA", "svrha": "Laboratorijski nalaz",
-     "specijalist": "Dr. Tomić", "status": "Zatvorena", "type": "nalaz",
-     "patient_mbo": "999990261"},
-    {"id": "DOC-004", "datum_izdavanja": "2026-03-10",
-     "izdavatelj": "DOM ZDRAVLJA SPLIT", "svrha": "Otpusno pismo — dermatologija",
-     "specijalist": "Dr. Matić", "status": "Otvorena", "type": "otpusno_pismo",
+     "izdavatelj": "HM DIGITAL ordinacija", "svrha": "Laboratorijski nalaz",
+     "specijalist": "Dr. TESTNI55", "status": "Zatvorena", "type": "nalaz",
      "patient_mbo": "999990260"},
-    {"id": "DOC-005", "datum_izdavanja": "2026-03-05",
-     "izdavatelj": "DOM ZDRAVLJA OSIJEK", "svrha": "Oftalmološka uputnica",
-     "specijalist": "Dr. Herceg", "status": "Pogreška", "type": "uputnica",
-     "patient_mbo": "999990262"},
 ]
 
 

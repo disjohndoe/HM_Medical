@@ -832,7 +832,9 @@ async def dispatch_retrieve_document(
 
 async def dispatch_create_visit(
     patient_mbo: str,
-    visit_type: str = "AMB",
+    nacin_prijema: str = "6",
+    vrsta_posjete: str = "1",
+    tip_posjete: str = "1",
     reason: str | None = None,
     *,
     db: AsyncSession | None = None,
@@ -845,24 +847,37 @@ async def dispatch_create_visit(
 ) -> dict:
     if _is_mock():
         return await cezih_mock_service.mock_create_visit(
-            patient_mbo, visit_type, reason, db=db, user_id=user_id, tenant_id=tenant_id,
+            patient_mbo, nacin_prijema, reason, db=db, user_id=user_id, tenant_id=tenant_id,
         )
     _require_audit_params(db, user_id, tenant_id)
     try:
-        from app.services.cezih.message_builder import build_encounter_create, build_message_bundle
-        encounter = build_encounter_create(
-            patient_mbo=patient_mbo, visit_type=visit_type, reason=reason,
-            practitioner_id=practitioner_id or "", org_code=org_code or "",
+        from app.services.cezih.message_builder import (
+            build_encounter_create, build_message_bundle, ENCOUNTER_EVENT_PROFILE_MAP,
+            PROFILE_ENCOUNTER, PROFILE_ENCOUNTER_MSG_HEADER,
         )
+        encounter = build_encounter_create(
+            patient_mbo=patient_mbo, nacin_prijema=nacin_prijema,
+            vrsta_posjete=vrsta_posjete, tip_posjete=tip_posjete,
+            reason=reason, practitioner_id=practitioner_id or "", org_code=org_code or "",
+        )
+        bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get("1.1")
+        profile_urls = {
+            "bundle": bundle_profile,
+            "header": PROFILE_ENCOUNTER_MSG_HEADER,
+            "resource": PROFILE_ENCOUNTER,
+        } if bundle_profile else None
         bundle = await build_message_bundle(
             "1.1", encounter, sender_org_code=org_code, author_practitioner_id=practitioner_id,
-            source_oid=source_oid,
+            source_oid=source_oid, profile_urls=profile_urls,
         )
         result = await http_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     result["mock"] = False
-    await _write_audit(db, tenant_id, user_id, action="visit_create", details={"mbo": patient_mbo, "mode": "real"})
+    await _write_audit(
+        db, tenant_id, user_id, action="visit_create",
+        details={"mbo": patient_mbo, "nacin_prijema": nacin_prijema, "mode": "real"},
+    )
     return result
 
 

@@ -762,7 +762,9 @@ export interface VisitResponse {
 export interface CreateVisitRequest {
   patient_id: string;
   patient_mbo: string;
-  visit_type?: string;
+  nacin_prijema?: string;   // 1-10, default: "6" (Ostalo)
+  vrsta_posjete?: string;   // 1-3, default: "1" (Pacijent prisutan)
+  tip_posjete?: string;     // 1-3, default: "1" (Posjeta LOM)
   reason?: string;
 }
 

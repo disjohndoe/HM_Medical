@@ -67,10 +67,12 @@ async def build_message_bundle(
     sender_org_code: str | None = None,
     author_practitioner_id: str | None = None,
     source_oid: str | None = None,
+    profile_urls: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build a FHIR Bundle type='message' with MessageHeader and resource.
 
     Does NOT add signature — call add_signature() separately for real mode.
+    profile_urls: optional {"bundle": url, "header": url, "resource": url} for meta.profile.
     """
     if not sender_org_code:
         raise CezihError(
@@ -117,6 +119,15 @@ async def build_message_bundle(
             },
         ],
     }
+
+    # Inject meta.profile if profile URLs are provided
+    if profile_urls:
+        if profile_urls.get("bundle"):
+            bundle["meta"] = {"profile": [profile_urls["bundle"]]}
+        if profile_urls.get("header"):
+            message_header["meta"] = {"profile": [profile_urls["header"]]}
+        if profile_urls.get("resource"):
+            resource["meta"] = {"profile": [profile_urls["resource"]]}
 
     return bundle
 
@@ -167,32 +178,91 @@ async def add_signature(
 # --- Encounter Resource Builders (TC12-14) ---
 
 
-CS_VISIT_TYPE = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
+# CEZIH Croatian CodeSystems (NOT standard HL7 v3-ActCode)
+CS_NACIN_PRIJEMA = "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema"
+CS_VRSTA_POSJETE = "http://fhir.cezih.hr/specifikacije/CodeSystem/vrsta-posjete"
+CS_TIP_POSJETE = "http://fhir.cezih.hr/specifikacije/CodeSystem/hr-tip-posjete"
 
-VISIT_TYPE_MAP = {
-    "AMB": "ambulatory",
-    "EMER": "emergency",
-    "HH": "home health",
+NACIN_PRIJEMA_MAP = {
+    "1": "Hitni prijem",
+    "2": "Uputnica PZZ",
+    "3": "Premještaj iz druge ustanove",
+    "4": "Nastavno liječenje",
+    "5": "Premještaj unutar ustanove",
+    "6": "Ostalo",
+    "7": "Poziv na raniji termin",
+    "8": "Telemedicina",
+    "9": "Interna uputnica",
+    "10": "Program+",
+}
+
+VRSTA_POSJETE_MAP = {
+    "1": "Pacijent prisutan",
+    "2": "Pacijent udaljeno prisutan",
+    "3": "Pacijent nije prisutan",
+}
+
+TIP_POSJETE_MAP = {
+    "1": "Posjeta LOM",
+    "2": "Posjeta SKZZ",
+    "3": "Hospitalizacija",
+}
+
+# FHIR Profile URLs for Encounter messages (meta.profile)
+_PROFILE_BASE = "http://fhir.cezih.hr/specifikacije/StructureDefinition"
+PROFILE_ENCOUNTER = f"{_PROFILE_BASE}/hr-encounter"
+PROFILE_ENCOUNTER_MSG_HEADER = f"{_PROFILE_BASE}/hr-encounter-management-message-header"
+
+ENCOUNTER_EVENT_PROFILE_MAP = {
+    "1.1": f"{_PROFILE_BASE}/hr-create-encounter-message",
+    "1.2": f"{_PROFILE_BASE}/hr-update-encounter-message",
+    "1.3": f"{_PROFILE_BASE}/hr-close-encounter-message",
+    "1.4": f"{_PROFILE_BASE}/hr-cancel-encounter-message",
+    "1.5": f"{_PROFILE_BASE}/hr-reopen-encounter-message",
 }
 
 
 def build_encounter_create(
     *,
     patient_mbo: str,
-    visit_type: str = "AMB",
+    nacin_prijema: str = "6",
+    vrsta_posjete: str = "1",
+    tip_posjete: str = "1",
     reason: str | None = None,
     practitioner_id: str = "",
     org_code: str = "",
 ) -> dict[str, Any]:
-    """Build FHIR Encounter resource for visit creation (code 1.1)."""
+    """Build FHIR Encounter resource for visit creation (event code 1.1).
+
+    Uses CEZIH Croatian CodeSystems:
+      - Encounter.class: nacin-prijema (method of admission)
+      - Encounter.type[VrstaPosjete]: vrsta-posjete (patient presence)
+      - Encounter.type[TipPosjete]: hr-tip-posjete (visit context)
+    """
     encounter: dict[str, Any] = {
         "resourceType": "Encounter",
         "status": "in-progress",
         "class": {
-            "system": CS_VISIT_TYPE,
-            "code": visit_type,
-            "display": VISIT_TYPE_MAP.get(visit_type, visit_type),
+            "system": CS_NACIN_PRIJEMA,
+            "code": nacin_prijema,
+            "display": NACIN_PRIJEMA_MAP.get(nacin_prijema, nacin_prijema),
         },
+        "type": [
+            {
+                "coding": [{
+                    "system": CS_VRSTA_POSJETE,
+                    "code": vrsta_posjete,
+                    "display": VRSTA_POSJETE_MAP.get(vrsta_posjete, vrsta_posjete),
+                }],
+            },
+            {
+                "coding": [{
+                    "system": CS_TIP_POSJETE,
+                    "code": tip_posjete,
+                    "display": TIP_POSJETE_MAP.get(tip_posjete, tip_posjete),
+                }],
+            },
+        ],
         "subject": patient_ref(patient_mbo),
         "period": {"start": _now_iso()},
     }
