@@ -337,6 +337,42 @@ export interface PreporucenaTerapijaEntry {
   napomena: string;
 }
 
+// --- Bilješke (Clinical Notes) ---
+
+export type BiljeskaKategorija = "opca" | "anamneza" | "dijagnoza" | "terapija" | "napredak" | "ostalo";
+
+export interface Biljeska {
+  id: string;
+  patient_id: string;
+  doktor_id: string;
+  datum: string;
+  naslov: string;
+  sadrzaj: string;
+  kategorija: BiljeskaKategorija;
+  is_pinned: boolean;
+  doktor_ime: string | null;
+  doktor_prezime: string | null;
+  tenant_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BiljeskaCreate {
+  patient_id: string;
+  datum: string;
+  naslov: string;
+  sadrzaj: string;
+  kategorija?: string;
+}
+
+export interface BiljeskaUpdate {
+  datum?: string | null;
+  naslov?: string | null;
+  sadrzaj?: string | null;
+  kategorija?: string | null;
+  is_pinned?: boolean | null;
+}
+
 // --- Dashboard ---
 
 export interface DashboardStats {
@@ -697,6 +733,38 @@ export interface CaseActionResponse {
 // ============================================================
 // TC19-22: Document Operations
 // ============================================================
+
+// --- TC12-14: Visit Management ---
+
+export interface VisitItem {
+  mock: boolean;
+  visit_id: string;
+  patient_mbo: string;
+  status: string;
+  visit_type: string;
+  reason: string | null;
+  period_start: string | null;
+  period_end: string | null;
+}
+
+export interface VisitsListResponse {
+  mock: boolean;
+  visits: VisitItem[];
+}
+
+export interface VisitResponse {
+  mock: boolean;
+  success: boolean;
+  visit_id: string;
+  status: string;
+}
+
+export interface CreateVisitRequest {
+  patient_id: string;
+  patient_mbo: string;
+  visit_type?: string;
+  reason?: string;
+}
 
 export interface DocumentSearchItem {
   mock: boolean;

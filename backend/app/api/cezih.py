@@ -25,6 +25,7 @@ from app.schemas.cezih import (
     CezihStatusResponse,
     CodeSystemItem,
     CreateCaseRequest,
+    CreateVisitRequest,
     DocumentActionResponse,
     DocumentSearchItem,
     ENalazRequest,
@@ -48,7 +49,11 @@ from app.schemas.cezih import (
     ReplaceDocumentRequest,
     UpdateCaseDataRequest,
     UpdateCaseStatusRequest,
+    UpdateVisitRequest,
     ValueSetExpandResponse,
+    VisitActionRequest,
+    VisitResponse,
+    VisitsListResponse,
 )
 from app.services.cezih import dispatcher as cezih
 
@@ -648,4 +653,74 @@ async def retrieve_document(
         content=content,
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=cezih-{reference_id}.pdf"},
+    )
+
+
+# ============================================================
+# TC12-14: Visit Management
+# ============================================================
+
+
+@router.get("/visits", response_model=VisitsListResponse)
+async def list_visits(
+    request: Request,
+    mbo: str = Query(...),
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    await check_cezih_access(db, current_user.tenant_id)
+    visits = await cezih.dispatch_list_visits(
+        mbo, db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
+    )
+    return VisitsListResponse(visits=visits)  # type: ignore[arg-type]
+
+
+@router.post("/visits", response_model=VisitResponse)
+async def create_visit(
+    request: Request,
+    data: CreateVisitRequest,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    await check_cezih_access(db, current_user.tenant_id)
+    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    return await cezih.dispatch_create_visit(
+        data.patient_mbo, data.visit_type, data.reason,
+        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
+        practitioner_id=str(current_user.id),
+        org_code=org_code, source_oid=source_oid,
+    )
+
+
+@router.patch("/visits/{visit_id}", response_model=VisitResponse)
+async def update_visit(
+    request: Request,
+    visit_id: str,
+    data: UpdateVisitRequest,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    await check_cezih_access(db, current_user.tenant_id)
+    return await cezih.dispatch_update_visit(
+        visit_id, data.reason,
+        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
+    )
+
+
+@router.post("/visits/{visit_id}/action", response_model=VisitResponse)
+async def visit_action(
+    request: Request,
+    visit_id: str,
+    data: VisitActionRequest,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    await check_cezih_access(db, current_user.tenant_id)
+    return await cezih.dispatch_visit_action(
+        visit_id, data.action,
+        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
     )

@@ -22,8 +22,11 @@ import type {
   OidLookupResponse,
   OrganizationItem,
   PatientCezihSummary,
+  CreateVisitRequest,
   PractitionerItem,
   ValueSetExpandResponse,
+  VisitResponse,
+  VisitsListResponse,
 } from "@/lib/types"
 
 export function useCezihStatus() {
@@ -261,6 +264,57 @@ export function useRegisterForeigner() {
     mutationFn: (data: ForeignerRegistrationRequest) =>
       api.post<ForeignerRegistrationResponse>("/cezih/patients/foreigner", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cezih", "activity"] }),
+  })
+}
+
+
+// ============================================================
+// TC12-14: Visit Management
+// ============================================================
+
+export function useListVisits(mbo: string) {
+  return useQuery({
+    queryKey: ["cezih", "visits", mbo],
+    queryFn: () =>
+      api.get<VisitsListResponse>(`/cezih/visits?mbo=${encodeURIComponent(mbo)}`),
+    enabled: !!mbo,
+  })
+}
+
+export function useCreateVisit() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: CreateVisitRequest) =>
+      api.post<VisitResponse>("/cezih/visits", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
+    },
+  })
+}
+
+export function useUpdateVisit() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ visitId, reason }: { visitId: string; reason?: string }) =>
+      api.patch<VisitResponse>(`/cezih/visits/${visitId}`, { reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+    },
+  })
+}
+
+export function useVisitAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ visitId, action }: { visitId: string; action: string }) =>
+      api.post<VisitResponse>(`/cezih/visits/${visitId}/action`, { action }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+    },
   })
 }
 

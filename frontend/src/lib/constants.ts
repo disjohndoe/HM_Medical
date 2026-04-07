@@ -94,19 +94,17 @@ export const RECORD_TIP_OPTIONS = Object.entries(RECORD_TIP).map(
 );
 
 // Types that must be sent to CEZIH when created
+// TODO: Confirm exact types during certification (2026-04-21).
+// Only verified types kept — maps to CEZIH HRTipDokumenta code 004.
 export const CEZIH_MANDATORY_TYPES = new Set([
-  "ambulantno_izvjesce",
   "specijalisticki_nalaz",
-  "otpusno_pismo",
+  "nalaz",
 ]);
 
 // Types eligible for CEZIH submission
 export const CEZIH_ELIGIBLE_TYPES = new Set([
-  "ambulantno_izvjesce",
   "specijalisticki_nalaz",
-  "otpusno_pismo",
   "nalaz",
-  "epikriza",
 ]);
 
 export const RECORD_TIP_COLORS: Record<string, string> = {
@@ -119,6 +117,30 @@ export const RECORD_TIP_COLORS: Record<string, string> = {
   preporuka: "bg-green-100 text-green-800",
   epikriza: "bg-amber-100 text-amber-800",
   anamneza: "bg-cyan-100 text-cyan-800",
+};
+
+// --- Bilješke (Clinical Notes) ---
+
+export const BILJESKA_KATEGORIJA: Record<string, string> = {
+  opca: "Općenito",
+  anamneza: "Anamneza",
+  dijagnoza: "Dijagnoza",
+  terapija: "Terapija",
+  napredak: "Napredak",
+  ostalo: "Ostalo",
+};
+
+export const BILJESKA_KATEGORIJA_OPTIONS = Object.entries(BILJESKA_KATEGORIJA).map(
+  ([value, label]) => ({ value, label })
+);
+
+export const BILJESKA_KATEGORIJA_COLORS: Record<string, string> = {
+  opca: "bg-gray-100 text-gray-800",
+  anamneza: "bg-cyan-100 text-cyan-800",
+  dijagnoza: "bg-red-100 text-red-800",
+  terapija: "bg-green-100 text-green-800",
+  napredak: "bg-blue-100 text-blue-800",
+  ostalo: "bg-purple-100 text-purple-800",
 };
 
 // --- User Roles ---
@@ -208,7 +230,14 @@ export const CEZIH_ACTION_LABELS: Record<string, string> = {
   case_resolve: "Zatvaranje slučaja",
   case_reopen: "Ponovno otvaranje slučaja",
   case_delete: "Brisanje slučaja",
+  visit_create: "Kreiranje posjete",
+  visit_update: "Ažuriranje posjete",
+  visit_close: "Zatvaranje posjete",
+  visit_reopen: "Ponovno otvaranje posjete",
+  visit_storno: "Storno posjete",
+  visit_list: "Dohvat posjeta",
   foreigner_register: "Registracija stranca",
+  foreigner_registration: "Registracija stranca",
   oid_lookup: "OID pretraga",
   code_system_query: "Pretraga šifrarnika",
   value_set_expand: "Pretraga skupova pojmova",
@@ -240,7 +269,14 @@ export const CEZIH_ACTION_COLORS: Record<string, string> = {
   case_resolve: "bg-indigo-100 text-indigo-800 border-indigo-200",
   case_reopen: "bg-indigo-100 text-indigo-800 border-indigo-200",
   case_delete: "bg-red-100 text-red-800 border-red-200",
+  visit_create: "bg-teal-100 text-teal-800 border-teal-200",
+  visit_update: "bg-teal-100 text-teal-800 border-teal-200",
+  visit_close: "bg-teal-100 text-teal-800 border-teal-200",
+  visit_reopen: "bg-teal-100 text-teal-800 border-teal-200",
+  visit_storno: "bg-red-100 text-red-800 border-red-200",
+  visit_list: "bg-teal-100 text-teal-800 border-teal-200",
   foreigner_register: "bg-amber-100 text-amber-800 border-amber-200",
+  foreigner_registration: "bg-amber-100 text-amber-800 border-amber-200",
   document_cancel: "bg-red-100 text-red-800 border-red-200",
   document_replace: "bg-amber-100 text-amber-800 border-amber-200",
   document_retrieve: "bg-blue-100 text-blue-800 border-blue-200",

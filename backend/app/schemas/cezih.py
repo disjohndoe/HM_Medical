@@ -234,6 +234,49 @@ class ForeignerRegistrationResponse(BaseModel):
 
 
 # ============================================================
+# TC12-14: Visit Management
+# ============================================================
+
+
+class CreateVisitRequest(BaseModel):
+    patient_id: UUID
+    patient_mbo: str
+    visit_type: str = "AMB"  # AMB=ambulantni, EMER=hitni, HH=kućni
+    reason: str | None = None
+
+
+class UpdateVisitRequest(BaseModel):
+    reason: str | None = None
+
+
+class VisitActionRequest(BaseModel):
+    action: str  # close, reopen, storno
+
+
+class VisitResponse(BaseModel):
+    mock: bool = True
+    success: bool
+    visit_id: str
+    status: str  # planned, in-progress, finished, cancelled, entered-in-error
+
+
+class VisitItem(BaseModel):
+    mock: bool = True
+    visit_id: str
+    patient_mbo: str
+    status: str
+    visit_type: str
+    reason: str | None = None
+    period_start: str | None = None
+    period_end: str | None = None
+
+
+class VisitsListResponse(BaseModel):
+    mock: bool = True
+    visits: list[VisitItem]
+
+
+# ============================================================
 # TC15-17: Case Management
 # ============================================================
 
