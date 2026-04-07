@@ -34,9 +34,10 @@ interface SendNalazDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   patientId: string
+  patientMbo?: string | null
 }
 
-export function SendNalazDialog({ open, onOpenChange, patientId }: SendNalazDialogProps) {
+export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: SendNalazDialogProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
   const [progress, setProgress] = useState({ current: 0, total: 0 })
@@ -224,16 +225,19 @@ export function SendNalazDialog({ open, onOpenChange, patientId }: SendNalazDial
         <DialogFooter>
           <Button
             onClick={handleSend}
-            disabled={selectedIds.size === 0 || sending}
+            disabled={selectedIds.size === 0 || sending || !patientMbo}
+            title={!patientMbo ? "Pacijent nema MBO — potreban za CEZIH" : undefined}
           >
             {sending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Send className="mr-2 h-4 w-4" />
             )}
-            {sending
-              ? `Slanje ${progress.current}/${progress.total}...`
-              : `Pošalji${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}
+            {!patientMbo
+              ? "MBO nije dostupan"
+              : sending
+                ? `Slanje ${progress.current}/${progress.total}...`
+                : `Pošalji${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}
           </Button>
         </DialogFooter>
       </DialogContent>

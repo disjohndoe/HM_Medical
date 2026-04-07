@@ -10,6 +10,7 @@ import { CezihStatusCard } from "@/components/cezih/cezih-status"
 import { InsuranceCheck } from "@/components/cezih/insurance-check"
 import { CezihActivityLog } from "@/components/cezih/activity-log"
 import { ForeignerRegistration } from "@/components/cezih/foreigner-registration"
+import { RegistryTools } from "@/components/cezih/registry-tools"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { useCezihStatus as useSettingsCezihStatus, useGenerateAgentSecret } from "@/lib/hooks/use-settings"
 
@@ -60,14 +61,19 @@ export default function CezihPage() {
       </div>
 
       <Tabs defaultValue="aktivnost" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="stranci">Stranci</TabsTrigger>
+          <TabsTrigger value="registri">Registri</TabsTrigger>
           <TabsTrigger value="aktivnost">Aktivnost</TabsTrigger>
           <TabsTrigger value="postavke">Postavke</TabsTrigger>
         </TabsList>
 
         <TabsContent value="stranci">
           <ForeignerRegistration />
+        </TabsContent>
+
+        <TabsContent value="registri">
+          <RegistryTools />
         </TabsContent>
 
         <TabsContent value="aktivnost">

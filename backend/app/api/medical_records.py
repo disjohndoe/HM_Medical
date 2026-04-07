@@ -224,6 +224,9 @@ async def update_medical_record(
         action="medical_record_update",
         resource_type="medical_record",
         resource_id=record_id,
-        details={"patient_id": str(updated["patient_id"]), "fields_updated": list(data.model_dump(exclude_unset=True).keys())},
+        details={
+            "patient_id": str(updated["patient_id"]),
+            "fields_updated": list(data.model_dump(exclude_unset=True).keys()),
+        },
     )
     return updated

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { PencilIcon, Upload, FileText, Send, PlusIcon, Loader2 } from "lucide-react"
+import { PencilIcon, Upload, FileText, Send, PlusIcon, Loader2, Download } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { PerformedList } from "@/components/procedures/performed-list"
 import { RecordList } from "@/components/medical-records/record-list"
+import { BiljeskaList } from "@/components/biljeske/biljeska-list"
 import { DocumentList } from "@/components/documents/document-list"
 import { UploadDialog } from "@/components/documents/upload-dialog"
 import { PatientCezihTab } from "@/components/cezih/patient-cezih-tab"
@@ -22,8 +23,10 @@ import { SendNalazDialog } from "@/components/cezih/send-nalaz-dialog"
 import { RecordForm } from "@/components/medical-records/record-form"
 import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { usePatient } from "@/lib/hooks/use-patients"
+import { useExportPatientData } from "@/lib/hooks/use-patient-rights"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
+import { toast } from "sonner"
 
 export default function PacijentDetailPage() {
   const params = useParams()
@@ -36,6 +39,7 @@ export default function PacijentDetailPage() {
   const [newRecordOpen, setNewRecordOpen] = useState(false)
   const { canViewMedicalRecords, canViewCezih, canViewDocuments, canUploadDocuments, canEditMedicalRecord, canPerformCezihOps } = usePermissions()
   const insuranceCheck = useInsuranceCheck()
+  const exportMutation = useExportPatientData()
 
   const handleFetchEkarton = () => {
     if (ekartonState === "loaded") {
@@ -79,6 +83,28 @@ export default function PacijentDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader title={`${patient.ime} ${patient.prezime}`}>
+        {(canEditMedicalRecord || canPerformCezihOps) && (
+          <Button
+            variant="outline"
+            disabled={exportMutation.isPending}
+            onClick={() =>
+              exportMutation.mutate(
+                { patientId: id },
+                {
+                  onSuccess: () => toast.success("Podaci uspješno izvezeni"),
+                  onError: (err) => toast.error(err.message),
+                },
+              )
+            }
+          >
+            {exportMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Izvoz podataka
+          </Button>
+        )}
         {canEditMedicalRecord && (
           <Button variant="outline" nativeButton={false} render={<Link href={`/pacijenti/${patient.id}/uredi`} />}>
             <PencilIcon className="mr-2 h-4 w-4" />
@@ -143,6 +169,7 @@ export default function PacijentDetailPage() {
           <TabsTrigger value="pregled">Pregled</TabsTrigger>
           <TabsTrigger value="postupci">Postupci</TabsTrigger>
           {canViewMedicalRecords && <TabsTrigger value="nalazi">Nalazi</TabsTrigger>}
+          {canViewMedicalRecords && <TabsTrigger value="biljeske">Bilješke</TabsTrigger>}
           {canPerformCezihOps && <TabsTrigger value="recepti">Recepti</TabsTrigger>}
           {canViewDocuments && <TabsTrigger value="dokumenti">Dokumenti</TabsTrigger>}
           {canViewCezih && <TabsTrigger value="cezih">CEZIH</TabsTrigger>}
@@ -263,6 +290,12 @@ export default function PacijentDetailPage() {
           </TabsContent>
         )}
 
+        {canViewMedicalRecords && (
+          <TabsContent value="biljeske">
+            <BiljeskaList patientId={id} />
+          </TabsContent>
+        )}
+
         {canPerformCezihOps && (
           <TabsContent value="recepti">
             <PrescriptionList patientId={id} />
@@ -305,6 +338,7 @@ export default function PacijentDetailPage() {
         open={sendNalazOpen}
         onOpenChange={setSendNalazOpen}
         patientId={id}
+        patientMbo={patient.mbo}
       />
     </div>
   )

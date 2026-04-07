@@ -25,19 +25,21 @@ RECORD_TIP_ALLOWED: set[str] = {
 }
 
 # Types that MUST be sent to CEZIH when created
+# TODO: Confirm exact types during certification (2026-04-21).
+# For now, only verified types: specijalisticki_nalaz maps to CEZIH code 004
+# "Opći nalaz na internu uputnicu" in HRTipDokumenta CodeSystem.
 CEZIH_MANDATORY_TYPES: set[str] = {
-    "ambulantno_izvjesce",
     "specijalisticki_nalaz",
-    "otpusno_pismo",
+    "nalaz",
 }
 
-# Types eligible for CEZIH submission (mandatory + optional sendable)
+# Types eligible for CEZIH submission
+# Only types confirmed in official HRTipDokumenta CodeSystem.
+# Other types (ambulantno_izvjesce, otpusno_pismo, epikriza) moved to
+# bilješke or deactivated until certification confirms them.
 CEZIH_ELIGIBLE_TYPES: set[str] = {
-    "ambulantno_izvjesce",
     "specijalisticki_nalaz",
-    "otpusno_pismo",
     "nalaz",
-    "epikriza",
 }
 
 
@@ -98,7 +100,10 @@ CEZIH_DOCUMENT_TYPE_MAP: dict[str, dict[str, str]] = {
 }
 
 # FHIR system URI for CEZIH document types
-CEZIH_DOCUMENT_TYPE_SYSTEM = "http://fhir.cezih.hr/specifikacije/vrste-dokumenata"
+# Official CodeSystem: HRTipDokumenta (from cezih.osnova FHIR package)
+# TODO: LOINC codes below are placeholders. Real codes are numeric (001-010)
+# served dynamically via ITI-96. Update after VPN access / certification.
+CEZIH_DOCUMENT_TYPE_SYSTEM = "http://fhir.cezih.hr/specifikacije/CodeSystem/document-type"
 
 
 def get_cezih_document_coding(tip: str) -> dict[str, str]:

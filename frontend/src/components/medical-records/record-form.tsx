@@ -1,8 +1,8 @@
 "use client"
-/* eslint-disable react-hooks/incompatible-library -- react-hook-form watch() is intentionally used */
+/* eslint-disable react-hooks/refs -- react-hook-form handleSubmit is a standard pattern that accesses refs internally */
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { toast } from "sonner"
@@ -64,15 +64,12 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
     reset,
+    control,
     formState: { errors },
   } = useForm<RecordFormData>({
     resolver: standardSchemaResolver(recordSchema),
   })
-
-  const tipValue = watch("tip")
 
   // Sync open prop with native <dialog>
   useEffect(() => {
@@ -247,27 +244,24 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
             </div>
             <div className="space-y-2">
               <Label>Tip *</Label>
-              <select
-                value={tipValue ?? ""}
-                onChange={(e) => setValue("tip", e.target.value)}
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm appearance-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-              >
-                <option value="" disabled>Odaberite tip</option>
-                <optgroup label="CEZIH obavezni">
-                  {(recordTypes ?? []).filter((t) => t.is_cezih_mandatory).map((t) => (
-                    <option key={t.slug} value={t.slug}>
-                      {t.label}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Ostali tipovi">
-                  {(recordTypes ?? []).filter((t) => !t.is_cezih_mandatory).map((t) => (
-                    <option key={t.slug} value={t.slug}>
-                      {t.label}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+              <Controller
+                name="tip"
+                control={control}
+                render={({ field }) => (
+                  <select
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm appearance-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                  >
+                    <option value="" disabled>Odaberite tip</option>
+                    {(recordTypes ?? []).filter((t) => t.is_cezih_eligible).map((t) => (
+                      <option key={t.slug} value={t.slug}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              />
               {errors.tip && (
                 <p className="text-sm text-destructive">{errors.tip.message}</p>
               )}

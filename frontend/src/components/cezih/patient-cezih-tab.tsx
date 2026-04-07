@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { MockBadge } from "@/components/cezih/mock-badge"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { CaseManagement } from "@/components/cezih/case-management"
+import { VisitManagement } from "@/components/cezih/visit-management"
 import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { OSIGURANJE_STATUS } from "@/lib/constants"
@@ -238,7 +239,12 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
         </CardContent>
       </Card>
 
-      {/* Case Management */}
+      {/* Visit Management (TC12-14) */}
+      {patientMbo && (
+        <VisitManagement patientId={patientId} patientMbo={patientMbo} />
+      )}
+
+      {/* Case Management (TC15-17) */}
       {patientMbo && (
         <CaseManagement patientId={patientId} patientMbo={patientMbo} />
       )}

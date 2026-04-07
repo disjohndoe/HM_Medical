@@ -41,12 +41,13 @@ export function RecordList({ patientId }: RecordListProps) {
   const [editRecord, setEditRecord] = useState<MedicalRecord | null>(null)
 
   const { canCreateMedicalRecord, canEditMedicalRecord } = usePermissions()
-  const { recordTypes, tipLabelMap, tipColorMap, isCezihMandatory } = useRecordTypeMaps()
+  const { recordTypes, tipLabelMap, tipColorMap, isCezihMandatory, isCezihEligible } = useRecordTypeMaps()
+  const cezihRecordTypes = recordTypes.filter((rt) => isCezihEligible.has(rt.slug))
   const { data, isLoading } = useMedicalRecords(
     patientId,
     tipFilter || undefined,
   )
-  const records = data?.items ?? []
+  const records = (data?.items ?? []).filter((r) => isCezihEligible.has(r.tip))
   const viewRecord = viewRecordId ? records.find((r) => r.id === viewRecordId) ?? null : null
 
   function handleEdit(record: MedicalRecord) {
@@ -68,7 +69,7 @@ export function RecordList({ patientId }: RecordListProps) {
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {recordTypes.map((rt) => (
+            {cezihRecordTypes.map((rt) => (
               <SelectItem key={rt.slug} value={rt.slug}>
                 {rt.label}
               </SelectItem>
@@ -85,7 +86,7 @@ export function RecordList({ patientId }: RecordListProps) {
 
       {records.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-          <p className="text-muted-foreground">Nema medicinskih zapisa</p>
+          <p className="text-muted-foreground">Nema nalaza</p>
         </div>
       ) : (
         <Table>
