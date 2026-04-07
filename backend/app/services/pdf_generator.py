@@ -17,7 +17,7 @@ from datetime import date
 from io import BytesIO
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -802,7 +802,7 @@ class PredracunPDFGenerator:
             if i % 2 == 0:
                 style_commands.append(("BACKGROUND", (0, i), (-1, i), _COLOR_LIGHT_BG))
 
-        table.setStyle(TableStyle(style_commands))
+        table.setStyle(TableStyle(style_commands))  # type: ignore[arg-type]
         return [
             Paragraph("STAVKE", self.styles["section_header"]),
             table,
@@ -846,7 +846,7 @@ class PredracunPDFGenerator:
         datum = _format_date_hr(self.predracun.get("datum"))
         location_line = f"{grad}, {datum}" if grad else datum
 
-        elements = [
+        elements: list = [
             Paragraph(location_line, s["footer_location"]),
         ]
 

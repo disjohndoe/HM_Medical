@@ -4,9 +4,9 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.agent_ws import router as agent_ws_router
 from app.api.auth import limiter

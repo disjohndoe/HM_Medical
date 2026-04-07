@@ -148,6 +148,8 @@ async def revoke_other_sessions(
 ):
     """Revoke all sessions except the caller's current one."""
     refresh_token = data.refresh_token
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="refresh_token je obavezan")
     current_hash = hash_refresh_token(refresh_token)
     count = await auth_service.revoke_other_sessions(db, current_user.tenant_id, current_hash)
     return {"revoked_count": count}

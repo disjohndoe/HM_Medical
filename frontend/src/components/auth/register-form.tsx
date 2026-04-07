@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { useAuth } from "@/lib/auth";
@@ -43,8 +43,7 @@ export function RegisterForm() {
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<RegisterForm>({
     resolver: standardSchemaResolver(registerSchema),
@@ -85,18 +84,24 @@ export function RegisterForm() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="vrsta">Vrsta ustanove</Label>
-            <Select defaultValue="ordinacija" onValueChange={(v) => setValue("vrsta", v as RegisterForm["vrsta"])}>
-              <SelectTrigger>
-                <SelectValue>
-                  {{ ordinacija: "Privatna ordinacija", poliklinika: "Poliklinika", dom_zdravlja: "Dom zdravlja" }[watch("vrsta") ?? "ordinacija"]}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ordinacija">Privatna ordinacija</SelectItem>
-                <SelectItem value="poliklinika">Poliklinika</SelectItem>
-                <SelectItem value="dom_zdravlja">Dom zdravlja</SelectItem>
-              </SelectContent>
-            </Select>
+            <Controller
+              name="vrsta"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {{ ordinacija: "Privatna ordinacija", poliklinika: "Poliklinika", dom_zdravlja: "Dom zdravlja" }[field.value ?? "ordinacija"]}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ordinacija">Privatna ordinacija</SelectItem>
+                    <SelectItem value="poliklinika">Poliklinika</SelectItem>
+                    <SelectItem value="dom_zdravlja">Dom zdravlja</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

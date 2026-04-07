@@ -1,8 +1,7 @@
 "use client"
-/* eslint-disable react-hooks/incompatible-library -- react-hook-form watch() is intentionally used */
 
 import { useState, useEffect, useRef, useMemo } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { toast } from "sonner"
@@ -88,16 +87,13 @@ export function AppointmentForm({
     register,
     handleSubmit,
     setValue,
-    watch,
+    getValues,
     reset,
+    control,
     formState: { errors },
   } = useForm<AppointmentFormData>({
     resolver: standardSchemaResolver(appointmentSchema),
   })
-
-  const vrstaValue = watch("vrsta")
-  const statusValue = watch("status")
-  const trajanjeValue = watch("trajanje_minuta")
 
   useEffect(() => {
     if (open) {
@@ -106,6 +102,7 @@ export function AppointmentForm({
         const dateStr = formatLocalDate(dt)
         const timeStr = `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`
         if (appointment.patient_prezime && appointment.patient_ime) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing local search state with appointment data
           setPatientSearch(`${appointment.patient_prezime} ${appointment.patient_ime}`)
         }
         reset({
@@ -141,14 +138,14 @@ export function AppointmentForm({
   // Auto-select doctor when there's only one, or use the default
   useEffect(() => {
     if (!open) return
-    const currentDoktorId = watch("doktor_id")
+    const currentDoktorId = getValues("doktor_id")
     if (currentDoktorId && doctors.some((d) => d.id === currentDoktorId)) return
     if (defaultDoktorId && doctors.some((d) => d.id === defaultDoktorId)) {
       setValue("doktor_id", defaultDoktorId)
     } else if (doctors.length === 1) {
       setValue("doktor_id", doctors[0].id)
     }
-  }, [open, doctors, defaultDoktorId, setValue, watch])
+  }, [open, doctors, defaultDoktorId, setValue, getValues])
 
   async function onSubmit(data: AppointmentFormData) {
     try {
@@ -248,33 +245,39 @@ export function AppointmentForm({
           {/* Doktor */}
           <div className="space-y-2">
             <Label>Doktor *</Label>
-            <Select
-              value={watch("doktor_id") ?? ""}
-              onValueChange={(v) => setValue("doktor_id", v ?? "")}
-              disabled={doctors.length <= 1}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Odaberite doktora">
-                  {(() => {
-                    const id = watch("doktor_id")
-                    if (!id) return undefined
-                    const d = doctors.find((doc) => doc.id === id)
-                    if (d) return `${d.titula ? `${d.titula} ` : ""}${d.prezime} ${d.ime}`
-                    // Fallback: use denormalized name from appointment (e.g. deactivated doctor)
-                    if (appointment?.doktor_id === id && appointment.doktor_prezime)
-                      return `${appointment.doktor_prezime} ${appointment.doktor_ime ?? ""}`.trim()
-                    return "Učitavanje..."
-                  })()}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {doctors.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.titula ? `${d.titula} ` : ""}{d.prezime} {d.ime}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="doktor_id"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? ""}
+                  onValueChange={field.onChange}
+                  disabled={doctors.length <= 1}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Odaberite doktora">
+                      {(() => {
+                        const id = field.value
+                        if (!id) return undefined
+                        const d = doctors.find((doc) => doc.id === id)
+                        if (d) return `${d.titula ? `${d.titula} ` : ""}${d.prezime} ${d.ime}`
+                        // Fallback: use denormalized name from appointment (e.g. deactivated doctor)
+                        if (appointment?.doktor_id === id && appointment.doktor_prezime)
+                          return `${appointment.doktor_prezime} ${appointment.doktor_ime ?? ""}`.trim()
+                        return "Učitavanje..."
+                      })()}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {doctors.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.titula ? `${d.titula} ` : ""}{d.prezime} {d.ime}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {errors.doktor_id && (
               <p className="text-sm text-destructive">{errors.doktor_id.message}</p>
             )}
@@ -302,48 +305,60 @@ export function AppointmentForm({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Trajanje</Label>
-              <Select
-                value={String(trajanjeValue ?? 30)}
-                onValueChange={(v) => setValue("trajanje_minuta", Number(v ?? 30))}
-              >
-                <SelectTrigger>
-                  <SelectValue>
-                    {(() => {
-                      const m = trajanjeValue ?? 30
-                      if (m >= 60 && m % 60 === 0) return `${m / 60} h`
-                      if (m >= 60) return `${Math.floor(m / 60)} h ${m % 60} min`
-                      return `${m} min`
-                    })()}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {DURATION_OPTIONS.map((d) => (
-                    <SelectItem key={d} value={String(d)}>
-                      {d >= 60 && d % 60 === 0 ? `${d / 60} h` : d >= 60 ? `${Math.floor(d / 60)} h ${d % 60} min` : `${d} min`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                name="trajanje_minuta"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={String(field.value ?? 30)}
+                    onValueChange={(v) => field.onChange(Number(v ?? 30))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {(() => {
+                          const m = field.value ?? 30
+                          if (m >= 60 && m % 60 === 0) return `${m / 60} h`
+                          if (m >= 60) return `${Math.floor(m / 60)} h ${m % 60} min`
+                          return `${m} min`
+                        })()}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DURATION_OPTIONS.map((d) => (
+                        <SelectItem key={d} value={String(d)}>
+                          {d >= 60 && d % 60 === 0 ? `${d / 60} h` : d >= 60 ? `${Math.floor(d / 60)} h ${d % 60} min` : `${d} min`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
             <div className="space-y-2">
               <Label>Vrsta</Label>
-              <Select
-                value={vrstaValue ?? "pregled"}
-                onValueChange={(v) => setValue("vrsta", v ?? "pregled")}
-              >
-                <SelectTrigger>
-                  <SelectValue>
-                    {APPOINTMENT_VRSTA[vrstaValue ?? "pregled"] ?? vrstaValue}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(APPOINTMENT_VRSTA).map(([key, label]) => (
-                    <SelectItem key={key} value={key}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                name="vrsta"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? "pregled"}
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {APPOINTMENT_VRSTA[field.value ?? "pregled"] ?? field.value}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(APPOINTMENT_VRSTA).map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
           </div>
 
@@ -351,23 +366,29 @@ export function AppointmentForm({
           {isEdit && (
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select
-                value={statusValue ?? appointment?.status}
-                onValueChange={(v) => setValue("status", v ?? undefined)}
-              >
-                <SelectTrigger>
-                  <SelectValue>
-                    {APPOINTMENT_STATUS[(statusValue ?? appointment?.status) as keyof typeof APPOINTMENT_STATUS]}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(APPOINTMENT_STATUS).map(([key, label]) => (
-                    <SelectItem key={key} value={key}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                name="status"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? appointment?.status}
+                    onValueChange={(v) => field.onChange(v ?? undefined)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {APPOINTMENT_STATUS[(field.value ?? appointment?.status) as keyof typeof APPOINTMENT_STATUS]}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(APPOINTMENT_STATUS).map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
           )}
 

@@ -134,7 +134,7 @@ def _validate_cezih_config(s: Settings) -> None:
 
 @lru_cache
 def get_settings() -> Settings:
-    s = Settings()
+    s = Settings()  # type: ignore[call-arg]
     if s.is_production:
         _validate_jwt_secret(s.JWT_SECRET_KEY)
         _validate_cezih_config(s)

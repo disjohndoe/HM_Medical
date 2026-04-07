@@ -19,7 +19,10 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
             if settings.is_production:
                 logger.error("Unhandled exception on %s %s", request.method, request.url.path)
             else:
-                logger.error("Unhandled exception on %s %s:\n%s", request.method, request.url.path, traceback.format_exc())
+                logger.error(
+                    "Unhandled exception on %s %s:\n%s",
+                    request.method, request.url.path, traceback.format_exc(),
+                )
             return JSONResponse(
                 status_code=500,
                 content={"detail": "Dogodila se neočekivana greška."},

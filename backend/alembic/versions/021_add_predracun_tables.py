@@ -4,10 +4,10 @@ Revision ID: 021
 Revises: 020
 Create Date: 2026-04-05
 """
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
+from alembic import op
 
 revision = "021_add_predracun_tables"
 down_revision = "020_add_account_lockout_fields"
@@ -43,8 +43,18 @@ def upgrade() -> None:
     op.create_table(
         "predracun_stavke",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("predracun_id", UUID(as_uuid=True), sa.ForeignKey("predracuni.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("performed_procedure_id", UUID(as_uuid=True), sa.ForeignKey("performed_procedures.id"), nullable=True),
+        sa.Column(
+            "predracun_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("predracuni.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "performed_procedure_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("performed_procedures.id"),
+            nullable=True,
+        ),
         sa.Column("sifra", sa.String(20), nullable=False),
         sa.Column("naziv", sa.String(255), nullable=False),
         sa.Column("datum", sa.Date(), nullable=False),

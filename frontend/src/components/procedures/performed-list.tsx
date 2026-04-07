@@ -1,8 +1,7 @@
 "use client"
-/* eslint-disable react-hooks/incompatible-library -- react-hook-form watch() is intentionally used */
 
 import { useState, useEffect, useMemo } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, Controller, useWatch } from "react-hook-form"
 import { z } from "zod"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { toast } from "sonner"
@@ -45,7 +44,7 @@ import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { PredracunDialog } from "@/components/procedures/predracun-dialog"
 import { formatDateHR, formatCurrencyEUR } from "@/lib/utils"
-import type { PerformedProcedure, PerformedProcedureCreate } from "@/lib/types"
+import type { PerformedProcedureCreate } from "@/lib/types"
 
 const performedSchema = z.object({
   procedure_id: z.string().min(1, "Postupak je obavezan"),
@@ -77,16 +76,14 @@ export function PerformedList({ patientId }: PerformedListProps) {
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
     reset,
+    control,
     formState: { errors },
   } = useForm<PerformedFormData>({
     resolver: standardSchemaResolver(performedSchema),
   })
 
-  const procedureId = watch("procedure_id")
-
+  const procedureId = useWatch({ control, name: "procedure_id" })
   const selectedProcedure = procedures.find((p) => p.id === procedureId)
 
   useEffect(() => {
@@ -119,7 +116,7 @@ export function PerformedList({ patientId }: PerformedListProps) {
     }
   }
 
-  const items = data?.items ?? []
+  const items = useMemo(() => data?.items ?? [], [data?.items])
 
   const selectedProcedures = useMemo(
     () => items.filter((p) => selectedIds.has(p.id)),
@@ -235,25 +232,31 @@ export function PerformedList({ patientId }: PerformedListProps) {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label>Postupak *</Label>
-              <Select
-                value={procedureId ?? ""}
-                onValueChange={(v) => setValue("procedure_id", v ?? "")}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Odaberite postupak">
-                    {selectedProcedure
-                      ? `[${selectedProcedure.sifra}] ${selectedProcedure.naziv} — ${formatCurrencyEUR(selectedProcedure.cijena_cents / 100)}`
-                      : undefined}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="min-w-[400px]">
-                  {procedures.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      [{p.sifra}] {p.naziv} — {formatCurrencyEUR(p.cijena_cents / 100)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                name="procedure_id"
+                control={control}
+                render={({ field }) => {
+                  const selectedProcedure = procedures.find((p) => p.id === field.value)
+                  return (
+                    <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Odaberite postupak">
+                          {selectedProcedure
+                            ? `[${selectedProcedure.sifra}] ${selectedProcedure.naziv} — ${formatCurrencyEUR(selectedProcedure.cijena_cents / 100)}`
+                            : undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[400px]">
+                        {procedures.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            [{p.sifra}] {p.naziv} — {formatCurrencyEUR(p.cijena_cents / 100)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )
+                }}
+              />
               {errors.procedure_id && (
                 <p className="text-sm text-destructive">{errors.procedure_id.message}</p>
               )}
@@ -296,32 +299,38 @@ export function PerformedList({ patientId }: PerformedListProps) {
             {records.length > 0 && (
               <div className="space-y-2">
                 <Label>Povezani nalaz (opcionalno)</Label>
-                <Select
-                  value={watch("medical_record_id") ?? ""}
-                  onValueChange={(v) => setValue("medical_record_id", v === "none" ? "" : (v ?? ""))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Bez povezanog nalaza">
-                      {(() => {
-                        const rid = watch("medical_record_id")
-                        if (!rid) return undefined
-                        const r = records.find((rec) => rec.id === rid)
-                        return r
-                          ? `${formatDateHR(r.datum)} — ${tipLabelMap[r.tip] || r.tip}${r.dijagnoza_mkb ? ` (${r.dijagnoza_mkb})` : ""}`
-                          : undefined
-                      })()}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Bez povezanog nalaza</SelectItem>
-                    {records.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {formatDateHR(r.datum)} — {tipLabelMap[r.tip] || r.tip}
-                        {r.dijagnoza_mkb ? ` (${r.dijagnoza_mkb})` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  name="medical_record_id"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ?? ""}
+                      onValueChange={(v) => field.onChange(v === "none" ? "" : (v ?? ""))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Bez povezanog nalaza">
+                          {(() => {
+                            const rid = field.value
+                            if (!rid) return undefined
+                            const r = records.find((rec) => rec.id === rid)
+                            return r
+                              ? `${formatDateHR(r.datum)} — ${tipLabelMap[r.tip] || r.tip}${r.dijagnoza_mkb ? ` (${r.dijagnoza_mkb})` : ""}`
+                              : undefined
+                          })()}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Bez povezanog nalaza</SelectItem>
+                        {records.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {formatDateHR(r.datum)} — {tipLabelMap[r.tip] || r.tip}
+                            {r.dijagnoza_mkb ? ` (${r.dijagnoza_mkb})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
             )}
 

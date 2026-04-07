@@ -7,9 +7,9 @@ Create Date: 2026-04-05
 Adds cezih_signature_data (Text) and cezih_signed_at (DateTime) columns
 to store the digital signature returned by CEZIH remote signing service.
 """
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = '019_add_cezih_signature_columns'

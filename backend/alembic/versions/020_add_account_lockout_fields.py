@@ -4,9 +4,9 @@ Revision ID: 020
 Revises: 019
 Create Date: 2026-04-05
 """
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "020_add_account_lockout_fields"
 down_revision = "019_add_cezih_signature_columns"

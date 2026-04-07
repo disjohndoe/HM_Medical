@@ -1,8 +1,7 @@
 "use client"
-/* eslint-disable react-hooks/incompatible-library -- react-hook-form watch() is intentionally used */
 
 import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { toast } from "sonner"
@@ -74,8 +73,7 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
+    control,
     formState: { errors },
   } = useForm<PatientFormData>({
     resolver: standardSchemaResolver(patientSchema),
@@ -113,8 +111,6 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
           alergije: null,
         },
   })
-
-  const spolValue = watch("spol")
 
   async function handleFormSubmit(data: PatientFormData) {
     try {
@@ -167,23 +163,26 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
           </div>
           <div className="space-y-2">
             <Label>Spol</Label>
-            <Select
-              value={spolValue ?? ""}
-              onValueChange={(v) => setValue("spol", v || null)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Odaberite spol">
-                  {SPOL_OPTIONS.find((o) => o.value === spolValue)?.label}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {SPOL_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Controller
+              name="spol"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value ?? ""} onValueChange={(v) => field.onChange(v || null)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Odaberite spol">
+                      {SPOL_OPTIONS.find((o) => o.value === field.value)?.label}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SPOL_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="oib">OIB</Label>

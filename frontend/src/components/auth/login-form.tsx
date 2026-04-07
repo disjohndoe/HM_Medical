@@ -37,9 +37,10 @@ export function LoginForm() {
   const [error, setError] = useState("");
 
   // Show reason for redirect (kicked session, expired token)
-  // Deferred to useEffect to avoid SSR/client hydration mismatch (localStorage is client-only)
+  // useEffect is intentional: localStorage is client-only, reading it in state would cause hydration mismatch
   const [info, setInfo] = useState<string | null>(null);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading from localStorage (client-only)
     setInfo(getAuthExpiredMessage());
   }, []);
 

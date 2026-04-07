@@ -1,8 +1,8 @@
 import uuid
-from datetime import date, datetime, UTC
+from datetime import date
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.predracun import Predracun, PredracunCounter, PredracunStavka
@@ -128,7 +128,7 @@ async def get_predracun(
     )
     stavke = result.scalars().all()
 
-    return _to_dict(predracun, stavke)
+    return _to_dict(predracun, list(stavke))
 
 
 async def list_predracuni(
@@ -159,7 +159,7 @@ async def list_predracuni(
             .where(PredracunStavka.predracun_id == p.id)
             .order_by(PredracunStavka.sort_order)
         )
-        items.append(_to_dict(p, stavke_result.scalars().all()))
+        items.append(_to_dict(p, list(stavke_result.scalars().all())))
 
     return items, total
 

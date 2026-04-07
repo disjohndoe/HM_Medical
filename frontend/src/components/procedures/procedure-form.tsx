@@ -1,8 +1,7 @@
 "use client"
-/* eslint-disable react-hooks/incompatible-library -- react-hook-form watch() is intentionally used */
 
 import { useEffect } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { z } from "zod"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { toast } from "sonner"
@@ -57,15 +56,12 @@ export function ProcedureForm({ open, onOpenChange, procedure }: ProcedureFormPr
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
     reset,
+    control,
     formState: { errors },
   } = useForm<ProcedureFormData>({
     resolver: standardSchemaResolver(procedureSchema),
   })
-
-  const kategorijaValue = watch("kategorija")
 
   useEffect(() => {
     if (open) {
@@ -138,23 +134,26 @@ export function ProcedureForm({ open, onOpenChange, procedure }: ProcedureFormPr
             </div>
             <div className="space-y-2">
               <Label>Kategorija *</Label>
-              <Select
-                value={kategorijaValue ?? ""}
-                onValueChange={(v) => setValue("kategorija", v ?? "")}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Odaberite kategoriju">
-                    {PROCEDURE_KATEGORIJA_OPTIONS.find((o) => o.value === kategorijaValue)?.label}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {PROCEDURE_KATEGORIJA_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                name="kategorija"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Odaberite kategoriju">
+                        {PROCEDURE_KATEGORIJA_OPTIONS.find((o) => o.value === field.value)?.label}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROCEDURE_KATEGORIJA_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
               {errors.kategorija && (
                 <p className="text-sm text-destructive">{errors.kategorija.message}</p>
               )}

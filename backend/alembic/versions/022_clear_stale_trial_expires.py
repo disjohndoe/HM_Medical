@@ -6,7 +6,6 @@ Create Date: 2026-04-05
 """
 from alembic import op
 
-
 revision = "022_clear_stale_trial_expires"
 down_revision = "021_add_predracun_tables"
 branch_labels = None

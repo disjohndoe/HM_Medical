@@ -26,7 +26,7 @@ async def agent_websocket(websocket: WebSocket):
     try:
         raw = await asyncio.wait_for(websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS)
         msg = json.loads(raw)
-    except (asyncio.TimeoutError, json.JSONDecodeError):
+    except (TimeoutError, json.JSONDecodeError):
         await websocket.close(code=4001, reason="Auth timeout or invalid message")
         return
 

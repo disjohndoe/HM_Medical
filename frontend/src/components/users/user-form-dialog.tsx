@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { z } from "zod"
 import { Save, Loader2, CreditCard, X } from "lucide-react"
@@ -113,8 +113,8 @@ export function UserFormDialog({
   const {
     register,
     handleSubmit,
-    setValue,
     reset,
+    control,
     formState: { errors },
   } = useForm<UserFormData>({
     resolver: standardSchemaResolver(userSchema),
@@ -211,23 +211,26 @@ export function UserFormDialog({
             </div>
             <div className="space-y-2">
               <Label>Uloga</Label>
-              <Select
-                defaultValue={user?.role ?? "doctor"}
-                onValueChange={(v) => setValue("role", v ?? "doctor")}
-              >
-                <SelectTrigger>
-                  <SelectValue>
-                    {USER_ROLE_OPTIONS.find((o) => o.value === (watch("role") ?? user?.role ?? "doctor"))?.label}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {USER_ROLE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                name="role"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue>
+                        {USER_ROLE_OPTIONS.find((o) => o.value === (field.value ?? user?.role ?? "doctor"))?.label}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {USER_ROLE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
               {errors.role && (
                 <p className="text-xs text-destructive">{errors.role.message}</p>
               )}
