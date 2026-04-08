@@ -151,6 +151,9 @@ fn create_cezih_session() -> Easy2<CezihCollector> {
     // Request timeout
     easy.timeout(Duration::from_secs(30)).expect("failed to set timeout");
 
+    // Accept uncompressed responses only (prevent gzip decoding issues)
+    easy.accept_encoding("identity").expect("failed to set accept_encoding");
+
     easy
 }
 
@@ -165,6 +168,7 @@ fn apply_session_defaults(easy: &mut Easy2<CezihCollector>) -> Result<(), String
         .map_err(|e| e.to_string())?;
     easy.cookie_list("").map_err(|e| e.to_string())?;
     easy.timeout(Duration::from_secs(30)).map_err(|e| e.to_string())?;
+    easy.accept_encoding("identity").map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -311,7 +315,7 @@ async fn handle_http_proxy(msg: serde_json::Value, session: CezihSession) -> Str
         do_cezih_request(&mut s, &method, &url, &hdrs, body_bytes.as_deref())
     }).await {
         Ok(Ok((status, body))) => {
-            info!("HTTP proxy {} — {} ({} bytes)", rid, status, body.len());
+            info!("HTTP proxy {} — {} ({} bytes) body: {}", rid, status, body.len(), &body[..body.len().min(500)]);
             json!({
                 "type": "http_proxy_response",
                 "request_id": request_id,

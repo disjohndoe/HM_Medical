@@ -37,6 +37,9 @@ CS_CONDITION_VER_STATUS = "http://terminology.hl7.org/CodeSystem/condition-ver-s
 CS_CONDITION_CLINICAL = "http://terminology.hl7.org/CodeSystem/condition-clinical"
 
 EXT_ANNOTATION_TYPE = "http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-annotation-type"
+EXT_TROSKOVI_SUDJELovanje = "http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-troskovi-sudjelovanje"
+CS_SUDJELOVANJE_U_TROSKOVIMA = "http://fhir.cezih.hr/specifikacije/CodeSystem/sudjelovanje-u-troskovima"
+CS_SIFRA_OSLOBODJENJA = "http://fhir.cezih.hr/specifikacije/CodeSystem/sifra-oslobodjenja-od-sudjelovanja-u-troskovima"
 
 
 # --- Helper: Logical references (identifier-based, no literal URL) ---
@@ -96,7 +99,7 @@ async def build_message_bundle(
             "code": event_code,
         },
         "source": {"endpoint": f"urn:oid:{source_oid}" if source_oid else "urn:oid:0.0.0.0"},
-        "focus": {"reference": f"urn:uuid:{resource_uuid}"},
+        "focus": [{"reference": f"urn:uuid:{resource_uuid}"}],
     }
 
     if sender_org_code:
@@ -244,33 +247,24 @@ def build_encounter_create(
 
     Uses CEZIH Croatian CodeSystems:
       - Encounter.class: nacin-prijema (method of admission)
-      - Encounter.type[VrstaPosjete]: vrsta-posjete (patient presence)
-      - Encounter.type[TipPosjete]: hr-tip-posjete (visit context)
     """
     encounter: dict[str, Any] = {
         "resourceType": "Encounter",
+        "extension": [
+            {
+                "extension": [
+                    {"url": "oznaka", "valueCoding": {"system": CS_SUDJELOVANJE_U_TROSKOVIMA, "code": "N"}},
+                    {"url": "sifra-oslobodjenja", "valueCoding": {"system": CS_SIFRA_OSLOBODJENJA, "code": "55"}},
+                ],
+                "url": EXT_TROSKOVI_SUDJELovanje,
+            },
+        ],
         "status": "in-progress",
         "class": {
             "system": CS_NACIN_PRIJEMA,
             "code": nacin_prijema,
             "display": NACIN_PRIJEMA_MAP.get(nacin_prijema, nacin_prijema),
         },
-        "type": [
-            {
-                "coding": [{
-                    "system": CS_VRSTA_POSJETE,
-                    "code": vrsta_posjete,
-                    "display": VRSTA_POSJETE_MAP.get(vrsta_posjete, vrsta_posjete),
-                }],
-            },
-            {
-                "coding": [{
-                    "system": CS_TIP_POSJETE,
-                    "code": tip_posjete,
-                    "display": TIP_POSJETE_MAP.get(tip_posjete, tip_posjete),
-                }],
-            },
-        ],
         "subject": patient_ref(patient_mbo),
         "period": {"start": _now_iso()},
     }
