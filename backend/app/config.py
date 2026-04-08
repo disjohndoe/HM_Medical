@@ -118,12 +118,7 @@ def _validate_cezih_config(s: Settings) -> None:
         sys.exit(1)
 
     if s.CEZIH_MODE == "mock":
-        print(
-            "FATAL: CEZIH_MODE=mock is not allowed in production. "
-            "Set CEZIH_MODE=real and configure all CEZIH credentials.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        return  # mock mode allowed — real CEZIH requires local agent + VPN
 
     required = {
         "CEZIH_OAUTH2_URL": s.CEZIH_OAUTH2_URL,
@@ -134,11 +129,11 @@ def _validate_cezih_config(s: Settings) -> None:
     missing = [k for k, v in required.items() if not v]
     if missing:
         print(
-            f"FATAL: CEZIH_MODE=real but missing required config: {', '.join(missing)}. "
-            "All CEZIH credentials must be set in production.",
+            f"WARNING: CEZIH_MODE=real but missing config: {', '.join(missing)}. "
+            "CEZIH features will not work until configured.",
             file=sys.stderr,
         )
-        sys.exit(1)
+        return
 
 
 @lru_cache
