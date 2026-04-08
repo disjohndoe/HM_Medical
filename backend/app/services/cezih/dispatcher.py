@@ -765,14 +765,16 @@ async def dispatch_create_visit(
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
-            build_encounter_create, build_message_bundle, ENCOUNTER_EVENT_PROFILE_MAP,
+            build_encounter_create, build_message_bundle, add_signature, ENCOUNTER_EVENT_PROFILE_MAP,
             PROFILE_ENCOUNTER, PROFILE_ENCOUNTER_MSG_HEADER,
         )
         fhir_client = CezihFhirClient(http_client)
+        if not practitioner_id:
+            raise CezihError("HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.")
         encounter = build_encounter_create(
             patient_mbo=patient_mbo, nacin_prijema=nacin_prijema,
             vrsta_posjete=vrsta_posjete, tip_posjete=tip_posjete,
-            reason=reason, practitioner_id=practitioner_id or "", org_code=org_code or "",
+            reason=reason, practitioner_id=practitioner_id, org_code=org_code or "",
         )
         bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get("1.1")
         profile_urls = {
@@ -784,6 +786,7 @@ async def dispatch_create_visit(
             "1.1", encounter, sender_org_code=org_code, author_practitioner_id=practitioner_id,
             source_oid=source_oid, profile_urls=profile_urls,
         )
+        bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
@@ -811,15 +814,17 @@ async def dispatch_update_visit(
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
-            build_encounter_update, build_message_bundle, ENCOUNTER_EVENT_PROFILE_MAP,
+            build_encounter_update, build_message_bundle, add_signature, ENCOUNTER_EVENT_PROFILE_MAP,
             PROFILE_ENCOUNTER, PROFILE_ENCOUNTER_MSG_HEADER,
         )
         fhir_client = CezihFhirClient(http_client)
+        if not practitioner_id:
+            raise CezihError("HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.")
         encounter = build_encounter_update(
             encounter_id=visit_id,
             patient_mbo=patient_mbo,
             reason=reason,
-            practitioner_id=practitioner_id or "",
+            practitioner_id=practitioner_id,
             org_code=org_code or "",
         )
         bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get("1.2")
@@ -833,6 +838,7 @@ async def dispatch_update_visit(
             sender_org_code=org_code, author_practitioner_id=practitioner_id,
             source_oid=source_oid, profile_urls=profile_urls,
         )
+        bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
@@ -861,10 +867,12 @@ async def dispatch_visit_action(
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
             build_encounter_close, build_encounter_cancel, build_encounter_reopen,
-            build_message_bundle, ENCOUNTER_EVENT_PROFILE_MAP, VISIT_ACTION_MAP,
+            build_message_bundle, add_signature, ENCOUNTER_EVENT_PROFILE_MAP, VISIT_ACTION_MAP,
             PROFILE_ENCOUNTER, PROFILE_ENCOUNTER_MSG_HEADER,
         )
         fhir_client = CezihFhirClient(http_client)
+        if not practitioner_id:
+            raise CezihError("HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.")
         action_info = VISIT_ACTION_MAP.get(action)
         if action_info is None:
             raise HTTPException(
@@ -886,7 +894,7 @@ async def dispatch_visit_action(
         encounter = builder_fn(
             encounter_id=visit_id,
             patient_mbo=patient_mbo,
-            practitioner_id=practitioner_id or "",
+            practitioner_id=practitioner_id,
             org_code=org_code or "",
         )
         bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get(event_code)
@@ -900,6 +908,7 @@ async def dispatch_visit_action(
             sender_org_code=org_code, author_practitioner_id=practitioner_id,
             source_oid=source_oid, profile_urls=profile_urls,
         )
+        bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
