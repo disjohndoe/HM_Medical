@@ -248,179 +248,51 @@ async def sign_document(
     document_id: str | None = None,
     signing_reason: str = "CEZIH clinical document",
 ) -> dict:
-    """Sign a document via the CEZIH remote signing service.
+    """Create a placeholder JWS signature for the document.
 
-    Sends a pre-computed document hash to the signing endpoint and
-    returns the PKCS#7 / CMS signature.
+    TEMPORARY: Bypasses extsigner API (unknown request format) to test
+    whether the FHIR Bundle structure is accepted by CEZIH.
+    CEZIH will reject the signature, but the error will tell us if the
+    Bundle format itself is correct.
 
-    Architecture note (discovered 2026-03-27):
-    - Public endpoint (certpubws.cezih.hr): Uses Apache mod_auth_openidc with
-      browser-based session auth (authorization code flow). NOT suitable for
-      direct API calls.
-    - VPN-protected endpoint (certws2.cezih.hr): Accessible via VPN, accepts
-      Bearer tokens from client_credentials grant. This is the primary path.
-    - Public Keycloak (certpubsso.cezih.hr): Separate from VPN Keycloak
-      (certsso2.cezih.hr). Accepts client_credentials with test credentials.
-
-    The signing endpoint may also be available at the FHIR base URL through VPN:
-    certws2.cezih.hr/services-router/gateway/extsigner/api/sign
-
-    Returns dict with keys: success, signature, signing_algorithm,
-    signed_at, document_id, raw_response.
-    Raises CezihSigningError on failure.
+    TODO: Replace with real signing once extsigner API format is known,
+    or implement local smart card signing in the agent.
     """
-    signing_url = settings.CEZIH_SIGNING_URL
-    if not signing_url:
-        raise CezihSigningError(
-            "CEZIH_SIGNING_URL not configured. Set it in .env for real signing.",
-        )
-
     if isinstance(document_bytes, str):
         document_bytes = document_bytes.encode("utf-8")
 
     doc_hash = _compute_hash(document_bytes)
 
-    # Use the official CEZIH extsigner endpoint path
-    # Per CEZIH URL list: https://certpubws.cezih.hr/services-router/gateway/extsigner/api/sign
-    # If signing_url already contains the full path (includes "extsigner"), use it directly;
-    # otherwise append the standard path suffix.
-    if "extsigner" in signing_url:
-        url = signing_url
-    else:
-        url = f"{signing_url.rstrip('/')}/services-router/gateway/extsigner/api/sign"
+    # Create a JWS-like placeholder matching the structure from
+    # the Simplifier example: base64url(header) + base64url(payload) + dummy_sig
+    import base64 as _b64
 
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
+    # JWS header — RS256, placeholder kid
+    jws_header = '{"kid":"placeholder-pending-extsigner","alg":"RS256"}'
+    header_b64 = _b64.urlsafe_b64encode(jws_header.encode()).decode().rstrip("=")
 
-    start = time.perf_counter()
+    # JWS payload — the Bundle JSON (without signature field)
+    payload_b64 = _b64.urlsafe_b64encode(document_bytes).decode().rstrip("=")
 
-    try:
-        # Route through agent if connected (server has no VPN)
-        # Port 8443: agent handles mTLS auth via smart card — no Bearer token needed
-        if _should_use_agent():
-            # PROBE: Try getSignedDocuments and other endpoints
-            signing_base = signing_url.rstrip("/")
-            probe_urls = [
-                f"{signing_base}/services-router/gateway/extsigner/api/getSignedDocuments",
-                f"{signing_base}/services-router/gateway/extsigner/api/sign",  # GET to see allowed methods
-            ]
-            for probe_url in probe_urls:
-                try:
-                    probe_result = await _request_via_agent(
-                        method="GET",
-                        url=probe_url,
-                        headers={"Accept": "application/json, */*"},
-                        form_data=None,
-                        json_body=None,
-                        timeout=10,
-                    )
-                    logger.info("CEZIH probe GET %s -> %d: %s",
-                                probe_url,
-                                probe_result.get("status_code", 0),
-                                str(probe_result.get("body", ""))[:3000])
-                except Exception as probe_err:
-                    logger.info("CEZIH probe GET %s -> error: %s", probe_url, probe_err)
+    # Dummy signature bytes (not cryptographically valid)
+    dummy_sig = _b64.urlsafe_b64encode(b"PLACEHOLDER_SIGNATURE_FOR_BUNDLE_FORMAT_TEST").decode().rstrip("=")
 
-            # Batch test field names — try each one and log result
-            test_fields = ["toBeSigned", "toSign", "signData", "input", "payload", "request", "value", "bytes"]
-            for field_name in test_fields:
-                try:
-                    test_payload = {field_name: doc_hash}
-                    test_result = await _request_via_agent(
-                        method="POST",
-                        url=url,
-                        headers={"Content-Type": "application/json", "Accept": "application/json"},
-                        form_data=None,
-                        json_body=test_payload,
-                        timeout=10,
-                    )
-                    test_status = test_result.get("status_code", 0)
-                    test_body = test_result.get("body", "")
-                    logger.info("CEZIH sign field '%s' -> %d: %s", field_name, test_status, str(test_body)[:500])
-                    if test_status < 400:
-                        # Found a working field! Use this result.
-                        body = test_result
-                        body["status_code"] = test_status
-                        break
-                except Exception as field_err:
-                    err_msg = str(field_err)
-                    if "Unexpected field" in err_msg:
-                        logger.info("CEZIH sign field '%s' -> REJECTED", field_name)
-                    else:
-                        logger.info("CEZIH sign field '%s' -> error: %s", field_name, err_msg[:200])
-            else:
-                # None worked — use last attempt as the error
-                raise CezihSigningError("All field name attempts rejected by extsigner")
-            duration_ms = (time.perf_counter() - start) * 1000
-            logger.info("CEZIH signing response via agent: success (%.1fms)", duration_ms)
-            # _request_via_agent raises CezihSigningError for 4xx/5xx, so body is successful response
-        else:
-            # Direct request (only works from local machine with VPN)
-            response = await client.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=settings.CEZIH_TIMEOUT,
-            )
-            duration_ms = (time.perf_counter() - start) * 1000
-            logger.info(
-                "CEZIH signing response: %d (%.1fms)",
-                response.status_code,
-                duration_ms,
-            )
+    # JWS Compact Serialization: header.payload.signature
+    jws = f"{header_b64}.{payload_b64}.{dummy_sig}"
 
-            # Handle redirect (public endpoint returns 302 to login page)
-            if response.status_code in (301, 302, 303, 307):
-                location = response.headers.get("location", "")
-                if "certpubsso" in location or "certsso2" in location:
-                    raise CezihSigningError(
-                        "Signing endpoint redirected to login page. "
-                        "The public endpoint (certpubws) requires browser-based auth. "
-                        "Use the VPN-protected endpoint (certws2) for API-based signing, "
-                        "or contact HZZO for the correct signing API access method.",
-                        signing_service_error=f"HTTP {response.status_code} redirect to {location[:100]}",
-                    )
-                raise CezihSigningError(
-                    f"Signing endpoint returned unexpected redirect: HTTP {response.status_code} to {location[:100]}",
-                    signing_service_error=f"HTTP {response.status_code}",
-                )
-
-            try:
-                body = response.json()
-            except Exception:
-                body = {}
-
-            if response.status_code >= 400:
-                error_detail = body.get("error") or body.get("message") or response.text[:500]
-                raise CezihSigningError(
-                    f"Signing service returned HTTP {response.status_code}: {error_detail}",
-                    signing_service_error=error_detail,
-                )
-    except CezihSigningError:
-        raise
-    except httpx.ConnectError as e:
-        raise CezihSigningError(
-            f"Cannot reach signing service at {url}. Is VPN connected for certws2?",
-            signing_service_error=str(e),
-        ) from e
-    except httpx.TimeoutException as e:
-        raise CezihSigningError(
-            f"Signing request timed out after {settings.CEZIH_TIMEOUT}s",
-            signing_service_error=str(e),
-        ) from e
-
-    # Extract signature from response — format TBD (adjust after real API test)
-    signature = body.get("signature") or body.get("signedHash") or body.get("signatures", "")
+    logger.warning(
+        "CEZIH signing: using PLACEHOLDER signature (extsigner API format unknown). "
+        "Bundle hash=%.16s, JWS length=%d. CEZIH will reject this — testing Bundle format only.",
+        doc_hash, len(jws),
+    )
 
     return {
         "success": True,
-        "signature": signature,
+        "signature": jws,
         "signing_algorithm": _DEFAULT_ALGORITHM,
         "signed_at": datetime.now(UTC).isoformat(),
         "document_id": document_id,
-        "raw_response": body,
+        "raw_response": {"placeholder": True},
     }
 
 
