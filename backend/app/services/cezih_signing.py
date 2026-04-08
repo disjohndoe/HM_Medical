@@ -356,11 +356,14 @@ async def sign_bundle_for_cezih(
       signature.data = base64( JOSE_header_JSON + Bundle_JSON + raw_signature_bytes )
 
     Where:
-      - JOSE header: {"kid":"<thumbprint>","alg":"<ES256|RS256>"}
-      - Bundle JSON: the complete Bundle with signature.data = ""
+      - JOSE header: {"kid":"<thumbprint>","alg":"<ES384|RS256>"}
+      - Bundle JSON: compact JSON of the Bundle with signature.data = ""
       - Raw signature: NCryptSignHash output (ECDSA r||s or RSA PKCS1)
 
-    The agent computes SHA-256(JOSE_header + Bundle_JSON) and signs the hash.
+    Signing input uses standard JWS (RFC 7515):
+      base64url(header) + "." + base64url(bundle)
+    Storage uses CEZIH format:
+      base64( raw_header_json + raw_bundle_json + raw_sig )
     """
     if not _should_use_agent():
         raise CezihSigningError("Neispravna CEZIH konekcija — agent nije spojen")
@@ -372,15 +375,11 @@ async def sign_bundle_for_cezih(
 
     # The agent receives the bundle JSON and internally:
     # 1. Finds the cert → gets kid, algorithm
-    # 2. Builds JOSE header
-    # 3. Computes SHA-256(jose_header_bytes + bundle_json_bytes)
-    # 4. Signs the hash via NCryptSignHash
-    # 5. Returns: raw_signature, kid, algorithm, certificate
-    #
-    # But since the agent doesn't know the JOSE header until it reads the cert,
-    # and the signing input includes the JOSE header, we do this:
-    # - Send bundle_json to agent
-    # - Agent builds header, computes full signing input, signs, returns everything
+    # 2. Builds JOSE header: {"kid":"<thumbprint>","alg":"<alg>"}
+    # 3. Signing input = base64url(header) + "." + base64url(bundle) (standard JWS)
+    # 4. Signs SHA-384/256 hash via NCryptSignHash
+    # 5. Assembles: base64(header_json + bundle_json + raw_sig) (CEZIH format)
+    # 6. Returns the base64 string ready for signature.data
     data_b64 = base64.b64encode(bundle_json_bytes).decode("ascii")
 
     logger.info("CEZIH JWS signing via agent (bundle_size=%d)", len(bundle_json_bytes))

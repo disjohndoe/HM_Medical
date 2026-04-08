@@ -23,10 +23,11 @@ pub struct SignResult {
     pub kid: String,
 }
 
-/// Result of JWS signing — contains the complete base64-encoded JWS
+/// Result of JWS signing — contains the complete base64-encoded signature
 /// ready to be placed directly in Bundle.signature.data.
 pub struct JwsSignResult {
-    /// Complete JWS, base64-encoded: base64(b64url_header.b64url_payload.b64url_sig)
+    /// CEZIH signature format: base64(JOSE_header_JSON + Bundle_JSON + raw_sig_bytes).
+    /// Uses standard base64 (not base64url). No dots.
     pub jws_base64: String,
     /// Certificate thumbprint (SHA-1 hex).
     pub kid: String,
@@ -34,14 +35,16 @@ pub struct JwsSignResult {
     pub algorithm: String,
 }
 
-/// Sign a FHIR Bundle for CEZIH — produces standard JWS (RFC 7515).
+/// Sign a FHIR Bundle for CEZIH — produces CEZIH signature format.
 ///
 /// Takes the serialized Bundle JSON bytes (with signature.data = "").
-/// Builds a complete JWS with:
-///   - JOSE header including `alg`, `kid`, `x5c` (full cert for verification)
-///   - Payload = base64url(bundle_json)
-///   - Signature = base64url(NCryptSignHash output)
-/// Returns base64(JWS_compact) ready for FHIR signature.data.
+/// CEZIH format: base64( JOSE_header_JSON + Bundle_JSON + raw_signature_bytes )
+///
+/// Signing input uses standard JWS (RFC 7515):
+///   base64url(header) + "." + base64url(payload)
+/// Storage format is CEZIH-specific:
+///   base64( raw_header_json + raw_bundle_json + raw_sig )
+/// Returns the base64 string ready for FHIR signature.data.
 pub fn sign_for_jws(bundle_json: &[u8]) -> Result<JwsSignResult, String> {
     unsafe { sign_for_jws_inner(bundle_json) }
 }
@@ -123,26 +126,18 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             _ => "RS256",
         };
 
-        // Get certificate DER for x5c
-        let cert_der = std::slice::from_raw_parts(
-            (**cert_ctx).pbCertEncoded,
-            (**cert_ctx).cbCertEncoded as usize,
-        ).to_vec();
-        let cert_b64 = b64std.encode(&cert_der);
-
-        // Build JOSE header with x5c (cert chain for signature verification)
+        // Build JOSE header: kid + alg only (matches CEZIH example format, no x5c)
         let jose_header = format!(
-            r#"{{"alg":"{}","x5c":["{}"],"kid":"{}"}}"#,
-            algorithm, cert_b64, kid,
+            r#"{{"kid":"{}","alg":"{}"}}"#,
+            kid, algorithm,
         );
-        info!("JWS: JOSE header alg={}, x5c cert={} bytes, kid={:.16}", algorithm, cert_der.len(), kid);
+        info!("JWS: JOSE header kid={:.16}, alg={}", kid, algorithm);
 
-        // Build signing input: base64url(header) + base64url(payload) — NO dots.
-        // CEZIH stores signature as concatenated b64url parts without dots,
-        // so the verifier reconstructs the signing input without dots too.
+        // Standard JWS signing input (RFC 7515): base64url(header) + "." + base64url(payload)
+        // The dot is critical — approach #3 proved this signing input produces valid crypto.
         let header_b64url = b64url.encode(jose_header.as_bytes());
         let payload_b64url = b64url.encode(bundle_json);
-        let signing_input = format!("{}{}", header_b64url, payload_b64url);
+        let signing_input = format!("{}.{}", header_b64url, payload_b64url);
 
         // Hash with correct algorithm for the key type
         let hash_bytes: Vec<u8> = match algorithm {
@@ -185,16 +180,20 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
 
         sig_buf.truncate(actual_len as usize);
 
-        // Assemble signature data: concatenate base64url parts WITHOUT dots.
-        // CEZIH real example format: b64url(header) + b64url(payload) + b64url(sig)
-        // No dots (HAPI rejects dots as invalid base64Binary).
-        // No extra base64 encoding (CEZIH can't parse double-encoded JWS).
-        // The signing input used dots (per JWS RFC 7515), but storage format omits them.
-        let sig_b64url = b64url.encode(&sig_buf);
-        let jws_base64 = format!("{}{}{}", header_b64url, payload_b64url, sig_b64url);
+        // CEZIH storage format: base64( raw_header_json + raw_bundle_json + raw_sig )
+        // Concatenate raw bytes first, then ONE standard base64 encoding.
+        // Verified from real CEZIH example in docs/CEZIH/Posjete/.
+        let mut raw_concat: Vec<u8> = Vec::with_capacity(
+            jose_header.len() + bundle_json.len() + sig_buf.len()
+        );
+        raw_concat.extend_from_slice(jose_header.as_bytes());
+        raw_concat.extend_from_slice(bundle_json);
+        raw_concat.extend_from_slice(&sig_buf);
+        let jws_base64 = b64std.encode(&raw_concat);
 
-        info!("JWS: complete! alg={}, sig={} bytes, data={} chars (no dots, no extra b64)",
-              algorithm, sig_buf.len(), jws_base64.len());
+        info!("JWS: complete! alg={}, header={} + bundle={} + sig={} bytes = {} raw, base64={} chars",
+              algorithm, jose_header.len(), bundle_json.len(), sig_buf.len(),
+              raw_concat.len(), jws_base64.len());
 
         // Cleanup
         for (ctx, _) in &certs {

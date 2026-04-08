@@ -170,8 +170,8 @@ async def add_signature(
         "data": "",
     }
 
-    # Serialize the bundle WITH signature.data="" — this is the signing input
-    bundle_json_bytes = json.dumps(bundle, ensure_ascii=False).encode("utf-8")
+    # Serialize the bundle WITH signature.data="" — compact JSON (no spaces), matches CEZIH format
+    bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(',', ':')).encode("utf-8")
 
     if sign_fn:
         result = await sign_fn(bundle_json_bytes)
