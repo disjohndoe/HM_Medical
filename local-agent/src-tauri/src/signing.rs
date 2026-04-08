@@ -137,10 +137,12 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         );
         info!("JWS: JOSE header alg={}, x5c cert={} bytes, kid={:.16}", algorithm, cert_der.len(), kid);
 
-        // Build JWS signing input: base64url(header) + "." + base64url(payload)
+        // Build signing input: base64url(header) + base64url(payload) — NO dots.
+        // CEZIH stores signature as concatenated b64url parts without dots,
+        // so the verifier reconstructs the signing input without dots too.
         let header_b64url = b64url.encode(jose_header.as_bytes());
         let payload_b64url = b64url.encode(bundle_json);
-        let signing_input = format!("{}.{}", header_b64url, payload_b64url);
+        let signing_input = format!("{}{}", header_b64url, payload_b64url);
 
         // Hash with correct algorithm for the key type
         let hash_bytes: Vec<u8> = match algorithm {
