@@ -80,6 +80,36 @@ def _extract_signature_from_cms(cms_der: bytes) -> bytes | None:
 
     return None
 
+
+def _ecdsa_der_to_raw(der_sig: bytes) -> bytes:
+    """Convert DER-encoded ECDSA signature to raw r||s format for JWS ES256.
+
+    DER: SEQUENCE { INTEGER r, INTEGER s }
+    Raw: r (32 bytes, zero-padded) || s (32 bytes, zero-padded)
+    """
+    try:
+        from asn1crypto.core import Sequence, Integer
+        seq = Sequence.load(der_sig)
+        r_bytes = seq[0].contents
+        s_bytes = seq[1].contents
+
+        # Remove leading zero padding from DER integers
+        r_bytes = r_bytes.lstrip(b'\x00')
+        s_bytes = s_bytes.lstrip(b'\x00')
+
+        # Pad to 32 bytes (P-256)
+        r_bytes = r_bytes.rjust(32, b'\x00')
+        s_bytes = s_bytes.rjust(32, b'\x00')
+
+        raw = r_bytes + s_bytes
+        logger.info("ECDSA DER→raw: %d bytes DER → %d bytes raw (r=%d, s=%d)",
+                     len(der_sig), len(raw), len(r_bytes), len(s_bytes))
+        return raw
+    except Exception as e:
+        logger.warning("ECDSA DER→raw conversion failed: %s, using DER directly", e)
+        return der_sig
+
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ALGORITHM = "SHA-256"
@@ -376,9 +406,11 @@ async def sign_document(
             raw_sig = cms_der
 
         # Detect algorithm from signature size:
-        # ECDSA P-256 = ~70 bytes DER (or 64 raw r||s), RSA-2048 = 256 bytes
+        # ECDSA P-256 DER = ~70-104 bytes, RSA-2048 = 256 bytes
         if len(raw_sig) <= 128:
             alg = "ES256"
+            # JWS ES256 requires raw r||s (64 bytes), not DER-encoded ECDSA
+            raw_sig = _ecdsa_der_to_raw(raw_sig)
         else:
             alg = "RS256"
 
