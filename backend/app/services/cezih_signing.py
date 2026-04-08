@@ -59,6 +59,7 @@ def _should_use_agent() -> bool:
 async def _request_via_agent(
     method: str, url: str, headers: dict[str, str],
     form_data: dict | None, json_body: dict | None, timeout: int,
+    *, raw_body: str | None = None,
 ) -> dict:
     """Route HTTP request through the agent for CEZIH connectivity."""
     from app.services.agent_connection_manager import agent_manager
@@ -69,7 +70,10 @@ async def _request_via_agent(
         raise CezihSigningError("No tenant context - cannot route through agent")
 
     # Prepare body
-    if form_data:
+    if raw_body is not None:
+        body = raw_body
+        # Content-Type should be set by caller
+    elif form_data:
         body = "&".join(f"{k}={v}" for k, v in form_data.items())
         headers["Content-Type"] = "application/x-www-form-urlencoded"
     elif json_body:
@@ -285,11 +289,11 @@ async def sign_document(
     else:
         url = f"{signing_url.rstrip('/')}/services-router/gateway/extsigner/api/sign"
 
-    # CEZIH extsigner (rdss-service) — probe: try "digest" field
-    # Rejected so far: "hash", "content", "dataToSign", "data"
-    payload = {
-        "digest": doc_hash,
-    }
+    # CEZIH extsigner expects the raw Bundle JSON as POST body.
+    # The service creates a JWS (header + payload + signature) and returns it.
+    # Previous attempts with wrapper JSON {"hash":...}, {"content":...}, etc.
+    # all failed with "Unexpected field" — the parser expected FHIR/raw content.
+    raw_bundle_json = document_bytes.decode("utf-8") if isinstance(document_bytes, bytes) else document_bytes
 
     headers = {
         "Content-Type": "application/json",
@@ -297,20 +301,20 @@ async def sign_document(
     }
 
     start = time.perf_counter()
-    logger.info("CEZIH signing request: POST %s (hash=%.16s...)", url, doc_hash)
+    logger.info("CEZIH signing request: POST %s (doc_size=%d, hash=%.16s...)", url, len(raw_bundle_json), doc_hash)
 
     try:
         # Route through agent if connected (server has no VPN)
         # Port 8443: agent handles mTLS auth via smart card — no Bearer token needed
-        # Port 9443: would need Bearer token but returned 403 (insufficient roles)
         if _should_use_agent():
             body = await _request_via_agent(
                 method="POST",
                 url=url,
                 headers=headers,
                 form_data=None,
-                json_body=payload,
+                json_body=None,
                 timeout=settings.CEZIH_TIMEOUT,
+                raw_body=raw_bundle_json,
             )
             duration_ms = (time.perf_counter() - start) * 1000
             logger.info("CEZIH signing response via agent: success (%.1fms)", duration_ms)
