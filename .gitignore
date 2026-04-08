@@ -75,7 +75,8 @@ caddy_config/
 =0.27.0
 
 # Claude Code
-.claude/scheduled_tasks.lock
+.claude/
+.claudeignore
 
 # Corrupted paths
 backend/C*/

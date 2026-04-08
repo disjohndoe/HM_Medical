@@ -47,13 +47,14 @@ class Settings(BaseSettings):
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+    DOMAIN: str = ""  # Production domain (e.g. app.hmdigital.hr)
 
     # File uploads
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 10
 
     # CEZIH Integration
-    CEZIH_MODE: str = "mock"  # "mock" or "real"
+    CEZIH_MODE: str = "real"  # "mock" or "real" — set CEZIH_MODE=mock in dev via .env
     CEZIH_OAUTH2_URL: str = ""  # Keycloak token endpoint (VPN: certsso2, public: certpubsso)
     CEZIH_CLIENT_ID: str = ""
     CEZIH_CLIENT_SECRET: str = ""
@@ -108,6 +109,14 @@ def _validate_jwt_secret(secret: str) -> None:
 
 def _validate_cezih_config(s: Settings) -> None:
     """Block mock mode in production and validate required CEZIH settings."""
+    if not s.DOMAIN:
+        print(
+            "FATAL: DOMAIN is not set. Required in production for agent WebSocket URLs. "
+            "Set DOMAIN=app.hmdigital.hr (or your production domain).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if s.CEZIH_MODE == "mock":
         print(
             "FATAL: CEZIH_MODE=mock is not allowed in production. "
