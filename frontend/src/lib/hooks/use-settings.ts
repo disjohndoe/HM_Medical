@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api-client"
-import type { AgentSecretResponse, PlanUsage, Tenant } from "@/lib/types"
+import type { AgentSecretResponse, PairingTokenResponse, PlanUsage, Tenant } from "@/lib/types"
 
 export function useClinicSettings() {
   return useQuery({
@@ -21,19 +21,21 @@ export function useUpdateClinicSettings() {
   })
 }
 
-interface CezihStatusResponse {
+interface SettingsCezihStatusResponse {
   status: string
   sifra_ustanove: string | null
   oid: string | null
   agent_connected: boolean
+  agents_count: number
   last_heartbeat: string | null
 }
 
-export function useCezihStatus(enabled = true) {
+export function useSettingsCezihStatus(enabled = true) {
   return useQuery({
     queryKey: ["settings", "cezih-status"],
-    queryFn: () => api.get<CezihStatusResponse>("/settings/cezih-status"),
+    queryFn: () => api.get<SettingsCezihStatusResponse>("/settings/cezih-status"),
     refetchInterval: enabled ? 15_000 : false,
+    staleTime: 10_000,
     enabled,
   })
 }
@@ -45,6 +47,12 @@ export function useGenerateAgentSecret() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings", "cezih-status"] })
     },
+  })
+}
+
+export function useCreatePairingToken() {
+  return useMutation({
+    mutationFn: () => api.post<PairingTokenResponse>("/settings/pairing-token", {}),
   })
 }
 

@@ -33,35 +33,67 @@ export function useCezihStatus() {
   return useQuery({
     queryKey: ["cezih", "status"],
     queryFn: () => api.get<CezihStatusResponse>("/cezih/status"),
+    refetchInterval: 5_000,
+    staleTime: 3_000,
   })
 }
 
 /**
  * Single source of truth for CEZIH connection status display.
- * All components (sidebar, dashboard, CEZIH settings) should use this hook
- * instead of computing the display locally.
- *
- * TODO: When AKD smart card auth is live, connected_doctor/connected_clinic
- * will be populated from the card identity via the local agent, replacing
- * the current fallback (logged-in user + tenant name).
+ * Returns 3 separate indicator states (agent, card, VPN) plus legacy
+ * single-dot fields for sidebar/dashboard backward compatibility.
  */
 export function useCezihConnectionDisplay() {
   const { data, isLoading, isError, error } = useCezihStatus()
 
-  const isConnected = data?.connected === true
   const isDemo = data?.mock === true
-  const dotColor = isConnected
-    ? "bg-green-500"
-    : isDemo
-      ? "bg-yellow-500"
-      : "bg-muted-foreground/50"
+  const agentConnected = data?.agent_connected === true
+  const cardInserted = data?.card_inserted === true
+  const vpnConnected = data?.vpn_connected === true
+  const readerAvailable = data?.reader_available === true
 
-  let label = "Nije povezano"
-  if (isConnected) {
-    label = "Povezano"
-  } else if (isDemo) {
-    label = "Demo način"
+  // Agent indicator
+  const agent = agentConnected
+    ? { dotClass: "bg-green-500", label: "Agent povezan" }
+    : { dotClass: "bg-muted-foreground/50", label: "Agent nije povezan" }
+
+  // Card indicator — gray when agent not connected (status unknown)
+  let card: { dotClass: string; label: string; detail: string | null }
+  if (!agentConnected) {
+    card = { dotClass: "bg-muted-foreground/30", label: "Kartica — čeka agent", detail: null }
+  } else if (!readerAvailable) {
+    card = { dotClass: "bg-muted-foreground/30", label: "Čitač nije pronađen", detail: null }
+  } else if (cardInserted) {
+    card = { dotClass: "bg-green-500", label: "Kartica umetnuta", detail: data?.card_holder ?? null }
+  } else {
+    card = { dotClass: "bg-red-500", label: "Umetnite karticu", detail: null }
   }
+
+  // VPN indicator — gray when agent not connected (status unknown)
+  const vpn = !agentConnected
+    ? { dotClass: "bg-muted-foreground/30", label: "VPN — čeka agent" }
+    : vpnConnected
+      ? { dotClass: "bg-green-500", label: "VPN spojen" }
+      : { dotClass: "bg-red-500", label: "VPN nije spojen" }
+
+  // Legacy single dot for sidebar/dashboard
+  let dotColor = "bg-muted-foreground/50"
+  let label = "Nije povezano"
+  if (isDemo) {
+    dotColor = "bg-yellow-500"
+    label = "Demo način"
+  } else if (agentConnected && cardInserted && vpnConnected) {
+    dotColor = "bg-green-500"
+    label = "CEZIH spreman"
+  } else if (agentConnected && !cardInserted) {
+    dotColor = "bg-yellow-500"
+    label = "Umetnite karticu"
+  } else if (agentConnected) {
+    dotColor = "bg-yellow-500"
+    label = "Djelomično povezano"
+  }
+
+  const isConnected = agentConnected && cardInserted && vpnConnected
 
   return {
     isLoading,
@@ -71,8 +103,11 @@ export function useCezihConnectionDisplay() {
     isDemo,
     dotColor,
     label,
-    connectedDoctor: data?.connected_doctor ?? null,
-    connectedClinic: data?.connected_clinic ?? null,
+    agent,
+    card,
+    vpn,
+    connectedDoctor: agentConnected && cardInserted ? (data?.connected_doctor ?? null) : null,
+    connectedClinic: agentConnected && cardInserted ? (data?.connected_clinic ?? null) : null,
     raw: data,
   }
 }
@@ -86,6 +121,7 @@ export function useInsuranceCheck() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"] })
+      queryClient.invalidateQueries({ queryKey: ["patients"] })
     },
   })
 }

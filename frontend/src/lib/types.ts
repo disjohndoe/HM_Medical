@@ -90,6 +90,8 @@ export interface Patient {
   tenant_id: string;
   created_at: string;
   updated_at: string;
+  cezih_insurance_status: string | null;
+  cezih_insurance_checked_at: string | null;
 }
 
 export interface PatientCreate {
@@ -434,6 +436,12 @@ export interface PlanUsage {
 
 export interface AgentSecretResponse {
   agent_secret: string;
+  tenant_id: string;
+}
+
+export interface PairingTokenResponse {
+  pairing_url: string;
+  pairing_token: string;
 }
 
 // --- Card Status ---
@@ -456,9 +464,12 @@ export interface CezihStatusResponse {
   mode: string;
   agent_connected: boolean;
   last_heartbeat: string | null;
-  // TODO: Populated from AKD smart card identity when local agent is connected
   connected_doctor: string | null;
   connected_clinic: string | null;
+  card_inserted: boolean;
+  vpn_connected: boolean;
+  reader_available: boolean;
+  card_holder: string | null;
 }
 
 export interface InsuranceCheckResponse {
@@ -567,6 +578,7 @@ export interface PatientCezihInsurance {
   mbo: string | null;
   status_osiguranja: string | null;
   osiguravatelj: string | null;
+  broj_osiguranja: string | null;
   last_checked: string | null;
 }
 

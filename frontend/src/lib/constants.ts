@@ -195,7 +195,36 @@ export const OSIGURANJE_STATUS: Record<string, { label: string; color: string }>
   Aktivan: { label: "Aktivan", color: "bg-green-100 text-green-800" },
   "Na čekanju": { label: "Na čekanju", color: "bg-yellow-100 text-yellow-800" },
   Neaktivan: { label: "Neaktivan", color: "bg-red-100 text-red-800" },
+  "Nije pronađen": { label: "Nije pronađen", color: "bg-gray-100 text-gray-800" },
 };
+
+// --- MKB-10 / ICD-10 Chapter Filters (official WHO, 22 chapters) ---
+
+export const ICD_CHAPTERS: { label: string; prefix: string }[] = [
+  { label: "Sve dijagnoze", prefix: "" },
+  { label: "I. A00-B99 Infekcijske i parazitske bolesti", prefix: "A,B" },
+  { label: "II. C00-D48 Neoplazme", prefix: "C,D0,D1,D2,D3,D4" },
+  { label: "III. D50-D89 Bolesti krvi i imunološkog sustava", prefix: "D5,D6,D7,D8" },
+  { label: "IV. E00-E90 Endokrine i metaboličke bolesti", prefix: "E" },
+  { label: "V. F00-F99 Mentalni poremećaji", prefix: "F" },
+  { label: "VI. G00-G99 Bolesti živčanog sustava", prefix: "G" },
+  { label: "VII. H00-H59 Bolesti oka", prefix: "H0,H1,H2,H3,H4,H5" },
+  { label: "VIII. H60-H95 Bolesti uha", prefix: "H6,H7,H8,H9" },
+  { label: "IX. I00-I99 Bolesti cirkulacijskog sustava", prefix: "I" },
+  { label: "X. J00-J99 Bolesti dišnog sustava", prefix: "J" },
+  { label: "XI. K00-K93 Bolesti probavnog sustava", prefix: "K" },
+  { label: "XII. L00-L99 Bolesti kože", prefix: "L" },
+  { label: "XIII. M00-M99 Bolesti mišićno-koštanog sustava", prefix: "M" },
+  { label: "XIV. N00-N99 Bolesti genitalno-urinarnog sustava", prefix: "N" },
+  { label: "XV. O00-O99 Trudnoća i porođaj", prefix: "O" },
+  { label: "XVI. P00-P96 Stanja porođajnog perioda", prefix: "P" },
+  { label: "XVII. Q00-Q99 Prirođene malformacije", prefix: "Q" },
+  { label: "XVIII. R00-R99 Simptomi i znakovi", prefix: "R" },
+  { label: "XIX. S00-T98 Ozljede i trovanja", prefix: "S,T" },
+  { label: "XX. V01-Y98 Vanjski uzroci", prefix: "V,W,X,Y" },
+  { label: "XXI. Z00-Z99 Čimbenici zdravstvenog statusa", prefix: "Z" },
+  { label: "XXII. U00-U99 Posebne svrhe", prefix: "U" },
+];
 
 // --- Record Sensitivity ---
 
