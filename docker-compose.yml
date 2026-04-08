@@ -92,7 +92,7 @@ services:
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
-      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/medical_mvp?sslmode=require
+      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/medical_mvp
       CORS_ORIGINS: https://${DOMAIN}
     depends_on:
       db:
