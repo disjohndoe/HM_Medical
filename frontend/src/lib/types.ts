@@ -459,9 +459,7 @@ export interface CardStatusResponse {
 // --- CEZIH ---
 
 export interface CezihStatusResponse {
-  mock: boolean;
   connected: boolean;
-  mode: string;
   agent_connected: boolean;
   last_heartbeat: string | null;
   connected_doctor: string | null;
@@ -473,7 +471,7 @@ export interface CezihStatusResponse {
 }
 
 export interface InsuranceCheckResponse {
-  mock: boolean;
+
   mbo: string;
   ime: string;
   prezime: string;
@@ -485,7 +483,7 @@ export interface InsuranceCheckResponse {
 }
 
 export interface ENalazResponse {
-  mock: boolean;
+
   success: boolean;
   reference_id: string;
   sent_at: string;
@@ -500,13 +498,13 @@ export interface EReceptLijekEntry {
 }
 
 export interface EReceptResponse {
-  mock: boolean;
+
   success: boolean;
   recept_id: string;
 }
 
 export interface EReceptStornoResponse {
-  mock: boolean;
+
   success: boolean;
   recept_id: string;
   status: string;
@@ -554,7 +552,7 @@ export interface PrescriptionSendResponse {
   prescription_id: string;
   cezih_recept_id: string;
   success: boolean;
-  mock: boolean;
+
 }
 
 // --- CEZIH Activity Log ---
@@ -601,7 +599,7 @@ export interface PatientCezihERecept {
 }
 
 export interface PatientCezihSummary {
-  mock: boolean;
+
   insurance: PatientCezihInsurance;
   e_nalaz_history: PatientCezihENalaz[];
   e_recept_history: PatientCezihERecept[];
@@ -610,7 +608,7 @@ export interface PatientCezihSummary {
 // --- CEZIH Dashboard Stats ---
 
 export interface CezihDashboardStats {
-  mock: boolean;
+
   danas_operacije: number;
   neposlani_nalazi: number;
   zadnja_operacija: string | null;
@@ -630,7 +628,7 @@ export interface LijekItem {
 // ============================================================
 
 export interface OidLookupResponse {
-  mock: boolean;
+
   oid: string;
   name: string;
   responsible_org: string;
@@ -642,7 +640,7 @@ export interface OidLookupResponse {
 // ============================================================
 
 export interface CodeSystemItem {
-  mock: boolean;
+
   code: string;
   display: string;
   system: string;
@@ -653,7 +651,7 @@ export interface CodeSystemItem {
 // ============================================================
 
 export interface ValueSetExpandResponse {
-  mock: boolean;
+
   url: string;
   concepts: { code: string; display: string; system: string }[];
   total: number;
@@ -664,7 +662,7 @@ export interface ValueSetExpandResponse {
 // ============================================================
 
 export interface OrganizationItem {
-  mock: boolean;
+
   id: string;
   name: string;
   hzzo_code: string;
@@ -672,7 +670,7 @@ export interface OrganizationItem {
 }
 
 export interface PractitionerItem {
-  mock: boolean;
+
   id: string;
   family: string;
   given: string;
@@ -695,7 +693,7 @@ export interface ForeignerRegistrationRequest {
 }
 
 export interface ForeignerRegistrationResponse {
-  mock: boolean;
+
   success: boolean;
   patient_id: string;
   mbo: string;
@@ -706,7 +704,7 @@ export interface ForeignerRegistrationResponse {
 // ============================================================
 
 export interface CaseItem {
-  mock: boolean;
+
   case_id: string;
   icd_code: string;
   icd_display: string;
@@ -715,7 +713,7 @@ export interface CaseItem {
 }
 
 export interface CasesListResponse {
-  mock: boolean;
+
   cases: CaseItem[];
 }
 
@@ -730,14 +728,14 @@ export interface CreateCaseRequest {
 }
 
 export interface CaseResponse {
-  mock: boolean;
+
   success: boolean;
   local_case_id: string;
   cezih_case_id: string;
 }
 
 export interface CaseActionResponse {
-  mock: boolean;
+
   success: boolean;
   case_id?: string;
   action?: string;
@@ -750,7 +748,7 @@ export interface CaseActionResponse {
 // --- TC12-14: Visit Management ---
 
 export interface VisitItem {
-  mock: boolean;
+
   visit_id: string;
   patient_mbo: string;
   status: string;
@@ -761,12 +759,12 @@ export interface VisitItem {
 }
 
 export interface VisitsListResponse {
-  mock: boolean;
+
   visits: VisitItem[];
 }
 
 export interface VisitResponse {
-  mock: boolean;
+
   success: boolean;
   visit_id: string;
   status: string;
@@ -782,7 +780,7 @@ export interface CreateVisitRequest {
 }
 
 export interface DocumentSearchItem {
-  mock: boolean;
+
   id: string;
   datum_izdavanja: string;
   izdavatelj: string;
@@ -793,7 +791,7 @@ export interface DocumentSearchItem {
 }
 
 export interface DocumentActionResponse {
-  mock: boolean;
+
   success: boolean;
   reference_id?: string;
   new_reference_id?: string;

@@ -336,9 +336,7 @@ async def get_cezih_dashboard_stats(
     )
     unsent_count = unsent_result.scalar() or 0
 
-    from app.config import settings
     return CezihDashboardStats(
-        mock=settings.CEZIH_MODE == "mock",
         danas_operacije=danas,
         neposlani_nalazi=unsent_count,
         zadnja_operacija=last_op,
@@ -520,8 +518,7 @@ async def list_cases(
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
-    from app.config import settings
-    return CasesListResponse(mock=settings.CEZIH_MODE == "mock", cases=[CaseItem.model_validate(c) for c in cases])
+    return CasesListResponse(cases=[CaseItem.model_validate(c) for c in cases])
 
 
 @router.post("/cases", response_model=CaseResponse)
@@ -686,8 +683,7 @@ async def list_visits(
         mbo, db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
-    from app.config import settings
-    return VisitsListResponse(mock=settings.CEZIH_MODE == "mock", visits=visits)  # type: ignore[arg-type]
+    return VisitsListResponse(visits=visits)  # type: ignore[arg-type]
 
 
 @router.post("/visits", response_model=VisitResponse)

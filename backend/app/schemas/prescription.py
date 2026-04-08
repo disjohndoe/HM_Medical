@@ -46,4 +46,3 @@ class PrescriptionSendResponse(BaseModel):
     prescription_id: UUID
     cezih_recept_id: str
     success: bool
-    mock: bool = True

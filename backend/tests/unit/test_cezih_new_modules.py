@@ -1,7 +1,6 @@
-"""Tests for new CEZIH modules (Phase 11) — no database required.
+"""Tests for CEZIH modules — message builder and FHIR model correctness.
 
-Tests the mock service functions, message builder, and FHIR model correctness
-directly without needing the API layer or database.
+Tests run directly without needing the API layer or database.
 """
 import pytest
 
@@ -23,22 +22,6 @@ from app.services.cezih.models import (
     FHIRCoding,
     FHIRCondition,
     FHIRMessageHeader,
-)
-from app.services.cezih_mock_service import (
-    mock_cancel_document,
-    mock_create_case,
-    mock_expand_value_set,
-    mock_find_organizations,
-    mock_find_practitioners,
-    mock_lookup_oid,
-    mock_query_code_system,
-    mock_register_foreigner,
-    mock_replace_document,
-    mock_retrieve_cases,
-    mock_retrieve_document,
-    mock_search_documents,
-    mock_update_case,
-    mock_update_case_data,
 )
 
 # ============================================================
@@ -189,132 +172,3 @@ def test_parse_message_response_error():
     result = parse_message_response(response)
     assert result["success"] is False
     assert result["error_message"] == "Missing field X"
-
-
-# ============================================================
-# Mock Service — Registry & Terminology
-# ============================================================
-
-
-@pytest.mark.asyncio
-async def test_mock_lookup_oid():
-    result = await mock_lookup_oid("2.16.840.1.113883.2.22")
-    assert result["mock"] is True
-    assert result["oid"] == "2.16.840.1.113883.2.22"
-    assert result["name"] == "CEZIH"
-
-
-@pytest.mark.asyncio
-async def test_mock_query_code_system_icd10():
-    results = await mock_query_code_system("icd10-hr", "astma")
-    assert len(results) > 0
-    assert results[0]["code"] == "J45"
-    assert results[0]["mock"] is True
-
-
-@pytest.mark.asyncio
-async def test_mock_expand_value_set():
-    result = await mock_expand_value_set("http://test", "potvrđ")
-    assert result["mock"] is True
-    assert result["total"] > 0
-    assert any(c["code"] == "confirmed" for c in result["concepts"])
-
-
-@pytest.mark.asyncio
-async def test_mock_find_organizations():
-    results = await mock_find_organizations("Zagreb")
-    assert len(results) > 0
-    assert results[0]["mock"] is True
-
-
-@pytest.mark.asyncio
-async def test_mock_find_practitioners():
-    results = await mock_find_practitioners("Horvat")
-    assert len(results) > 0
-    assert results[0]["family"] == "Horvat"
-
-
-# ============================================================
-# Mock Service — Foreigner Registration
-# ============================================================
-
-
-@pytest.mark.asyncio
-async def test_mock_register_foreigner():
-    result = await mock_register_foreigner({"ime": "John", "prezime": "Smith", "datum_rodjenja": "1985-01-01"})
-    assert result["mock"] is True
-    assert result["success"] is True
-    assert result["mbo"].startswith("F")
-
-
-# ============================================================
-# Mock Service — Case Management
-# ============================================================
-
-
-@pytest.mark.asyncio
-async def test_mock_retrieve_cases():
-    results = await mock_retrieve_cases("999990260")
-    assert len(results) == 3
-    assert results[0]["mock"] is True
-    assert results[0]["icd_code"] == "M54"
-
-
-@pytest.mark.asyncio
-async def test_mock_create_case():
-    result = await mock_create_case("999990260", "M54", "Dorsopatija", "2026-03-30")
-    assert result["mock"] is True
-    assert result["success"] is True
-    assert result["cezih_case_id"].startswith("MOCK-C-")
-
-
-@pytest.mark.asyncio
-async def test_mock_update_case():
-    result = await mock_update_case("MOCK-C-001", "remission")
-    assert result["success"] is True
-    assert result["action"] == "remission"
-
-
-@pytest.mark.asyncio
-async def test_mock_update_case_data():
-    result = await mock_update_case_data("MOCK-C-001", {"icd_code": "I10"})
-    assert result["success"] is True
-
-
-# ============================================================
-# Mock Service — Document Operations
-# ============================================================
-
-
-@pytest.mark.asyncio
-async def test_mock_search_documents():
-    results = await mock_search_documents(patient_mbo="999990260")
-    assert len(results) > 0
-    assert results[0]["mock"] is True
-
-
-@pytest.mark.asyncio
-async def test_mock_search_documents_by_type():
-    results = await mock_search_documents(document_type="uputnica")
-    assert all(r["type"] == "uputnica" for r in results)
-
-
-@pytest.mark.asyncio
-async def test_mock_replace_document():
-    result = await mock_replace_document("DOC-001")
-    assert result["success"] is True
-    assert result["replaced_reference_id"] == "DOC-001"
-
-
-@pytest.mark.asyncio
-async def test_mock_cancel_document():
-    result = await mock_cancel_document("DOC-001")
-    assert result["success"] is True
-    assert result["status"] == "entered-in-error"
-
-
-@pytest.mark.asyncio
-async def test_mock_retrieve_document():
-    content = await mock_retrieve_document("DOC-001")
-    assert isinstance(content, bytes)
-    assert b"DOC-001" in content

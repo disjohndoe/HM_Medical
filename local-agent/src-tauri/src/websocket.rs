@@ -6,7 +6,7 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Mutex as StdMutex;
-use curl::easy::{Easy2, Handler, WriteError, List, SslOpt};
+use curl::easy::{Easy2, Handler, WriteError, List, PostRedirections, SslOpt};
 use tokio::sync::{mpsc, watch, RwLock};
 use tokio_tungstenite::tungstenite::Message;
 
@@ -139,6 +139,12 @@ fn create_cezih_session() -> Easy2<CezihCollector> {
     // Follow redirects (Keycloak auth: certws2 → certsso2 → certws2)
     easy.follow_location(true).expect("failed to set follow_location");
 
+    // Maintain POST method+body through 301/302/303 redirects.
+    // Without this, libcurl converts POST→GET on 302 (RFC 7231 default),
+    // which causes CEZIH $process-message to fail (empty body → ERR_DS_1002).
+    easy.post_redirections(PostRedirections::new().redirect_all(true))
+        .expect("failed to set post_redirections");
+
     // Enable in-memory cookie engine (no file needed)
     easy.cookie_list("").expect("failed to enable cookie engine");
 
@@ -155,6 +161,8 @@ fn apply_session_defaults(easy: &mut Easy2<CezihCollector>) -> Result<(), String
     ssl_opts.auto_client_cert(true);
     easy.ssl_options(&ssl_opts).map_err(|e| e.to_string())?;
     easy.follow_location(true).map_err(|e| e.to_string())?;
+    easy.post_redirections(PostRedirections::new().redirect_all(true))
+        .map_err(|e| e.to_string())?;
     easy.cookie_list("").map_err(|e| e.to_string())?;
     easy.timeout(Duration::from_secs(30)).map_err(|e| e.to_string())?;
     Ok(())
@@ -216,10 +224,19 @@ fn do_cezih_request(
     let status = session.response_code().map_err(|e| e.to_string())?;
     let resp = String::from_utf8_lossy(&session.get_ref().response_body).to_string();
 
+    // Diagnostic logging for POST failures (helps debug CEZIH $process-message issues)
+    if method.eq_ignore_ascii_case("POST") && (status >= 400 || resp.starts_with('<') || resp.is_empty()) {
+        warn!("POST {} — status {} — body (first 500): {}", url, status, &resp[..resp.len().min(500)]);
+    }
+
     // 406 = Accept header lost during Keycloak redirect chain on first request.
+    // Also retry on HTML response for POST (Keycloak login page instead of FHIR JSON).
     // Session cookie is now established — retry goes direct (no redirect, headers preserved).
-    if status == 406 {
-        info!("Got 406 (redirect stripped headers) — retrying with session cookie");
+    let should_retry = status == 406
+        || (resp.starts_with('<') && !resp.is_empty())
+        || (method.eq_ignore_ascii_case("POST") && resp.is_empty() && status < 400);
+    if should_retry {
+        info!("Got {} (redirect/session issue) — retrying with session cookie", status);
         session.reset();
         session.get_mut().response_body.clear();
         apply_session_defaults(session)?;
@@ -252,6 +269,9 @@ fn do_cezih_request(
         session.perform().map_err(|e| format!("curl retry: {}", e))?;
         let status = session.response_code().map_err(|e| e.to_string())?;
         let resp = String::from_utf8_lossy(&session.get_ref().response_body).to_string();
+        if method.eq_ignore_ascii_case("POST") {
+            info!("POST retry — status {} — body (first 200): {}", status, &resp[..resp.len().min(200)]);
+        }
         return Ok((status, resp));
     }
 

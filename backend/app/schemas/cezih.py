@@ -9,7 +9,7 @@ class InsuranceCheckRequest(BaseModel):
 
 
 class InsuranceCheckResponse(BaseModel):
-    mock: bool = False
+
     mbo: str
     ime: str
     prezime: str
@@ -26,7 +26,7 @@ class ENalazRequest(BaseModel):
 
 
 class ENalazResponse(BaseModel):
-    mock: bool = False
+
     success: bool
     reference_id: str
     sent_at: datetime
@@ -46,22 +46,21 @@ class EReceptRequest(BaseModel):
 
 
 class EReceptResponse(BaseModel):
-    mock: bool = False
+
     success: bool
     recept_id: str
 
 
 class EReceptStornoResponse(BaseModel):
-    mock: bool = False
+
     success: bool
     recept_id: str
     status: str
 
 
 class CezihStatusResponse(BaseModel):
-    mock: bool = False
+
     connected: bool
-    mode: str
     agent_connected: bool
     last_heartbeat: datetime | None
     connected_doctor: str | None = None
@@ -118,7 +117,7 @@ class PatientCezihERecept(BaseModel):
 
 
 class PatientCezihSummary(BaseModel):
-    mock: bool = False
+
     insurance: PatientCezihInsurance
     e_nalaz_history: list[PatientCezihENalaz] = []
     e_recept_history: list[PatientCezihERecept] = []
@@ -128,7 +127,7 @@ class PatientCezihSummary(BaseModel):
 
 
 class CezihDashboardStats(BaseModel):
-    mock: bool = False
+
     danas_operacije: int = 0
     neposlani_nalazi: int = 0
     zadnja_operacija: datetime | None = None
@@ -154,7 +153,7 @@ class OidLookupRequest(BaseModel):
 
 
 class OidLookupResponse(BaseModel):
-    mock: bool = False
+
     oid: str
     name: str
     responsible_org: str
@@ -167,7 +166,7 @@ class OidLookupResponse(BaseModel):
 
 
 class CodeSystemItem(BaseModel):
-    mock: bool = False
+
     code: str
     display: str
     system: str
@@ -185,7 +184,7 @@ class ValueSetConceptItem(BaseModel):
 
 
 class ValueSetExpandResponse(BaseModel):
-    mock: bool = False
+
     url: str
     concepts: list[ValueSetConceptItem]
     total: int
@@ -197,7 +196,7 @@ class ValueSetExpandResponse(BaseModel):
 
 
 class OrganizationItem(BaseModel):
-    mock: bool = False
+
     id: str
     name: str
     hzzo_code: str
@@ -205,7 +204,7 @@ class OrganizationItem(BaseModel):
 
 
 class PractitionerItem(BaseModel):
-    mock: bool = False
+
     id: str
     family: str
     given: str
@@ -229,7 +228,7 @@ class ForeignerRegistrationRequest(BaseModel):
 
 
 class ForeignerRegistrationResponse(BaseModel):
-    mock: bool = False
+
     success: bool
     patient_id: str
     mbo: str
@@ -259,14 +258,14 @@ class VisitActionRequest(BaseModel):
 
 
 class VisitResponse(BaseModel):
-    mock: bool = False
+
     success: bool
     visit_id: str
     status: str  # planned, in-progress, finished, cancelled, entered-in-error
 
 
 class VisitItem(BaseModel):
-    mock: bool = False
+
     visit_id: str
     patient_mbo: str
     status: str
@@ -277,7 +276,7 @@ class VisitItem(BaseModel):
 
 
 class VisitsListResponse(BaseModel):
-    mock: bool = False
+
     visits: list[VisitItem]
 
 
@@ -287,7 +286,7 @@ class VisitsListResponse(BaseModel):
 
 
 class CaseItem(BaseModel):
-    mock: bool = False
+
     case_id: str
     icd_code: str
     icd_display: str
@@ -296,7 +295,7 @@ class CaseItem(BaseModel):
 
 
 class CasesListResponse(BaseModel):
-    mock: bool = False
+
     cases: list[CaseItem]
 
 
@@ -311,7 +310,7 @@ class CreateCaseRequest(BaseModel):
 
 
 class CaseResponse(BaseModel):
-    mock: bool = False
+
     success: bool
     local_case_id: str
     cezih_case_id: str
@@ -332,7 +331,7 @@ class UpdateCaseDataRequest(BaseModel):
 
 
 class CaseActionResponse(BaseModel):
-    mock: bool = False
+
     success: bool
     case_id: str | None = None
     action: str | None = None
@@ -349,7 +348,7 @@ class ReplaceDocumentRequest(BaseModel):
 
 
 class DocumentActionResponse(BaseModel):
-    mock: bool = False
+
     success: bool
     reference_id: str | None = None
     new_reference_id: str | None = None
@@ -358,7 +357,7 @@ class DocumentActionResponse(BaseModel):
 
 
 class DocumentSearchItem(BaseModel):
-    mock: bool = False
+
     id: str
     datum_izdavanja: str
     izdavatelj: str

@@ -68,7 +68,7 @@ These handle all CEZIH national health system integration UI:
 - Document operations (send/replace/cancel/search/retrieve)
 - Insurance check, foreigner registration, patient selector
 - Registry tools (OID lookup, ValueSet expand, organization/practitioner search)
-- Activity log, mock badge, eKarton view
+- Activity log, eKarton view
 
 ## Development
 - Run via Docker Compose: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`

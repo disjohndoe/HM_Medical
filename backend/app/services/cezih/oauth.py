@@ -106,7 +106,7 @@ async def _fetch_new_token(client: httpx.AsyncClient, *, tenant_id: UUID | None 
 
     if not settings.CEZIH_OAUTH2_URL or not settings.CEZIH_CLIENT_ID:
         _last_failure_at = time.monotonic()
-        raise CezihAuthError("CEZIH OAuth2 URL and Client ID must be configured when CEZIH_MODE=real")
+        raise CezihAuthError("CEZIH OAuth2 URL and Client ID must be configured")
 
     # When an agent is connected, proxy the token request through it
     # (server cannot reach certsso2.cezih.hr — no VPN).

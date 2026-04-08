@@ -59,9 +59,13 @@ async def agent_websocket(websocket: WebSocket):
     # Register connection
     conn = await agent_manager.register(tenant_id, websocket, agent_id)
     agent_id = conn.agent_id
-    # Include CEZIH warmup URL so agent can establish mTLS session on connect
-    # (triggers single PIN prompt instead of prompting on first user action)
-    warmup_url = settings.CEZIH_FHIR_BASE_URL if settings.CEZIH_MODE == "real" else ""
+    # Include CEZIH warmup URL so agent can establish mTLS session on connect.
+    # Target encounter service (8443) specifically — same service used by TC12-14 POST.
+    # Triggers single PIN prompt on connect instead of on first user action.
+    warmup_url = ""
+    if settings.CEZIH_FHIR_BASE_URL:
+        base = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
+        warmup_url = f"{base}/services-router/gateway/encounter-services/api/v1/Encounter?_count=1"
     await websocket.send_json({
         "type": "connected",
         "message": "Agent spojen",

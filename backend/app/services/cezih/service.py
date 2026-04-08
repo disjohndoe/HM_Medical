@@ -253,23 +253,17 @@ async def send_erecept(
     patient_data: dict,
     lijekovi: list[dict],
 ) -> dict:
-    """Send e-prescription (stub — not in 22 test cases yet)."""
-    logger.warning("CEZIH e-Recept: real API not yet implemented, returning stub")
-    import os
-    return {
-        "success": True,
-        "recept_id": f"FHIR-ER-{os.urandom(4).hex()}",
-    }
+    """Send e-prescription — not yet part of CEZIH unified private provider certification."""
+    raise CezihError(
+        "e-Recept API nije implementiran u CEZIH sustavu za privatne ordinacije."
+    )
 
 
 async def cancel_erecept(client: httpx.AsyncClient, recept_id: str) -> dict:
-    """Cancel/storno an e-prescription (stub — real API not yet implemented)."""
-    logger.warning("CEZIH e-Recept storno: real API not yet implemented, returning stub")
-    return {
-        "success": True,
-        "recept_id": recept_id,
-        "status": "storniran",
-    }
+    """Cancel/storno an e-prescription — not yet part of CEZIH unified private provider certification."""
+    raise CezihError(
+        "Storno e-Recepta nije implementiran u CEZIH sustavu za privatne ordinacije."
+    )
 
 
 async def get_status(client: httpx.AsyncClient) -> dict:

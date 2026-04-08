@@ -54,7 +54,6 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 10
 
     # CEZIH Integration
-    CEZIH_MODE: str = "real"  # "mock" or "real" — set CEZIH_MODE=mock in dev via .env
     CEZIH_OAUTH2_URL: str = ""  # Keycloak token endpoint (VPN: certsso2, public: certpubsso)
     CEZIH_CLIENT_ID: str = ""
     CEZIH_CLIENT_SECRET: str = ""
@@ -108,7 +107,7 @@ def _validate_jwt_secret(secret: str) -> None:
 
 
 def _validate_cezih_config(s: Settings) -> None:
-    """Block mock mode in production and validate required CEZIH settings."""
+    """Validate required CEZIH settings in production."""
     if not s.DOMAIN:
         print(
             "FATAL: DOMAIN is not set. Required in production for agent WebSocket URLs. "
@@ -117,20 +116,20 @@ def _validate_cezih_config(s: Settings) -> None:
         )
         sys.exit(1)
 
-    if s.CEZIH_MODE == "real":
-        required = {
-            "CEZIH_OAUTH2_URL": s.CEZIH_OAUTH2_URL,
-            "CEZIH_CLIENT_ID": s.CEZIH_CLIENT_ID,
-            "CEZIH_CLIENT_SECRET": s.CEZIH_CLIENT_SECRET,
-            "CEZIH_FHIR_BASE_URL": s.CEZIH_FHIR_BASE_URL,
-        }
-        missing = [k for k, v in required.items() if not v]
-        if missing:
-            print(
-                f"WARNING: CEZIH_MODE=real but missing config: {', '.join(missing)}. "
-                "CEZIH features will not work until configured.",
-                file=sys.stderr,
-            )
+    required = {
+        "CEZIH_OAUTH2_URL": s.CEZIH_OAUTH2_URL,
+        "CEZIH_CLIENT_ID": s.CEZIH_CLIENT_ID,
+        "CEZIH_CLIENT_SECRET": s.CEZIH_CLIENT_SECRET,
+        "CEZIH_FHIR_BASE_URL": s.CEZIH_FHIR_BASE_URL,
+    }
+    missing = [k for k, v in required.items() if not v]
+    if missing:
+        print(
+            f"FATAL: Missing CEZIH credentials: {', '.join(missing)}. "
+            "All CEZIH credentials are required in production.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 @lru_cache

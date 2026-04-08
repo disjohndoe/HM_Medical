@@ -8,17 +8,11 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.constants import CEZIH_ELIGIBLE_TYPES
-from app.services import cezih_service
 from app.services.cezih import service as real_service
 from app.services.cezih.exceptions import CezihError, CezihSigningError
 
 logger = logging.getLogger(__name__)
-
-
-def _is_mock() -> bool:
-    return settings.CEZIH_MODE == "mock"
 
 
 async def _write_audit(
@@ -47,9 +41,7 @@ async def _write_audit(
 def _require_audit_params(
     db: AsyncSession | None, user_id: UUID | None, tenant_id: UUID | None,
 ) -> None:
-    """In real mode, audit parameters are mandatory for traceability."""
-    if _is_mock():
-        return
+    """Audit parameters are mandatory for traceability."""
     if not db or not user_id or not tenant_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -90,9 +82,6 @@ async def insurance_check(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_insurance_check(mbo, db=db, user_id=user_id, tenant_id=tenant_id)
-
     _require_audit_params(db, user_id, tenant_id)
 
     try:
@@ -100,8 +89,6 @@ async def insurance_check(
     except CezihError as e:
         logger.error("CEZIH insurance check failed: %s", e.message)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-
-    result["mock"] = False
 
     patient_id = None
     if db and tenant_id:
@@ -113,7 +100,7 @@ async def insurance_check(
         db, tenant_id, user_id,
         action="insurance_check",
         resource_id=patient_id,
-        details={"mbo": mbo, "result": result.get("status_osiguranja"), "mode": "real"},
+        details={"mbo": mbo, "result": result.get("status_osiguranja")},
     )
 
     return result
@@ -128,12 +115,6 @@ async def send_enalaz(
     user_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_send_enalaz(
-            db, tenant_id, patient_id, record_id,
-            user_id=user_id,
-        )
-
     from app.models.patient import Patient
 
     record = await _get_medical_record(db, tenant_id, patient_id, record_id)
@@ -197,13 +178,11 @@ async def send_enalaz(
         "patient_id": str(patient_id),
         "record_id": str(record_id),
         "reference_id": ref,
-        "mode": "real",
     }
 
     if user_id:
         await _write_audit(db, tenant_id, user_id, action="e_nalaz_send", resource_id=patient_id, details=details)
 
-    result["mock"] = False
     return result
 
 
@@ -216,11 +195,6 @@ async def send_erecept(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_send_erecept(
-            patient_id, lijekovi, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
-
     _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
@@ -264,11 +238,9 @@ async def send_erecept(
             "patient_id": str(patient_id),
             "recept_id": recept_id,
             "lijekovi": [item.get("naziv", "") if isinstance(item, dict) else str(item) for item in lijekovi],
-            "mode": "real",
         },
     )
 
-    result["mock"] = False
     return result
 
 
@@ -280,10 +252,6 @@ async def cancel_erecept(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_cancel_erecept(
-            recept_id, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.cancel_erecept(http_client, recept_id)
@@ -292,19 +260,13 @@ async def cancel_erecept(
     await _write_audit(
         db, tenant_id, user_id,
         action="e_recept_cancel",
-        details={"recept_id": recept_id, "mode": "real"},
+        details={"recept_id": recept_id},
     )
-    result["mock"] = False
     return result
 
 
 async def cezih_status(tenant_id=None, *, http_client=None) -> dict:
-    if _is_mock():
-        mock_result = cezih_service.mock_cezih_status(tenant_id)
-        mock_result["mode"] = settings.CEZIH_MODE
-        return mock_result
-
-    # Real mode — server cannot reach CEZIH directly (no VPN),
+    # Server cannot reach CEZIH directly (no VPN),
     # so derive connectivity from agent + VPN status.
     from app.services.agent_connection_manager import agent_manager
 
@@ -322,9 +284,7 @@ async def cezih_status(tenant_id=None, *, http_client=None) -> dict:
     connected = agent_connected and vpn_connected
 
     return {
-        "mock": False,
         "connected": connected,
-        "mode": "real",
         "agent_connected": agent_connected,
         "last_heartbeat": last_heartbeat,
     }
@@ -332,9 +292,6 @@ async def cezih_status(tenant_id=None, *, http_client=None) -> dict:
 
 async def drug_search(query: str) -> list[dict]:
     """Drug search — uses local HZZO drug DB."""
-    if _is_mock():
-        return cezih_service.mock_drug_search(query)
-
     from app.services.halmed_sync_service import search_drugs_db
 
     results = await search_drugs_db(query)
@@ -380,9 +337,6 @@ async def sign_document(
     document_id: str | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return cezih_service.mock_sign_document(document_id=document_id)
-
     if not http_client:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="HTTP client not available")
 
@@ -396,14 +350,10 @@ async def sign_document(
         logger.error("CEZIH signing failed: %s", e.message)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
 
-    result["mock"] = False
     return result
 
 
 async def signing_health_check(*, http_client=None) -> dict:
-    if _is_mock():
-        return cezih_service.mock_sign_health_check()
-
     if not http_client:
         return {"reachable": False, "reason": "HTTP client not available"}
 
@@ -429,15 +379,12 @@ async def oid_lookup(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_lookup_oid(oid, db=db, user_id=user_id, tenant_id=tenant_id)
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.lookup_oid(http_client, oid)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
-    await _write_audit(db, tenant_id, user_id, action="oid_lookup", details={"oid": oid, "mode": "real"})
+    await _write_audit(db, tenant_id, user_id, action="oid_lookup", details={"oid": oid})
     return result
 
 
@@ -456,10 +403,6 @@ async def code_system_query(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    if _is_mock():
-        return await cezih_service.mock_query_code_system(
-            system_name, query, count, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.query_code_system(http_client, system_name, query, count)
@@ -467,7 +410,7 @@ async def code_system_query(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
         db, tenant_id, user_id, action="code_system_query",
-        details={"system": system_name, "query": query, "mode": "real"},
+        details={"system": system_name, "query": query},
     )
     return result
 
@@ -486,17 +429,12 @@ async def value_set_expand(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_expand_value_set(
-            url, filter_text, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.expand_value_set(http_client, url, filter_text)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
-    await _write_audit(db, tenant_id, user_id, action="value_set_expand", details={"url": url, "mode": "real"})
+    await _write_audit(db, tenant_id, user_id, action="value_set_expand", details={"url": url})
     return result
 
 
@@ -513,14 +451,12 @@ async def organization_search(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    if _is_mock():
-        return await cezih_service.mock_find_organizations(name, db=db, user_id=user_id, tenant_id=tenant_id)
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.find_organizations(http_client, name)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    await _write_audit(db, tenant_id, user_id, action="organization_search", details={"name": name, "mode": "real"})
+    await _write_audit(db, tenant_id, user_id, action="organization_search", details={"name": name})
     return result
 
 
@@ -532,14 +468,12 @@ async def practitioner_search(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    if _is_mock():
-        return await cezih_service.mock_find_practitioners(name, db=db, user_id=user_id, tenant_id=tenant_id)
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.find_practitioners(http_client, name)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    await _write_audit(db, tenant_id, user_id, action="practitioner_search", details={"name": name, "mode": "real"})
+    await _write_audit(db, tenant_id, user_id, action="practitioner_search", details={"name": name})
     return result
 
 
@@ -556,20 +490,15 @@ async def foreigner_registration(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_register_foreigner(
-            patient_data, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.register_foreigner(http_client, patient_data)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
     patient_name = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}"
     await _write_audit(
         db, tenant_id, user_id, action="foreigner_register",
-        details={"patient_name": patient_name, "mode": "real"},
+        details={"patient_name": patient_name},
     )
     return result
 
@@ -587,14 +516,12 @@ async def dispatch_retrieve_cases(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    if _is_mock():
-        return await cezih_service.mock_retrieve_cases(patient_mbo, db=db, user_id=user_id, tenant_id=tenant_id)
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.retrieve_cases(http_client, patient_mbo)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    await _write_audit(db, tenant_id, user_id, action="case_retrieve", details={"mbo": patient_mbo, "mode": "real"})
+    await _write_audit(db, tenant_id, user_id, action="case_retrieve", details={"mbo": patient_mbo})
     return result
 
 
@@ -614,11 +541,6 @@ async def dispatch_create_case(
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_create_case(
-            patient_mbo, icd_code, icd_display, onset_date, verification_status, note_text,
-            db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.create_case(
@@ -628,10 +550,9 @@ async def dispatch_create_case(
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
     await _write_audit(
         db, tenant_id, user_id, action="case_create",
-        details={"mbo": patient_mbo, "icd": icd_code, "mode": "real"},
+        details={"mbo": patient_mbo, "icd": icd_code},
     )
     return result
 
@@ -649,8 +570,6 @@ async def dispatch_update_case(
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_update_case(case_id, action, db=db, user_id=user_id, tenant_id=tenant_id)
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.update_case(
@@ -659,10 +578,9 @@ async def dispatch_update_case(
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
     await _write_audit(
         db, tenant_id, user_id, action=f"case_{action}",
-        details={"case_id": case_id, "action": action, "mode": "real"},
+        details={"case_id": case_id, "action": action},
     )
     return result
 
@@ -686,14 +604,6 @@ async def dispatch_update_case_data(
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
-    if _is_mock():
-        updates = {k: v for k, v in {
-            "verification_status": verification_status, "icd_code": icd_code,
-            "onset_date": onset_date, "abatement_date": abatement_date, "note_text": note_text,
-        }.items() if v is not None}
-        return await cezih_service.mock_update_case_data(
-            case_id, updates, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.update_case_data(
@@ -707,10 +617,9 @@ async def dispatch_update_case_data(
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
     await _write_audit(
         db, tenant_id, user_id, action="case_update_data",
-        details={"case_id": case_id, "mode": "real"},
+        details={"case_id": case_id},
     )
     return result
 
@@ -732,11 +641,6 @@ async def dispatch_search_documents(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    if _is_mock():
-        return await cezih_service.mock_search_documents(
-            patient_mbo, document_type, date_from, date_to, status_filter,
-            db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.search_documents(
@@ -747,7 +651,7 @@ async def dispatch_search_documents(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
         db, tenant_id, user_id, action="document_search",
-        details={"mbo": patient_mbo or "", "type": document_type or "", "mode": "real"},
+        details={"mbo": patient_mbo or "", "type": document_type or ""},
     )
     return result
 
@@ -763,10 +667,6 @@ async def dispatch_replace_document(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_replace_document(
-            original_reference_id, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
 
     # Get practitioner ID from the record for signing
@@ -793,10 +693,9 @@ async def dispatch_replace_document(
                 record.cezih_signed_at = datetime.fromisoformat(result["signed_at"])
             await db.flush()
 
-    result["mock"] = False
     await _write_audit(
         db, tenant_id, user_id, action="e_nalaz_replace",
-        details={"reference_id": original_reference_id, "mode": "real"},
+        details={"reference_id": original_reference_id},
     )
     return result
 
@@ -809,19 +708,14 @@ async def dispatch_cancel_document(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_cancel_document(
-            reference_id, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.cancel_document(http_client, reference_id)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
     await _write_audit(
         db, tenant_id, user_id, action="e_nalaz_cancel",
-        details={"reference_id": reference_id, "mode": "real"},
+        details={"reference_id": reference_id},
     )
     return result
 
@@ -835,10 +729,6 @@ async def dispatch_retrieve_document(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> bytes:
-    if _is_mock():
-        return await cezih_service.mock_retrieve_document(
-            reference_id, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.retrieve_document(http_client, document_url or reference_id)
@@ -846,7 +736,7 @@ async def dispatch_retrieve_document(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
         db, tenant_id, user_id, action="document_retrieve",
-        details={"reference_id": reference_id, "mode": "real"},
+        details={"reference_id": reference_id},
     )
     return result
 
@@ -871,10 +761,6 @@ async def dispatch_create_visit(
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_create_visit(
-            patient_mbo, nacin_prijema, reason, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         from app.services.cezih.client import CezihFhirClient
@@ -901,10 +787,9 @@ async def dispatch_create_visit(
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
     await _write_audit(
         db, tenant_id, user_id, action="visit_create",
-        details={"mbo": patient_mbo, "nacin_prijema": nacin_prijema, "mode": "real"},
+        details={"mbo": patient_mbo, "nacin_prijema": nacin_prijema},
     )
     return result
 
@@ -922,11 +807,6 @@ async def dispatch_update_visit(
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_update_visit(
-            visit_id, reason, patient_mbo=patient_mbo,
-            db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         from app.services.cezih.client import CezihFhirClient
@@ -956,10 +836,9 @@ async def dispatch_update_visit(
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
     await _write_audit(
         db, tenant_id, user_id, action="visit_update",
-        details={"visit_id": visit_id, "mode": "real"},
+        details={"visit_id": visit_id},
     )
     return result
 
@@ -977,11 +856,6 @@ async def dispatch_visit_action(
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
-    if _is_mock():
-        return await cezih_service.mock_visit_action(
-            visit_id, action, patient_mbo=patient_mbo,
-            db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         from app.services.cezih.client import CezihFhirClient
@@ -1029,10 +903,9 @@ async def dispatch_visit_action(
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    result["mock"] = False
     await _write_audit(
         db, tenant_id, user_id, action=f"visit_{action}",
-        details={"visit_id": visit_id, "action": action, "mode": "real"},
+        details={"visit_id": visit_id, "action": action},
     )
     return result
 
@@ -1045,14 +918,10 @@ async def dispatch_list_visits(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    if _is_mock():
-        return await cezih_service.mock_list_visits(
-            patient_mbo, db=db, user_id=user_id, tenant_id=tenant_id,
-        )
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.list_visits(http_client, patient_mbo)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    await _write_audit(db, tenant_id, user_id, action="visit_list", details={"mbo": patient_mbo, "mode": "real"})
+    await _write_audit(db, tenant_id, user_id, action="visit_list", details={"mbo": patient_mbo})
     return result

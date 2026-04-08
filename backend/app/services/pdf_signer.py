@@ -1,8 +1,7 @@
 """PAdES digital signature embedding for medical finding PDFs.
 
-Supports two modes:
-- Mock: self-signed test certificate (for development without VPN)
-- Real: delegates to CEZIH remote signing service via ExternalSigner
+Uses a local self-signed certificate for tamper-evident PDF signatures.
+CEZIH remote signing (via AKD smart card) is handled separately by dispatcher.sign_document().
 """
 
 from __future__ import annotations
@@ -20,19 +19,17 @@ from pyhanko.pdf_utils.reader import PdfFileReader
 from pyhanko.sign import fields as sig_fields
 from pyhanko.sign import signers
 
-from app.config import settings
-
 logger = logging.getLogger(__name__)
 
-# Cache the mock signer so we don't regenerate the cert on every request
-_mock_signer: signers.SimpleSigner | None = None
+# Cache the local signer so we don't regenerate the cert on every request
+_local_signer: signers.SimpleSigner | None = None
 
 
-def _get_mock_signer() -> signers.SimpleSigner:
-    """Create or return a cached self-signed test signer for mock mode."""
-    global _mock_signer
-    if _mock_signer is not None:
-        return _mock_signer
+def _get_local_signer() -> signers.SimpleSigner:
+    """Create or return a cached self-signed signer for local PDF signing."""
+    global _local_signer
+    if _local_signer is not None:
+        return _local_signer
 
     # Generate RSA key
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -72,13 +69,9 @@ def _get_mock_signer() -> signers.SimpleSigner:
         encryption_algorithm=serialization.NoEncryption(),
     )
 
-    _mock_signer = signers.SimpleSigner.load_pkcs12_data(pkcs12_bytes, other_certs=[])
-    logger.info("Mock PDF signer initialized with self-signed test certificate")
-    return _mock_signer
-
-
-def _is_mock() -> bool:
-    return getattr(settings, "CEZIH_MODE", "mock") == "mock"
+    _local_signer = signers.SimpleSigner.load_pkcs12_data(pkcs12_bytes, other_certs=[])
+    logger.info("Local PDF signer initialized with self-signed certificate")
+    return _local_signer
 
 
 async def sign_pdf(
@@ -88,30 +81,22 @@ async def sign_pdf(
     reason: str = "Digitalno potpisani medicinski nalaz",
     location: str = "",
 ) -> bytes:
-    """Sign a PDF with a PAdES digital signature.
-
-    In mock mode, uses a self-signed test certificate.
-    In real mode, delegates to the CEZIH remote signing service (future).
+    """Sign a PDF with a PAdES digital signature using a local certificate.
 
     Returns the signed PDF bytes.
     """
-    if _is_mock():
-        return await _sign_mock(pdf_bytes, doctor_name=doctor_name, reason=reason, location=location)
-
-    # Real mode — for now, fall back to mock until VPN is available
-    logger.warning("Real CEZIH PDF signing not yet available (needs VPN). Falling back to mock signer.")
-    return await _sign_mock(pdf_bytes, doctor_name=doctor_name, reason=reason, location=location)
+    return await _sign_local(pdf_bytes, doctor_name=doctor_name, reason=reason, location=location)
 
 
-async def _sign_mock(
+async def _sign_local(
     pdf_bytes: bytes,
     *,
     doctor_name: str = "",
     reason: str = "",
     location: str = "",
 ) -> bytes:
-    """Sign PDF using self-signed test certificate (mock mode)."""
-    signer = _get_mock_signer()
+    """Sign PDF using local self-signed certificate."""
+    signer = _get_local_signer()
 
     reader = PdfFileReader(BytesIO(pdf_bytes))
     w = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
@@ -148,7 +133,7 @@ async def _sign_mock(
 
     signed_bytes = output.getvalue()
     logger.info(
-        "PDF signed (mock) for %s — %d → %d bytes",
+        "PDF signed (local certificate) for %s — %d → %d bytes",
         doctor_name, len(pdf_bytes), len(signed_bytes),
     )
     return signed_bytes
