@@ -30,7 +30,7 @@ from app.services.cezih.models import (
 logger = logging.getLogger(__name__)
 
 # CEZIH identifier systems
-SYS_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/mbo"
+SYS_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
 SYS_OIB = "http://fhir.cezih.hr/specifikacije/identifikatori/oib"
 
 
