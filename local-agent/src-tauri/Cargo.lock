@@ -1765,6 +1765,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 name = "hm-digital-agent"
 version = "0.7.1"
 dependencies = [
+ "base64 0.22.1",
  "curl",
  "dirs 5.0.1",
  "env_logger",
@@ -1776,6 +1777,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",

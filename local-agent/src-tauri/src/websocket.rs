@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -473,13 +474,57 @@ pub fn spawn_connection_task(
                                                     let _ = write.send(Message::Text(r#"{"type":"pong"}"#.into())).await;
                                                 }
                                                 "sign_request" => {
-                                                    // TODO: implement real PKCS#11 signing via smart card
-                                                    info!("Received sign_request (placeholder response)");
-                                                    let response = json!({
-                                                        "type": "sign_response",
-                                                        "request_id": parsed.get("request_id"),
-                                                        "signature": "PLACEHOLDER_PENDING_PKCS11",
-                                                    });
+                                                    let rid = parsed.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                    let data_b64 = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                                                    info!("Received sign_request {} ({} chars)", &rid[..rid.len().min(8)], data_b64.len());
+
+                                                    // Decode base64 data and sign with smart card
+                                                    let sign_result = {
+                                                        let data_bytes = match base64::engine::general_purpose::STANDARD.decode(data_b64) {
+                                                            Ok(b) => b,
+                                                            Err(e) => {
+                                                                let response = json!({
+                                                                    "type": "sign_response",
+                                                                    "request_id": &rid,
+                                                                    "error": format!("Invalid base64 data: {}", e),
+                                                                });
+                                                                let _ = write.send(Message::Text(response.to_string().into())).await;
+                                                                continue;
+                                                            }
+                                                        };
+                                                        // Run signing on blocking thread (CryptoAPI may prompt for PIN)
+                                                        tokio::task::spawn_blocking(move || {
+                                                            crate::signing::sign_with_smartcard(&data_bytes)
+                                                        }).await
+                                                    };
+
+                                                    let response = match sign_result {
+                                                        Ok(Ok(result)) => {
+                                                            info!("Signing successful, sig={} bytes, kid={}", result.signature.len(), &result.kid[..16]);
+                                                            json!({
+                                                                "type": "sign_response",
+                                                                "request_id": &rid,
+                                                                "signature": base64::engine::general_purpose::STANDARD.encode(&result.signature),
+                                                                "kid": result.kid,
+                                                            })
+                                                        }
+                                                        Ok(Err(e)) => {
+                                                            error!("Signing failed: {}", e);
+                                                            json!({
+                                                                "type": "sign_response",
+                                                                "request_id": &rid,
+                                                                "error": e,
+                                                            })
+                                                        }
+                                                        Err(e) => {
+                                                            error!("Signing task panicked: {}", e);
+                                                            json!({
+                                                                "type": "sign_response",
+                                                                "request_id": &rid,
+                                                                "error": format!("Internal error: {}", e),
+                                                            })
+                                                        }
+                                                    };
                                                     let _ = write.send(Message::Text(response.to_string().into())).await;
                                                 }
                                                 "http_proxy_request" => {

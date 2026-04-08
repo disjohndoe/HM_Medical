@@ -1,3 +1,4 @@
+mod signing;
 mod smartcard;
 mod vpn;
 mod websocket;

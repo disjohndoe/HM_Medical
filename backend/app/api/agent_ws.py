@@ -114,8 +114,9 @@ async def agent_websocket(websocket: WebSocket):
                 agent_manager.resolve_proxy_response(req_id, msg)
 
             elif msg_type in ("sign_response", "sign_error"):
-                # Future: forward to waiting request
+                req_id = msg.get("request_id", "")
                 logger.info("Received %s from agent %s for tenant %s", msg_type, agent_id[:8], tenant_id)
+                agent_manager.resolve_proxy_response(req_id, msg)
 
     except WebSocketDisconnect:
         logger.info("Agent %s disconnected for tenant %s", agent_id[:8], tenant_id)

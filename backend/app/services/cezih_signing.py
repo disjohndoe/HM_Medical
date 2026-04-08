@@ -248,47 +248,77 @@ async def sign_document(
     document_id: str | None = None,
     signing_reason: str = "CEZIH clinical document",
 ) -> dict:
-    """Create a placeholder JWS signature for the document.
+    """Sign a document using the agent's smart card (local CryptoAPI signing).
 
-    TEMPORARY: Bypasses extsigner API (unknown request format) to test
-    whether the FHIR Bundle structure is accepted by CEZIH.
-    CEZIH will reject the signature, but the error will tell us if the
-    Bundle format itself is correct.
+    Flow:
+    1. Send data to agent via WebSocket sign_request
+    2. Agent signs with AKD smart card (Windows CryptoAPI + RSA)
+    3. Agent returns raw RSA signature + certificate thumbprint (kid)
+    4. Backend creates JWS: base64url(header).base64url(payload).base64url(sig)
+    5. Base64-encode entire JWS for FHIR base64Binary in Bundle.signature.data
 
-    TODO: Replace with real signing once extsigner API format is known,
-    or implement local smart card signing in the agent.
+    Falls back to placeholder if agent is not connected.
     """
     if isinstance(document_bytes, str):
         document_bytes = document_bytes.encode("utf-8")
 
     doc_hash = _compute_hash(document_bytes)
 
-    # Create a placeholder signature matching the Simplifier example format.
-    # FHIR base64Binary requires standard base64 (no dots, no base64url chars).
-    # The Simplifier example shows: base64(JWS_header) + base64(Bundle_JSON) + raw_sig_bytes
-    # all concatenated WITHOUT dots, using standard base64.
-    jws_header = '{"kid":"placeholder-pending-extsigner","alg":"RS256"}'
-    header_b64 = base64.b64encode(jws_header.encode()).decode()
-    payload_b64 = base64.b64encode(document_bytes).decode()
-    dummy_sig_b64 = base64.b64encode(b"PLACEHOLDER_SIG").decode()
+    if _should_use_agent():
+        # Route signing through the agent's smart card
+        from app.services.agent_connection_manager import agent_manager
+        from app.services.cezih.client import current_tenant_id
 
-    # Concatenate without dots — standard base64 for FHIR base64Binary
-    signature_data = header_b64 + payload_b64 + dummy_sig_b64
+        tenant_id = current_tenant_id.get()
+        data_b64 = base64.b64encode(document_bytes).decode("ascii")
 
-    logger.warning(
-        "CEZIH signing: using PLACEHOLDER signature (extsigner API format unknown). "
-        "Bundle hash=%.16s, sig length=%d. CEZIH will reject this — testing Bundle format only.",
-        doc_hash, len(signature_data),
-    )
+        logger.info("CEZIH signing via agent smart card (hash=%.16s, data_size=%d)", doc_hash, len(document_bytes))
 
-    return {
-        "success": True,
-        "signature": signature_data,
-        "signing_algorithm": _DEFAULT_ALGORITHM,
-        "signed_at": datetime.now(UTC).isoformat(),
-        "document_id": document_id,
-        "raw_response": {"placeholder": True},
-    }
+        try:
+            result = await agent_manager.sign_data(
+                tenant_id,
+                data_base64=data_b64,
+                timeout=30.0,
+            )
+        except RuntimeError as e:
+            raise CezihSigningError(f"Agent signing failed: {e}") from e
+
+        if "error" in result:
+            raise CezihSigningError(
+                f"Smart card signing failed: {result['error']}",
+                signing_service_error=result["error"],
+            )
+
+        sig_b64 = result.get("signature", "")
+        kid = result.get("kid", "unknown")
+
+        logger.info("Agent signing successful (kid=%.16s, sig_len=%d)", kid, len(sig_b64))
+
+        # Create JWS: header.payload.signature (base64url-encoded parts)
+        jws_header_json = json.dumps({"kid": kid, "alg": "RS256"}, separators=(",", ":"))
+        header_b64url = base64.urlsafe_b64encode(jws_header_json.encode()).decode().rstrip("=")
+        payload_b64url = base64.urlsafe_b64encode(document_bytes).decode().rstrip("=")
+
+        # Decode agent's standard base64 signature, re-encode as base64url
+        raw_sig = base64.b64decode(sig_b64)
+        sig_b64url = base64.urlsafe_b64encode(raw_sig).decode().rstrip("=")
+
+        jws_compact = f"{header_b64url}.{payload_b64url}.{sig_b64url}"
+
+        # FHIR base64Binary: base64-encode the entire JWS string
+        signature_data = base64.b64encode(jws_compact.encode("ascii")).decode("ascii")
+
+        return {
+            "success": True,
+            "signature": signature_data,
+            "signing_algorithm": _DEFAULT_ALGORITHM,
+            "signed_at": datetime.now(UTC).isoformat(),
+            "document_id": document_id,
+            "raw_response": {"kid": kid, "jws_length": len(jws_compact)},
+        }
+
+    # No agent — refuse to sign
+    raise CezihSigningError("Neispravna CEZIH konekcija")
 
 
 async def sign_health_check(client: httpx.AsyncClient) -> dict:

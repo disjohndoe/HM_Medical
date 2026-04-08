@@ -213,9 +213,46 @@ class AgentConnectionManager:
         finally:
             _pending_proxy.pop(request_id, None)
 
+    async def sign_data(
+        self,
+        tenant_id: UUID,
+        *,
+        data_base64: str,
+        timeout: float = 30.0,
+    ) -> dict:
+        """Send data to the agent for signing with the smart card.
+
+        The agent signs using Windows CryptoAPI + AKD signing certificate.
+        Returns dict with 'signature' (base64) and 'kid' (cert thumbprint),
+        or 'error' string on failure.
+        """
+        conn = self.get_any_connected(tenant_id)
+        if not conn:
+            raise RuntimeError("No agent connected for this tenant")
+
+        request_id = str(_uuid.uuid4())
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future = loop.create_future()
+        _pending_proxy[request_id] = future  # reuse same pending dict
+
+        message = {
+            "type": "sign_request",
+            "request_id": request_id,
+            "data": data_base64,
+        }
+
+        try:
+            await conn.websocket.send_json(message)
+            result = await asyncio.wait_for(future, timeout=timeout)
+            return result
+        except TimeoutError:
+            raise RuntimeError(f"Agent signing timed out after {timeout}s")
+        finally:
+            _pending_proxy.pop(request_id, None)
+
     @staticmethod
     def resolve_proxy_response(request_id: str, response: dict) -> None:
-        """Called when agent sends http_proxy_response — resolves the waiting future."""
+        """Called when agent sends http_proxy_response or sign_response — resolves the waiting future."""
         future = _pending_proxy.get(request_id)
         if future and not future.done():
             future.set_result(response)
