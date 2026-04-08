@@ -13,6 +13,73 @@ import httpx
 from app.config import settings
 from app.services.cezih.exceptions import CezihSigningError
 
+
+def _extract_signature_from_cms(cms_der: bytes) -> bytes | None:
+    """Extract the raw cryptographic signature value from a CMS/PKCS#7 DER structure.
+
+    Parses minimal ASN.1 to find the SignerInfo.signature field.
+    Returns the raw signature bytes, or None if parsing fails.
+    """
+    try:
+        # CMS SignedData structure (simplified):
+        # SEQUENCE {
+        #   OID signedData
+        #   [0] EXPLICIT SEQUENCE {  -- SignedData
+        #     INTEGER version
+        #     SET digestAlgorithms
+        #     SEQUENCE encapContentInfo
+        #     SET signerInfos {
+        #       SEQUENCE {  -- SignerInfo
+        #         ...
+        #         OCTET STRING signature  -- this is what we want (last element)
+        #       }
+        #     }
+        #   }
+        # }
+        # The signature is the last OCTET STRING in the last SEQUENCE of the SignerInfos SET.
+        # Simple approach: find the last OCTET STRING (tag 0x04) of sufficient length.
+
+        # More reliable: use Python's built-in ASN.1 decoder if available
+        from asn1crypto import cms as asn1_cms
+        content_info = asn1_cms.ContentInfo.load(cms_der)
+        signed_data = content_info["content"]
+        signer_infos = signed_data["signer_infos"]
+        if len(signer_infos) > 0:
+            sig_value = signer_infos[0]["signature"].contents
+            logger.info("Extracted raw signature from CMS: %d bytes", len(sig_value))
+            return sig_value
+    except ImportError:
+        logger.warning("asn1crypto not available, trying manual ASN.1 parsing")
+    except Exception as e:
+        logger.warning("asn1crypto CMS parsing failed: %s, trying manual", e)
+
+    try:
+        # Manual fallback: the signature is typically the last large OCTET STRING
+        # Scan backwards for tag 0x04 (OCTET STRING) with length >= 32
+        pos = len(cms_der) - 1
+        while pos > 10:
+            # Look for a length-encoded block near the end
+            if cms_der[pos - 1] == 0x04 or cms_der[pos - 2] == 0x04:
+                break
+            pos -= 1
+
+        # Just take the last N bytes as the signature
+        # For ECDSA P-256 DER: typically 70-72 bytes
+        # For ECDSA raw r||s: 64 bytes
+        # Scan for the last BIT STRING (0x03) or OCTET STRING (0x04)
+        for i in range(len(cms_der) - 4, 10, -1):
+            tag = cms_der[i]
+            if tag in (0x03, 0x04):
+                length = cms_der[i + 1]
+                if 0x20 <= length <= 0x80 and i + 2 + length <= len(cms_der):
+                    sig = cms_der[i + 2 : i + 2 + length]
+                    logger.info("Manual ASN.1: found tag=0x%02x, len=%d at offset %d", tag, length, i)
+                    return sig
+    except Exception as e:
+        logger.warning("Manual ASN.1 parsing failed: %s", e)
+
+    return None
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ALGORITHM = "SHA-256"
@@ -297,17 +364,44 @@ async def sign_document(
 
         logger.info("Agent signing successful (kid=%.16s, sig_len=%d)", kid, len(sig_b64))
 
-        # Agent returns CMS/PKCS#7 detached signature (already base64-encoded).
-        # FHIR signature.data is base64Binary — use the signature directly.
-        signature_data = sig_b64
+        # Agent returns CMS/PKCS#7 detached signature (base64-encoded DER).
+        # CEZIH expects JWS format in Bundle.signature.data.
+        # Extract the raw cryptographic signature from the CMS structure
+        # and wrap it in a JWS compact serialization.
+        cms_der = base64.b64decode(sig_b64)
+        raw_sig = _extract_signature_from_cms(cms_der)
+
+        if raw_sig is None:
+            logger.warning("Could not extract raw sig from CMS, using CMS directly")
+            raw_sig = cms_der
+
+        # Detect algorithm from signature size:
+        # ECDSA P-256 = ~70 bytes DER (or 64 raw r||s), RSA-2048 = 256 bytes
+        if len(raw_sig) <= 128:
+            alg = "ES256"
+        else:
+            alg = "RS256"
+
+        # Create JWS: header.payload.signature (base64url, no padding)
+        jws_header = json.dumps({"kid": kid, "alg": alg}, separators=(",", ":"))
+        header_b64url = base64.urlsafe_b64encode(jws_header.encode()).decode().rstrip("=")
+        payload_b64url = base64.urlsafe_b64encode(document_bytes).decode().rstrip("=")
+        sig_b64url = base64.urlsafe_b64encode(raw_sig).decode().rstrip("=")
+
+        jws_compact = f"{header_b64url}.{payload_b64url}.{sig_b64url}"
+
+        # FHIR signature.data is base64Binary — encode the JWS string
+        signature_data = base64.b64encode(jws_compact.encode("ascii")).decode("ascii")
+
+        logger.info("JWS created (alg=%s, kid=%.16s, jws_len=%d)", alg, kid, len(jws_compact))
 
         return {
             "success": True,
             "signature": signature_data,
-            "signing_algorithm": _DEFAULT_ALGORITHM,
+            "signing_algorithm": alg,
             "signed_at": datetime.now(UTC).isoformat(),
             "document_id": document_id,
-            "raw_response": {"kid": kid, "sig_length": len(sig_b64)},
+            "raw_response": {"kid": kid, "alg": alg, "raw_sig_len": len(raw_sig)},
         }
 
     # No agent — refuse to sign
