@@ -97,9 +97,16 @@ def _ecdsa_der_to_raw(der_sig: bytes) -> bytes:
         r_bytes = r_bytes.lstrip(b'\x00')
         s_bytes = s_bytes.lstrip(b'\x00')
 
-        # Pad to 32 bytes (P-256)
-        r_bytes = r_bytes.rjust(32, b'\x00')
-        s_bytes = s_bytes.rjust(32, b'\x00')
+        # Determine component size from the larger of r, s
+        component_size = max(len(r_bytes), len(s_bytes))
+        # Round up to standard curve sizes: 32 (P-256), 48 (P-384), 66 (P-521)
+        for std_size in (32, 48, 66):
+            if component_size <= std_size:
+                component_size = std_size
+                break
+
+        r_bytes = r_bytes.rjust(component_size, b'\x00')
+        s_bytes = s_bytes.rjust(component_size, b'\x00')
 
         raw = r_bytes + s_bytes
         logger.info("ECDSA DER→raw: %d bytes DER → %d bytes raw (r=%d, s=%d)",
@@ -406,11 +413,17 @@ async def sign_document(
             raw_sig = cms_der
 
         # Detect algorithm from signature size:
-        # ECDSA P-256 DER = ~70-104 bytes, RSA-2048 = 256 bytes
-        if len(raw_sig) <= 128:
-            alg = "ES256"
-            # JWS ES256 requires raw r||s (64 bytes), not DER-encoded ECDSA
+        # ECDSA DER = ~70-140 bytes, RSA-2048 = 256 bytes
+        if len(raw_sig) <= 160:
+            # JWS requires raw r||s, not DER-encoded ECDSA
             raw_sig = _ecdsa_der_to_raw(raw_sig)
+            # Detect curve from raw r||s size
+            if len(raw_sig) <= 64:
+                alg = "ES256"   # P-256: r=32 + s=32
+            elif len(raw_sig) <= 96:
+                alg = "ES384"   # P-384: r=48 + s=48
+            else:
+                alg = "ES512"   # P-521: r=66 + s=66
         else:
             alg = "RS256"
 
