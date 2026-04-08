@@ -398,28 +398,15 @@ async def sign_bundle_for_cezih(
         logger.warning("Agent sign_jws failed: %s — falling back to CMS", result["error"])
         return await _sign_bundle_cms_fallback(bundle_json_bytes)
 
-    raw_sig_b64 = result.get("raw_signature", "")
+    jws_base64 = result.get("jws_base64", "")
     kid = result.get("kid", "unknown")
     algorithm = result.get("algorithm", "ES256")
 
-    raw_sig_bytes = base64.b64decode(raw_sig_b64)
-    logger.info("Agent JWS signing OK: alg=%s, sig=%d bytes, kid=%.16s", algorithm, len(raw_sig_bytes), kid)
-
-    # Build JOSE header (must match what agent signed over)
-    jose_header = json.dumps({"kid": kid, "alg": algorithm}, separators=(",", ":"), ensure_ascii=True)
-    jose_header_bytes = jose_header.encode("utf-8")
-
-    # Assemble: base64( jose_header_bytes + bundle_json_bytes + raw_sig_bytes )
-    signed_payload = jose_header_bytes + bundle_json_bytes + raw_sig_bytes
-    signature_data = base64.b64encode(signed_payload).decode("ascii")
-
-    logger.info("CEZIH signature assembled: header=%d + bundle=%d + sig=%d = %d bytes → %d b64 chars",
-                len(jose_header_bytes), len(bundle_json_bytes), len(raw_sig_bytes),
-                len(signed_payload), len(signature_data))
+    logger.info("Agent JWS signing OK: alg=%s, jws_b64=%d chars, kid=%.16s", algorithm, len(jws_base64), kid)
 
     return {
         "success": True,
-        "signature": signature_data,
+        "signature": jws_base64,
         "signing_algorithm": algorithm,
         "signed_at": datetime.now(UTC).isoformat(),
         "kid": kid,

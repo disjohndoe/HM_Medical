@@ -8,8 +8,9 @@
 //! 2. **CMS mode** (`sign_with_smartcard`): Legacy CryptSignMessage that produces
 //!    detached PKCS#7/CMS signatures. Used as fallback if NCrypt is unavailable.
 
+use base64::Engine as _;
 use log::{info, warn};
-use sha2::{Sha256, Digest};
+use sha2::{Sha256, Sha384, Digest};
 use std::ptr;
 use windows_sys::Win32::Security::Cryptography::*;
 use windows_sys::Win32::Foundation::GetLastError;
@@ -22,35 +23,33 @@ pub struct SignResult {
     pub kid: String,
 }
 
-/// Result of JWS-compatible signing (raw crypto signature).
+/// Result of JWS signing — contains the complete base64-encoded JWS
+/// ready to be placed directly in Bundle.signature.data.
 pub struct JwsSignResult {
-    /// Raw cryptographic signature bytes.
-    /// For ECDSA P-256: 64 bytes (r: 32 || s: 32).
-    /// For ECDSA P-384: 96 bytes (r: 48 || s: 48).
-    /// For RSA: key_size/8 bytes.
-    pub raw_signature: Vec<u8>,
-    /// Certificate DER bytes (for x5c / public key extraction).
-    pub certificate_der: Vec<u8>,
-    /// Certificate thumbprint (SHA-1 hex) — used as JOSE `kid`.
+    /// Complete JWS, base64-encoded: base64(b64url_header.b64url_payload.b64url_sig)
+    pub jws_base64: String,
+    /// Certificate thumbprint (SHA-1 hex).
     pub kid: String,
     /// JOSE algorithm name: "ES256", "ES384", "RS256", etc.
     pub algorithm: String,
 }
 
-/// Sign a FHIR Bundle for CEZIH using NCryptSignHash.
+/// Sign a FHIR Bundle for CEZIH — produces standard JWS (RFC 7515).
 ///
 /// Takes the serialized Bundle JSON bytes (with signature.data = "").
-/// 1. Finds the cert → kid, algorithm
-/// 2. Builds JOSE header: {"kid":"<kid>","alg":"<alg>"}
-/// 3. Computes SHA-256(jose_header_bytes + bundle_json_bytes)
-/// 4. Signs hash via NCryptSignHash
-/// 5. Returns raw signature + JOSE header string + cert info
+/// Builds a complete JWS with:
+///   - JOSE header including `alg`, `kid`, `x5c` (full cert for verification)
+///   - Payload = base64url(bundle_json)
+///   - Signature = base64url(NCryptSignHash output)
+/// Returns base64(JWS_compact) ready for FHIR signature.data.
 pub fn sign_for_jws(bundle_json: &[u8]) -> Result<JwsSignResult, String> {
     unsafe { sign_for_jws_inner(bundle_json) }
 }
 
 unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String> {
     const ENCODING: u32 = X509_ASN_ENCODING | PKCS_7_ASN_ENCODING;
+    let b64url = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let b64std = base64::engine::general_purpose::STANDARD;
 
     let store_name: Vec<u16> = "My\0".encode_utf16().collect();
     let store = CertOpenSystemStoreW(0, store_name.as_ptr());
@@ -64,12 +63,9 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         return Err("No certificates found. Is the AKD smart card inserted?".into());
     }
 
-    // Reverse order: try identification/fallback certs FIRST.
-    // Signing cert (OU=SignatureTest) has broken key link — NCryptSignHash hangs.
-    // Identification cert (OU=IdentificationTest) works reliably.
+    // Reverse: try identification cert first (signing cert key link is broken).
     certs.reverse();
 
-    // Try NCryptSignHash with each cert
     for (cert_ctx, cert_label) in &certs {
         let kid = match get_cert_thumbprint(*cert_ctx) {
             Ok(k) => k,
@@ -98,16 +94,14 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             continue;
         }
 
-        info!("JWS: Got NCrypt key handle for {} (key_spec={})", cert_label, key_spec);
-
-        // Probe signature size to determine algorithm BEFORE building header
-        let probe_hash = [0u8; 32]; // dummy hash, just for size query
+        // Probe signature size to determine algorithm
+        let probe_hash = [0u8; 48]; // max hash size we use (SHA-384)
         let mut sig_len: u32 = 0;
         let status = NCryptSignHash(
             key_handle,
             ptr::null(),
             probe_hash.as_ptr(),
-            32,
+            48,
             ptr::null_mut(),
             0,
             &mut sig_len,
@@ -120,37 +114,60 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             continue;
         }
 
-        // Determine algorithm from expected signature length
+        // Determine algorithm from signature length
         let algorithm = match sig_len as usize {
             64 => "ES256",
             96 => "ES384",
             132 => "ES512",
             256 => "RS256",
-            n => {
-                info!("JWS: sig size {} bytes, guessing RS256", n);
-                "RS256"
+            _ => "RS256",
+        };
+
+        // Get certificate DER for x5c
+        let cert_der = std::slice::from_raw_parts(
+            (**cert_ctx).pbCertEncoded,
+            (**cert_ctx).cbCertEncoded as usize,
+        ).to_vec();
+        let cert_b64 = b64std.encode(&cert_der);
+
+        // Build JOSE header with x5c (cert chain for signature verification)
+        let jose_header = format!(
+            r#"{{"alg":"{}","x5c":["{}"],"kid":"{}"}}"#,
+            algorithm, cert_b64, kid,
+        );
+        info!("JWS: JOSE header alg={}, x5c cert={} bytes, kid={:.16}", algorithm, cert_der.len(), kid);
+
+        // Build JWS signing input: base64url(header) + "." + base64url(payload)
+        let header_b64url = b64url.encode(jose_header.as_bytes());
+        let payload_b64url = b64url.encode(bundle_json);
+        let signing_input = format!("{}.{}", header_b64url, payload_b64url);
+
+        // Hash with correct algorithm for the key type
+        let hash_bytes: Vec<u8> = match algorithm {
+            "ES384" => {
+                let mut h = Sha384::new();
+                h.update(signing_input.as_bytes());
+                h.finalize().to_vec()
+            }
+            _ => {
+                // ES256, RS256, etc. use SHA-256
+                let mut h = Sha256::new();
+                h.update(signing_input.as_bytes());
+                h.finalize().to_vec()
             }
         };
 
-        // Build JOSE header — must match exactly what backend reconstructs
-        let jose_header = format!(r#"{{"kid":"{}","alg":"{}"}}"#, kid, algorithm);
-        let jose_header_bytes = jose_header.as_bytes();
-        info!("JWS: JOSE header ({} bytes): {}", jose_header_bytes.len(), jose_header);
+        info!("JWS: signing_input={} chars, hash={} bytes ({})",
+              signing_input.len(), hash_bytes.len(), algorithm);
 
-        // Compute SHA-256(jose_header_bytes + bundle_json_bytes)
-        let mut hasher = Sha256::new();
-        hasher.update(jose_header_bytes);
-        hasher.update(bundle_json);
-        let hash: [u8; 32] = hasher.finalize().into();
-
-        // Sign the real hash
+        // Sign the hash
         let mut sig_buf = vec![0u8; sig_len as usize];
         let mut actual_len = sig_len;
         let status = NCryptSignHash(
             key_handle,
             ptr::null(),
-            hash.as_ptr(),
-            hash.len() as u32,
+            hash_bytes.as_ptr(),
+            hash_bytes.len() as u32,
             sig_buf.as_mut_ptr(),
             sig_len,
             &mut actual_len,
@@ -160,34 +177,35 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         if must_free != 0 { NCryptFreeObject(key_handle); }
 
         if status != 0 {
-            warn!("JWS: NCryptSignHash sign failed for {}: 0x{:08x}", cert_label, status as u32);
+            warn!("JWS: NCryptSignHash failed for {}: 0x{:08x}", cert_label, status as u32);
             continue;
         }
 
         sig_buf.truncate(actual_len as usize);
-        info!("JWS: NCryptSignHash success! alg={}, sig={} bytes, kid={:.16}", algorithm, sig_buf.len(), kid);
 
-        // Get certificate DER
-        let cert_der = std::slice::from_raw_parts(
-            (**cert_ctx).pbCertEncoded,
-            (**cert_ctx).cbCertEncoded as usize,
-        ).to_vec();
+        // Assemble JWS compact: header.payload.signature
+        let sig_b64url = b64url.encode(&sig_buf);
+        let jws_compact = format!("{}.{}", signing_input, sig_b64url);
 
-        // Cleanup all certs
+        // Base64 encode the entire JWS for FHIR base64Binary
+        let jws_base64 = b64std.encode(jws_compact.as_bytes());
+
+        info!("JWS: complete! alg={}, sig={} bytes, JWS={} chars, b64={} chars",
+              algorithm, sig_buf.len(), jws_compact.len(), jws_base64.len());
+
+        // Cleanup
         for (ctx, _) in &certs {
             CertFreeCertificateContext(*ctx);
         }
         CertCloseStore(store, 0);
 
         return Ok(JwsSignResult {
-            raw_signature: sig_buf,
-            certificate_der: cert_der,
+            jws_base64,
             kid,
             algorithm: algorithm.to_string(),
         });
     }
 
-    // Cleanup
     for (ctx, _) in &certs {
         CertFreeCertificateContext(*ctx);
     }

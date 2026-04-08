@@ -559,12 +559,11 @@ pub fn spawn_connection_task(
 
                                                     let response = match sign_result {
                                                         Ok(Ok(result)) => {
-                                                            info!("JWS signing OK: alg={}, sig={} bytes, kid={:.16}", result.algorithm, result.raw_signature.len(), result.kid);
+                                                            info!("JWS signing OK: alg={}, jws_b64={} chars, kid={:.16}", result.algorithm, result.jws_base64.len(), result.kid);
                                                             json!({
                                                                 "type": "sign_jws_response",
                                                                 "request_id": &rid,
-                                                                "raw_signature": base64::engine::general_purpose::STANDARD.encode(&result.raw_signature),
-                                                                "certificate": base64::engine::general_purpose::STANDARD.encode(&result.certificate_der),
+                                                                "jws_base64": result.jws_base64,
                                                                 "kid": result.kid,
                                                                 "algorithm": result.algorithm,
                                                             })
