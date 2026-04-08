@@ -285,10 +285,12 @@ async def sign_document(
     else:
         url = f"{signing_url.rstrip('/')}/services-router/gateway/extsigner/api/sign"
 
-    # CEZIH extsigner (rdss-service) — field discovery mode
-    # Send empty body to trigger "missing required field" error
-    # TODO: replace with correct fields once discovered
-    payload: dict = {}
+    # CEZIH extsigner (rdss-service) — probe multiple field names
+    # Previous attempts: "hash" (rejected), "content" (rejected), "dataToSign" (rejected)
+    # Try: "data" field with base64 hash
+    payload = {
+        "data": doc_hash,
+    }
 
     headers = {
         "Content-Type": "application/json",
