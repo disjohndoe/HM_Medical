@@ -1,0 +1,29 @@
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - git
+  - ufw
+  - apt-transport-https
+  - ca-certificates
+  - software-properties-common
+
+runcmd:
+  - fallocate -l 2G /swapfile
+  - chmod 600 /swapfile
+  - mkswap /swapfile
+  - swapon /swapfile
+  - echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable docker
+  - systemctl start docker
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 443/udp
+  - ufw --force enable
