@@ -137,5 +137,5 @@ jobs:
         shell: bash
         run: |
           TAG="agent-v${VERSION}"
-          gh release delete "$TAG" --repo disjohndoe/HM_Digital --yes 2>/dev/null || true
+          gh release delete "$TAG" --repo disjohndoe/HM_Medical --yes 2>/dev/null || true
           git push --delete origin "$TAG" 2>/dev/null || true
