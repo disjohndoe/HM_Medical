@@ -277,9 +277,11 @@ async def sign_document(
     doc_hash = _compute_hash(document_bytes)
     url = f"{signing_url.rstrip('/')}/services-router/gateway/extsigner/api/sign"
 
+    # CEZIH extsigner expects base64-encoded content, not pre-computed hash
+    # Format based on CEZIH API spec
     payload = {
-        "hash": doc_hash,
-        "hashAlgorithm": _DEFAULT_ALGORITHM,
+        "content": base64.b64encode(document_bytes).decode("ascii"),
+        "digestAlgorithm": _DEFAULT_ALGORITHM.replace("-", ""),  # "SHA256" not "SHA-256"
     }
     if document_id:
         payload["documentId"] = document_id
