@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import logging
 import time
 from datetime import UTC, datetime
@@ -39,6 +40,77 @@ def _compute_hash(data: bytes | str, *, algorithm: str = _DEFAULT_ALGORITHM) -> 
     else:
         raise CezihSigningError(f"Unsupported hash algorithm: {algorithm}")
     return base64.b64encode(digest).decode("ascii")
+
+
+def _should_use_agent() -> bool:
+    """Check if signing requests should be routed through the agent.
+
+    Server has no VPN — ALL CEZIH requests (including signing) must
+    go through the agent when it is connected.
+    """
+    from app.services.cezih.client import current_tenant_id
+    tenant_id = current_tenant_id.get()
+    if not tenant_id:
+        return False
+    from app.services.agent_connection_manager import agent_manager
+    return agent_manager.is_connected(tenant_id)
+
+
+async def _request_via_agent(
+    method: str, url: str, headers: dict[str, str],
+    form_data: dict | None, json_body: dict | None, timeout: int,
+) -> dict:
+    """Route HTTP request through the agent for CEZIH connectivity."""
+    from app.services.agent_connection_manager import agent_manager
+    from app.services.cezih.client import current_tenant_id
+
+    tenant_id = current_tenant_id.get()
+    if not tenant_id:
+        raise CezihSigningError("No tenant context - cannot route through agent")
+
+    # Prepare body
+    if form_data:
+        body = "&".join(f"{k}={v}" for k, v in form_data.items())
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+    elif json_body:
+        body = json.dumps(json_body)
+        headers["Content-Type"] = "application/json"
+    else:
+        body = None
+
+    logger.info("CEZIH signing request via agent: %s %s", method, url)
+    if body:
+        logger.info("CEZIH signing request body (%d chars): %s", len(body), body[:500])
+    start = time.perf_counter()
+
+    try:
+        result = await agent_manager.proxy_http_request(
+            tenant_id,
+            method=method, url=url, headers=headers,
+            body=body, timeout=float(timeout),
+        )
+    except RuntimeError as e:
+        raise CezihSigningError(f"Agent proxy error: {e}") from e
+
+    duration_ms = (time.perf_counter() - start) * 1000
+
+    if "error" in result:
+        raise CezihSigningError(f"Agent proxy error: {result['error']}")
+
+    status_code = result.get("status_code", 0)
+    logger.info("CEZIH signing response via agent: %s %s -> %d (%.1fms)", method, url, status_code, duration_ms)
+    if status_code >= 400:
+        logger.warning("CEZIH signing error body: %s", result.get("body", "")[:3000])
+
+    body_text = result.get("body", "")
+    if not body_text:
+        return {}
+
+    try:
+        return json.loads(body_text) if body_text else {}
+    except Exception as parse_err:
+        logger.error("Failed to parse signing response as JSON: %s. Raw body (first 500 chars): %s", parse_err, body_text[:500])
+        return {}
 
 
 async def _get_signing_token(client: httpx.AsyncClient) -> str:
@@ -88,13 +160,34 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
 
         try:
             logger.info("CEZIH signing auth: fetching token from %s", oauth_url)
-            response = await client.post(
-                oauth_url,
-                data=token_data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=settings.CEZIH_TIMEOUT,
-            )
-            response.raise_for_status()
+
+            # Route through agent if connected (server has no VPN)
+            if _should_use_agent():
+                body = await _request_via_agent(
+                    method="POST",
+                    url=oauth_url,
+                    headers={},
+                    form_data=token_data,
+                    json_body=None,
+                    timeout=settings.CEZIH_TIMEOUT,
+                )
+                status_code = body.get("response_code", 200)  # Agent returns parsed JSON
+                if "error" in body or status_code >= 400:
+                    raise CezihSigningError(
+                        f"Signing OAuth2 token request failed: {body.get('error_description', body.get('error', 'Unknown error'))}",
+                    )
+            else:
+                # Direct request (only works from local machine with VPN)
+                response = await client.post(
+                    oauth_url,
+                    data=token_data,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=settings.CEZIH_TIMEOUT,
+                )
+                response.raise_for_status()
+                body = response.json()
+        except CezihSigningError:
+            raise
         except httpx.ConnectError as e:
             raise CezihSigningError(
                 f"Cannot connect to signing OAuth2 server at {oauth_url}",
@@ -107,8 +200,10 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
             raise CezihSigningError(
                 f"Signing OAuth2 token request failed: HTTP {e.response.status_code} - {e.response.text[:200]}",
             ) from e
-
-        body = response.json()
+        except Exception as e:
+            raise CezihSigningError(
+                f"Signing OAuth2 token request failed: {e}",
+            ) from e
         _signing_token_cache = body["access_token"]
         _signing_token_expires_in = body.get("expires_in", 300)
         _signing_token_acquired_at = _time.monotonic()
@@ -191,12 +286,71 @@ async def sign_document(
     logger.info("CEZIH signing request: POST %s (hash=%.16s...)", url, doc_hash)
 
     try:
-        response = await client.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=settings.CEZIH_TIMEOUT,
-        )
+        # Route through agent if connected (server has no VPN)
+        if _should_use_agent():
+            body = await _request_via_agent(
+                method="POST",
+                url=url,
+                headers=headers,
+                form_data=None,
+                json_body=payload,
+                timeout=settings.CEZIH_TIMEOUT,
+            )
+            status_code = body.get("response_code", 200)
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.info("CEZIH signing response via agent: %d (%.1fms)", status_code, duration_ms)
+
+            # Handle errors from agent response
+            if status_code >= 400:
+                error_detail = body.get("error") or body.get("message") or str(body)[:500]
+                raise CezihSigningError(
+                    f"Signing service returned HTTP {status_code}: {error_detail}",
+                    signing_service_error=error_detail,
+                )
+        else:
+            # Direct request (only works from local machine with VPN)
+            response = await client.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=settings.CEZIH_TIMEOUT,
+            )
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.info(
+                "CEZIH signing response: %d (%.1fms)",
+                response.status_code,
+                duration_ms,
+            )
+
+            # Handle redirect (public endpoint returns 302 to login page)
+            if response.status_code in (301, 302, 303, 307):
+                location = response.headers.get("location", "")
+                if "certpubsso" in location or "certsso2" in location:
+                    raise CezihSigningError(
+                        "Signing endpoint redirected to login page. "
+                        "The public endpoint (certpubws) requires browser-based auth. "
+                        "Use the VPN-protected endpoint (certws2) for API-based signing, "
+                        "or contact HZZO for the correct signing API access method.",
+                        signing_service_error=f"HTTP {response.status_code} redirect to {location[:100]}",
+                    )
+                raise CezihSigningError(
+                    f"Signing endpoint returned unexpected redirect: HTTP {response.status_code} to {location[:100]}",
+                    signing_service_error=f"HTTP {response.status_code}",
+                )
+
+            try:
+                body = response.json()
+            except Exception:
+                body = {}
+
+            if response.status_code >= 400:
+                error_detail = body.get("error") or body.get("message") or response.text[:500]
+                raise CezihSigningError(
+                    f"Signing service returned HTTP {response.status_code}: {error_detail}",
+                    signing_service_error=error_detail,
+                )
+    except CezihSigningError:
+        raise
     except httpx.ConnectError as e:
         raise CezihSigningError(
             f"Cannot reach signing service at {url}. Is VPN connected for certws2?",
@@ -207,41 +361,6 @@ async def sign_document(
             f"Signing request timed out after {settings.CEZIH_TIMEOUT}s",
             signing_service_error=str(e),
         ) from e
-
-    duration_ms = (time.perf_counter() - start) * 1000
-    logger.info(
-        "CEZIH signing response: %d (%.1fms)",
-        response.status_code,
-        duration_ms,
-    )
-
-    # Handle redirect (public endpoint returns 302 to login page)
-    if response.status_code in (301, 302, 303, 307):
-        location = response.headers.get("location", "")
-        if "certpubsso" in location or "certsso2" in location:
-            raise CezihSigningError(
-                "Signing endpoint redirected to login page. "
-                "The public endpoint (certpubws) requires browser-based auth. "
-                "Use the VPN-protected endpoint (certws2) for API-based signing, "
-                "or contact HZZO for the correct signing API access method.",
-                signing_service_error=f"HTTP {response.status_code} redirect to {location[:100]}",
-            )
-        raise CezihSigningError(
-            f"Signing endpoint returned unexpected redirect: HTTP {response.status_code} to {location[:100]}",
-            signing_service_error=f"HTTP {response.status_code}",
-        )
-
-    try:
-        body = response.json()
-    except Exception:
-        body = {}
-
-    if response.status_code >= 400:
-        error_detail = body.get("error") or body.get("message") or response.text[:500]
-        raise CezihSigningError(
-            f"Signing service returned HTTP {response.status_code}: {error_detail}",
-            signing_service_error=error_detail,
-        )
 
     # Extract signature from response — format TBD (adjust after real API test)
     signature = body.get("signature") or body.get("signedHash") or body.get("signatures", "")
