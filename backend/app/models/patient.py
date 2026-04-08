@@ -1,7 +1,7 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, Date, Index, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,3 +33,7 @@ class Patient(BaseTenantModel):
     napomena: Mapped[str | None] = mapped_column(Text, nullable=True)
     alergije: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    # CEZIH insurance sync
+    cezih_insurance_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    cezih_insurance_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

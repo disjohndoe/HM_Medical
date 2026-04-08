@@ -64,6 +64,8 @@ class PatientRead(BaseModel):
     tenant_id: UUID
     created_at: datetime
     updated_at: datetime
+    cezih_insurance_status: str | None = None
+    cezih_insurance_checked_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
