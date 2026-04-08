@@ -38,6 +38,15 @@ _AUX_PORT_PREFIXES = (
 )
 
 
+def _extract_operation_outcome(bundle: dict) -> dict | None:
+    """Extract OperationOutcome from a CEZIH response Bundle."""
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+        if resource.get("resourceType") == "OperationOutcome":
+            return resource
+    return None
+
+
 class CezihFhirClient:
     """Async HTTP client for CEZIH FHIR API calls.
 
@@ -131,10 +140,11 @@ class CezihFhirClient:
             logger.warning("CEZIH agent proxy error body: %s", result.get("body", "")[:3000])
 
         body_text = result.get("body", "")
+        logger.info("CEZIH response body length: %d chars", len(body_text))
         try:
             body = _json.loads(body_text) if body_text else {}
-        except Exception:
-            logger.error("Failed to parse agent proxy response as JSON. Raw body (first 500 chars): %s", body_text[:500])
+        except Exception as parse_err:
+            logger.error("Failed to parse agent proxy response as JSON: %s. Raw body (first 500 chars): %s", parse_err, body_text[:500])
             body = {}
 
         if status_code >= 400:
@@ -145,6 +155,16 @@ class CezihFhirClient:
                     status_code=status_code,
                     operation_outcome=body,
                 )
+            # CEZIH returns response Bundles with nested OperationOutcome
+            if body.get("resourceType") == "Bundle":
+                oo = _extract_operation_outcome(body)
+                if oo:
+                    oo_model = OperationOutcome.model_validate(oo)
+                    raise CezihFhirError(
+                        f"FHIR error: {oo_model.first_error_message}",
+                        status_code=status_code,
+                        operation_outcome=oo,
+                    )
             raise CezihFhirError(
                 f"CEZIH HTTP {status_code}: {body_text[:2000]}",
                 status_code=status_code,
