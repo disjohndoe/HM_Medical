@@ -283,7 +283,10 @@ async def sign_document(
         except RuntimeError as e:
             raise CezihSigningError(f"Agent signing failed: {e}") from e
 
+        logger.info("Agent sign_response: %s", {k: v[:100] if isinstance(v, str) else v for k, v in result.items()})
+
         if "error" in result:
+            logger.error("Smart card signing failed: %s", result["error"])
             raise CezihSigningError(
                 f"Smart card signing failed: {result['error']}",
                 signing_service_error=result["error"],
