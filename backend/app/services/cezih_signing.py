@@ -99,18 +99,35 @@ async def _request_via_agent(
 
     status_code = result.get("status_code", 0)
     logger.info("CEZIH signing response via agent: %s %s -> %d (%.1fms)", method, url, status_code, duration_ms)
+
+    # Raise error for 4xx/5xx responses
     if status_code >= 400:
-        logger.warning("CEZIH signing error body: %s", result.get("body", "")[:3000])
+        body_text = result.get("body", "")
+        logger.warning("CEZIH signing error body: %s", body_text[:3000])
+
+        # Try to parse error message from CEZIH response
+        try:
+            error_body = json.loads(body_text) if body_text else {}
+            error_msg = error_body.get("error", error_body.get("message", f"HTTP {status_code}"))
+        except:
+            error_msg = f"HTTP {status_code}"
+
+        raise CezihSigningError(
+            f"Agent request failed: {error_msg}",
+            signing_service_error=body_text[:500],
+        )
 
     body_text = result.get("body", "")
     if not body_text:
-        return {}
+        return {"status_code": status_code}
 
     try:
-        return json.loads(body_text) if body_text else {}
+        parsed = json.loads(body_text) if body_text else {}
+        parsed["status_code"] = status_code  # Include status code in response
+        return parsed
     except Exception as parse_err:
         logger.error("Failed to parse signing response as JSON: %s. Raw body (first 500 chars): %s", parse_err, body_text[:500])
-        return {}
+        raise CezihSigningError(f"Failed to parse response: {parse_err}") from parse_err
 
 
 async def _get_signing_token(client: httpx.AsyncClient) -> str:
@@ -171,8 +188,8 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
                     json_body=None,
                     timeout=settings.CEZIH_TIMEOUT,
                 )
-                status_code = body.get("response_code", 200)  # Agent returns parsed JSON
-                if "error" in body or status_code >= 400:
+                # _request_via_agent raises CezihSigningError for 4xx/5xx
+                if "error" in body:
                     raise CezihSigningError(
                         f"Signing OAuth2 token request failed: {body.get('error_description', body.get('error', 'Unknown error'))}",
                     )
@@ -296,17 +313,9 @@ async def sign_document(
                 json_body=payload,
                 timeout=settings.CEZIH_TIMEOUT,
             )
-            status_code = body.get("response_code", 200)
             duration_ms = (time.perf_counter() - start) * 1000
-            logger.info("CEZIH signing response via agent: %d (%.1fms)", status_code, duration_ms)
-
-            # Handle errors from agent response
-            if status_code >= 400:
-                error_detail = body.get("error") or body.get("message") or str(body)[:500]
-                raise CezihSigningError(
-                    f"Signing service returned HTTP {status_code}: {error_detail}",
-                    signing_service_error=error_detail,
-                )
+            logger.info("CEZIH signing response via agent: success (%.1fms)", duration_ms)
+            # _request_via_agent raises CezihSigningError for 4xx/5xx, so body is successful response
         else:
             # Direct request (only works from local machine with VPN)
             response = await client.post(
