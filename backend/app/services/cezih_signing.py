@@ -300,42 +300,34 @@ async def sign_document(
         # Route through agent if connected (server has no VPN)
         # Port 8443: agent handles mTLS auth via smart card — no Bearer token needed
         if _should_use_agent():
-            # PROBE: First fetch the API docs to discover the correct request format
-            base_url = url.rsplit("/sign", 1)[0] if url.endswith("/sign") else url.rsplit("/extsigner", 1)[0] + "/extsigner"
-            for probe_path in [
-                f"{base_url}/v3/api-docs",
-                f"{base_url}/swagger-ui.html",
-                f"{base_url}/api-docs",
-                f"{base_url}",
-            ]:
-                try:
-                    probe_result = await _request_via_agent(
-                        method="GET",
-                        url=probe_path,
-                        headers={"Accept": "application/json, text/html, */*"},
-                        form_data=None,
-                        json_body=None,
-                        timeout=10,
-                    )
-                    probe_status = probe_result.get("status_code", 0)
-                    probe_body = probe_result.get("body", "")
-                    logger.info("CEZIH extsigner probe %s -> %d (%d chars): %s",
-                                probe_path, probe_status, len(probe_body), probe_body[:2000])
-                except Exception as probe_err:
-                    logger.info("CEZIH extsigner probe %s -> error: %s", probe_path, probe_err)
+            # PROBE: Try getSignedDocuments to see API output format
+            base_url = url.rsplit("/sign", 1)[0] if url.endswith("/sign") else url
+            get_docs_url = f"{base_url.rsplit('/api/', 1)[0]}/api/getSignedDocuments"
+            try:
+                probe_result = await _request_via_agent(
+                    method="GET",
+                    url=get_docs_url,
+                    headers={"Accept": "application/json, */*"},
+                    form_data=None,
+                    json_body=None,
+                    timeout=10,
+                )
+                logger.info("CEZIH getSignedDocuments probe -> %d: %s",
+                            probe_result.get("status_code", 0),
+                            probe_result.get("body", "")[:3000])
+            except Exception as probe_err:
+                logger.info("CEZIH getSignedDocuments probe -> error: %s", probe_err)
 
-            # Now try the actual sign request with base64-encoded document
-            # (not hash, not raw JSON — the full document base64-encoded as a plain string)
-            doc_b64 = base64.b64encode(document_bytes).decode("ascii")
-            payload = {"documentBase64": doc_b64}
-            logger.info("CEZIH signing request: POST %s (doc_size=%d, hash=%.16s...)", url, len(document_bytes), doc_hash)
+            # Try sending hash as plain text (not JSON)
+            logger.info("CEZIH signing request: POST %s (text/plain, hash=%.16s...)", url, doc_hash)
             body = await _request_via_agent(
                 method="POST",
                 url=url,
-                headers=headers,
+                headers={"Content-Type": "text/plain", "Accept": "application/json"},
                 form_data=None,
-                json_body=payload,
+                json_body=None,
                 timeout=settings.CEZIH_TIMEOUT,
+                raw_body=doc_hash,
             )
             duration_ms = (time.perf_counter() - start) * 1000
             logger.info("CEZIH signing response via agent: success (%.1fms)", duration_ms)
