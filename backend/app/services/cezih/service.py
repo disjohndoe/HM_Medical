@@ -60,12 +60,9 @@ async def check_insurance(client: httpx.AsyncClient, mbo: str) -> dict:
         patient = FHIRPatient.model_validate(entries[0].get("resource", {}))
         family, given = _extract_name(patient)
 
-        # Extract insurance number from identifiers
-        broj = ""
+        # MBO is the insurance number (Matični Broj Osiguranika)
         osiguravatelj = "HZZO"  # Default for CEZIH-found patients
-        for ident in patient.identifier:
-            if ident.system and "osiguranje" in ident.system.lower() and ident.value:
-                broj = ident.value
+        broj = mbo
 
         return {
             "mbo": mbo,
