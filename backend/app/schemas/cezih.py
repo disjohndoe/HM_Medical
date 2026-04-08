@@ -9,7 +9,7 @@ class InsuranceCheckRequest(BaseModel):
 
 
 class InsuranceCheckResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     mbo: str
     ime: str
     prezime: str
@@ -25,7 +25,7 @@ class ENalazRequest(BaseModel):
 
 
 class ENalazResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     success: bool
     reference_id: str
     sent_at: datetime
@@ -45,29 +45,30 @@ class EReceptRequest(BaseModel):
 
 
 class EReceptResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     success: bool
     recept_id: str
 
 
 class EReceptStornoResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     success: bool
     recept_id: str
     status: str
 
 
 class CezihStatusResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     connected: bool
     mode: str
     agent_connected: bool
     last_heartbeat: datetime | None
-    # TODO: When AKD smart card auth is live, populate from card identity
-    # instead of current logged-in user. The local agent should send the
-    # authenticated practitioner name + clinic after VPN+card handshake.
     connected_doctor: str | None = None
     connected_clinic: str | None = None
+    card_inserted: bool = False
+    vpn_connected: bool = False
+    reader_available: bool = False
+    card_holder: str | None = None
 
 
 # --- Feature 1: Activity Log ---
@@ -94,6 +95,7 @@ class PatientCezihInsurance(BaseModel):
     mbo: str | None = None
     status_osiguranja: str | None = None
     osiguravatelj: str | None = None
+    broj_osiguranja: str | None = None
     last_checked: datetime | None = None
 
 
@@ -115,7 +117,7 @@ class PatientCezihERecept(BaseModel):
 
 
 class PatientCezihSummary(BaseModel):
-    mock: bool = True
+    mock: bool = False
     insurance: PatientCezihInsurance
     e_nalaz_history: list[PatientCezihENalaz] = []
     e_recept_history: list[PatientCezihERecept] = []
@@ -125,7 +127,7 @@ class PatientCezihSummary(BaseModel):
 
 
 class CezihDashboardStats(BaseModel):
-    mock: bool = True
+    mock: bool = False
     danas_operacije: int = 0
     neposlani_nalazi: int = 0
     zadnja_operacija: datetime | None = None
@@ -151,7 +153,7 @@ class OidLookupRequest(BaseModel):
 
 
 class OidLookupResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     oid: str
     name: str
     responsible_org: str
@@ -164,7 +166,7 @@ class OidLookupResponse(BaseModel):
 
 
 class CodeSystemItem(BaseModel):
-    mock: bool = True
+    mock: bool = False
     code: str
     display: str
     system: str
@@ -182,7 +184,7 @@ class ValueSetConceptItem(BaseModel):
 
 
 class ValueSetExpandResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     url: str
     concepts: list[ValueSetConceptItem]
     total: int
@@ -194,7 +196,7 @@ class ValueSetExpandResponse(BaseModel):
 
 
 class OrganizationItem(BaseModel):
-    mock: bool = True
+    mock: bool = False
     id: str
     name: str
     hzzo_code: str
@@ -202,7 +204,7 @@ class OrganizationItem(BaseModel):
 
 
 class PractitionerItem(BaseModel):
-    mock: bool = True
+    mock: bool = False
     id: str
     family: str
     given: str
@@ -226,7 +228,7 @@ class ForeignerRegistrationRequest(BaseModel):
 
 
 class ForeignerRegistrationResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     success: bool
     patient_id: str
     mbo: str
@@ -256,7 +258,7 @@ class VisitActionRequest(BaseModel):
 
 
 class VisitResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     success: bool
     visit_id: str
     status: str  # planned, in-progress, finished, cancelled, entered-in-error
@@ -308,7 +310,7 @@ class CreateCaseRequest(BaseModel):
 
 
 class CaseResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     success: bool
     local_case_id: str
     cezih_case_id: str
@@ -329,7 +331,7 @@ class UpdateCaseDataRequest(BaseModel):
 
 
 class CaseActionResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     success: bool
     case_id: str | None = None
     action: str | None = None
@@ -346,7 +348,7 @@ class ReplaceDocumentRequest(BaseModel):
 
 
 class DocumentActionResponse(BaseModel):
-    mock: bool = True
+    mock: bool = False
     success: bool
     reference_id: str | None = None
     new_reference_id: str | None = None
@@ -355,7 +357,7 @@ class DocumentActionResponse(BaseModel):
 
 
 class DocumentSearchItem(BaseModel):
-    mock: bool = True
+    mock: bool = False
     id: str
     datum_izdavanja: str
     izdavatelj: str

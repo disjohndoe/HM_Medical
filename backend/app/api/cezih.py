@@ -55,6 +55,7 @@ from app.schemas.cezih import (
     VisitResponse,
     VisitsListResponse,
 )
+from app.services.card_verification import get_card_status
 from app.services.cezih import dispatcher as cezih
 
 router = APIRouter(prefix="/cezih", tags=["cezih"])
@@ -92,15 +93,31 @@ async def get_cezih_status(
     db: AsyncSession = Depends(get_db),
 ):
     result = await cezih.cezih_status(current_user.tenant_id, http_client=_http_client(request))
-    # TODO: When AKD smart card is connected via local agent, replace these
-    # with the identity from the card (practitioner name from certificate +
-    # clinic from CEZIH OID registry). The local agent should send this info
-    # after successful VPN + card authentication.
-    tenant = await db.get(Tenant, current_user.tenant_id)
-    titula = current_user.titula or ""
-    doctor_name = f"{titula} {current_user.ime} {current_user.prezime}".strip()
-    result["connected_doctor"] = doctor_name
-    result["connected_clinic"] = tenant.naziv if tenant else None
+
+    # Always fetch card/VPN status for 3-indicator browser display
+    card_info = get_card_status(current_user.tenant_id, current_user.card_holder_name)
+    # If user has card_holder_name configured, require exact match (multi-doctor).
+    # Otherwise fall back to any card inserted in any agent (single-doctor / unconfigured).
+    if current_user.card_holder_name:
+        card_detected = card_info.get("my_card_inserted", False)
+    else:
+        card_detected = card_info.get("card_inserted", False)
+    result["card_inserted"] = card_detected
+    result["vpn_connected"] = card_info.get("vpn_connected", False)
+    result["reader_available"] = card_info.get("reader_available", False)
+    result["card_holder"] = card_info.get("card_holder") if card_detected else None
+
+    # Only show doctor/clinic identity when agent is connected AND card is inserted
+    if result.get("agent_connected") and card_detected:
+        tenant = await db.get(Tenant, current_user.tenant_id)
+        titula = current_user.titula or ""
+        doctor_name = f"{titula} {current_user.ime} {current_user.prezime}".strip()
+        result["connected_doctor"] = doctor_name
+        result["connected_clinic"] = tenant.naziv if tenant else None
+    else:
+        result["connected_doctor"] = None
+        result["connected_clinic"] = None
+
     return result
 
 
@@ -260,23 +277,16 @@ async def get_patient_cezih_summary(
             )
         )
 
-    # Insurance: find the most recent insurance check in audit log
-    ins_result = await db.execute(
-        select(AuditLog).where(
-            AuditLog.tenant_id == current_user.tenant_id,
-            AuditLog.resource_type == "cezih",
-            AuditLog.action == "insurance_check",
-        ).order_by(AuditLog.created_at.desc()).limit(1)
-    )
-    ins_log = ins_result.scalar_one_or_none()
+    # Insurance: read from patient record (persisted on each insurance check)
+    from app.models.patient import Patient
 
+    patient = await db.get(Patient, patient_id)
     insurance = PatientCezihInsurance()
-    if ins_log and ins_log.details:
-        ins_details = json.loads(ins_log.details)
+    if patient and patient.cezih_insurance_status:
         insurance = PatientCezihInsurance(
-            mbo=ins_details.get("mbo"),
-            status_osiguranja=ins_details.get("result"),
-            last_checked=ins_log.created_at,
+            mbo=patient.mbo,
+            status_osiguranja=patient.cezih_insurance_status,
+            last_checked=patient.cezih_insurance_checked_at,
         )
 
     return PatientCezihSummary(
@@ -326,7 +336,9 @@ async def get_cezih_dashboard_stats(
     )
     unsent_count = unsent_result.scalar() or 0
 
+    from app.config import settings
     return CezihDashboardStats(
+        mock=settings.CEZIH_MODE == "mock",
         danas_operacije=danas,
         neposlani_nalazi=unsent_count,
         zadnja_operacija=last_op,
