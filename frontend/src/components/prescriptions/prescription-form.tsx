@@ -35,7 +35,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import { useDrugSearch } from "@/lib/hooks/use-cezih"
 import { useCreatePrescription, useSendPrescription } from "@/lib/hooks/use-prescriptions"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -161,7 +160,6 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>Novi recept</DialogTitle>
-            <MockBadge />
           </div>
         </DialogHeader>
 

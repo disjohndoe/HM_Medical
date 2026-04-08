@@ -27,7 +27,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import {
   usePatientCezihSummary,
   useRetrieveCases,
@@ -186,7 +185,6 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
           <FileText className="h-5 w-5" />
           e-Karton iz CEZIH-a
         </CardTitle>
-        <MockBadge />
       </CardHeader>
       <CardContent className="space-y-4">
         {/* 1. Osiguranje */}

@@ -5,7 +5,6 @@ import { Shield, FileText, Pill, Clock, Folder, UserPlus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import { useCezihActivity } from "@/lib/hooks/use-cezih"
 import { CEZIH_ACTION_LABELS, CEZIH_ACTION_COLORS } from "@/lib/constants"
 
@@ -67,7 +66,6 @@ export function CezihActivityLog() {
       <CardHeader className="flex flex-row items-center justify-between">
         <div className="flex items-center gap-2">
           <CardTitle className="text-lg">Aktivnost</CardTitle>
-          <MockBadge />
         </div>
         <Clock className="h-4 w-4 text-muted-foreground" />
       </CardHeader>

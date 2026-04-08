@@ -10,7 +10,6 @@ import { Separator } from "@/components/ui/separator"
 import { useInsuranceCheck } from "@/lib/hooks/use-cezih"
 import { OSIGURANJE_STATUS } from "@/lib/constants"
 import { formatDateHR } from "@/lib/utils"
-import { MockBadge } from "./mock-badge"
 
 export function InsuranceCheck() {
   const [mbo, setMbo] = useState("")
@@ -33,7 +32,6 @@ export function InsuranceCheck() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-lg">Provjera osiguranja</CardTitle>
-        <MockBadge />
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">

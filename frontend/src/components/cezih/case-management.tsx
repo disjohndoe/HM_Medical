@@ -32,7 +32,6 @@ import {
   useUpdateCaseData,
   useCodeSystemQuery,
 } from "@/lib/hooks/use-cezih"
-import { MockBadge } from "./mock-badge"
 
 const CLINICAL_STATUS_COLORS: Record<string, string> = {
   active: "bg-blue-100 text-blue-800",
@@ -130,7 +129,6 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
           Upravljanje slučajevima
         </CardTitle>
         <div className="flex items-center gap-2">
-          <MockBadge />
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger render={<Button size="sm" disabled={!patientMbo} />}>
               <Plus className="h-4 w-4 mr-1" />

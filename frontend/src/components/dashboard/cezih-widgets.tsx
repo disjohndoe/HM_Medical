@@ -67,7 +67,7 @@ export function CezihDashboardWidgets() {
     <div className="grid gap-4 md:grid-cols-3">
       {cards.map((card) => (
         <Link key={card.label} href={card.href}>
-          <Card className={`hover:bg-accent/50 transition-colors cursor-pointer ${stats.mock ? "opacity-60" : ""}`}>
+          <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -76,9 +76,6 @@ export function CezihDashboardWidgets() {
                 <card.icon className="h-4 w-4 text-muted-foreground" />
               </div>
               <p className="text-2xl font-bold mt-2">{card.value}</p>
-              {stats.mock && (
-                <p className="text-[10px] text-muted-foreground mt-1">Demo podaci</p>
-              )}
             </CardContent>
           </Card>
         </Link>

@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { CaseManagement } from "@/components/cezih/case-management"
 import { VisitManagement } from "@/components/cezih/visit-management"
@@ -80,7 +79,6 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-muted-foreground" />
               <CardTitle className="text-sm font-medium">Osiguranje</CardTitle>
-              <MockBadge />
             </div>
           </CardHeader>
           <CardContent>
@@ -150,7 +148,6 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-sm font-medium">e-Nalaz povijest</CardTitle>
-            <MockBadge />
           </div>
         </CardHeader>
         <CardContent>

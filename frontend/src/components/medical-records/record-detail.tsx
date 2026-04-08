@@ -20,7 +20,6 @@ import { useSendENalaz, useCancelDocument, useReplaceDocument } from "@/lib/hook
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { usePerformedProcedures } from "@/lib/hooks/use-procedures"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import type { MedicalRecord } from "@/lib/types"
@@ -209,7 +208,6 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-medium text-muted-foreground">CEZIH status</h4>
-              <MockBadge />
             </div>
             {!isCezihEligible.has(record.tip) ? (
               <p className="text-xs text-muted-foreground">
@@ -305,7 +303,6 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-medium text-muted-foreground">e-Recept</h4>
-              <MockBadge />
             </div>
             <Button
               variant="outline"

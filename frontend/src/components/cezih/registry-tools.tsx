@@ -14,7 +14,6 @@ import {
   usePractitionerSearch,
   useValueSetExpand,
 } from "@/lib/hooks/use-cezih"
-import { MockBadge } from "./mock-badge"
 
 export function RegistryTools() {
   return (
@@ -41,7 +40,6 @@ function OidLookupCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <CardTitle className="text-base">OID registar (TC6)</CardTitle>
-          <MockBadge />
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -82,7 +80,6 @@ function OrganizationSearchCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <CardTitle className="text-base">Pretraga organizacija — mCSD ITI-90 (TC9)</CardTitle>
-          <MockBadge />
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -122,7 +119,6 @@ function PractitionerSearchCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <CardTitle className="text-base">Pretraga djelatnika — mCSD ITI-90 (TC9)</CardTitle>
-          <MockBadge />
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -163,7 +159,6 @@ function ValueSetExpandCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
           <CardTitle className="text-base">ValueSet — SVCM ITI-95 (TC8)</CardTitle>
-          <MockBadge />
         </div>
       </CardHeader>
       <CardContent className="space-y-3">

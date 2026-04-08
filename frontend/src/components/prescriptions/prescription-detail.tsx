@@ -23,7 +23,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import { useSendPrescription, useStornoPrescription, useDeletePrescription } from "@/lib/hooks/use-prescriptions"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { formatDateTimeHR } from "@/lib/utils"
@@ -86,7 +85,6 @@ export function PrescriptionDetail({ open, onOpenChange, prescription }: Prescri
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {statusBadge(prescription)}
-            <MockBadge />
           </SheetTitle>
           <SheetDescription>
             {prescription.doktor_ime

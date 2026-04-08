@@ -17,7 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useRegisterForeigner } from "@/lib/hooks/use-cezih"
-import { MockBadge } from "./mock-badge"
 
 export function ForeignerRegistration() {
   const [form, setForm] = useState({
@@ -55,7 +54,6 @@ export function ForeignerRegistration() {
           <Globe className="h-5 w-5" />
           Registracija stranaca (PMIR)
         </CardTitle>
-        <MockBadge />
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">

@@ -24,7 +24,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
 import { useSendENalaz } from "@/lib/hooks/use-cezih"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
@@ -132,7 +131,6 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>Pošalji nalaze na CEZIH</DialogTitle>
-            <MockBadge />
           </div>
           <DialogDescription>
             Odaberite nalaze za slanje na CEZIH

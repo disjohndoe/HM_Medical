@@ -46,7 +46,6 @@ export function useCezihStatus() {
 export function useCezihConnectionDisplay() {
   const { data, isLoading, isError, error } = useCezihStatus()
 
-  const isDemo = data?.mock === true
   const agentConnected = data?.agent_connected === true
   const cardInserted = data?.card_inserted === true
   const vpnConnected = data?.vpn_connected === true
@@ -79,10 +78,7 @@ export function useCezihConnectionDisplay() {
   // Legacy single dot for sidebar/dashboard
   let dotColor = "bg-muted-foreground/50"
   let label = "Nije povezano"
-  if (isDemo) {
-    dotColor = "bg-yellow-500"
-    label = "Demo način"
-  } else if (agentConnected && cardInserted && vpnConnected) {
+  if (agentConnected && cardInserted && vpnConnected) {
     dotColor = "bg-green-500"
     label = "CEZIH spreman"
   } else if (agentConnected && !cardInserted) {
@@ -100,7 +96,6 @@ export function useCezihConnectionDisplay() {
     isError,
     error,
     isConnected,
-    isDemo,
     dotColor,
     label,
     agent,

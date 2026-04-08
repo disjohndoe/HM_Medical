@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/table"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import { useCezihUnsentRecords } from "@/lib/hooks/use-medical-records"
 import { useSendENalaz } from "@/lib/hooks/use-cezih"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -126,9 +125,7 @@ export default function CezihNalaziPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="CEZIH Nalazi" description="Neposlani obavezni nalazi za CEZIH — svi pacijenti">
-        <MockBadge />
-      </PageHeader>
+      <PageHeader title="CEZIH Nalazi" description="Neposlani obavezni nalazi za CEZIH — svi pacijenti" />
 
       {/* Failed records banner */}
       {failedRecords.length > 0 && !sending && (

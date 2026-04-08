@@ -22,7 +22,6 @@ import {
   useCreateVisit,
   useVisitAction,
 } from "@/lib/hooks/use-cezih"
-import { MockBadge } from "./mock-badge"
 
 const VISIT_STATUS_COLORS: Record<string, string> = {
   "in-progress": "bg-blue-100 text-blue-800",
@@ -109,7 +108,6 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <div className="flex items-center gap-2">
           <CardTitle className="text-base">Posjete</CardTitle>
-          <MockBadge />
         </div>
         <Button size="sm" variant="outline" onClick={() => setShowCreate(!showCreate)}>
           <Plus className="mr-1 h-3.5 w-3.5" />

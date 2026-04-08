@@ -32,7 +32,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { MockBadge } from "@/components/cezih/mock-badge"
 import { PatientSelector, type SelectedPatient } from "@/components/cezih/patient-selector"
 import {
   useDocumentSearch,
@@ -119,7 +118,6 @@ export function DocumentSearch() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CardTitle className="text-sm font-medium">Filteri pretrage</CardTitle>
-              <MockBadge />
             </div>
             {hasFilters && (
               <Button
