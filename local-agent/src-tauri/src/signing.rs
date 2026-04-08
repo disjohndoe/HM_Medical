@@ -187,13 +187,12 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         let sig_b64url = b64url.encode(&sig_buf);
         let jws_compact = format!("{}.{}", signing_input, sig_b64url);
 
-        // Put JWS compact directly in signature.data (no extra base64 encoding).
-        // FHIR base64Binary field value IS the JWS compact string, which is
-        // already composed of base64url characters + dots.
-        let jws_base64 = jws_compact;
+        // Base64-encode the entire JWS for FHIR base64Binary.
+        // HAPI FHIR validates data as base64Binary — dots in JWS are invalid base64.
+        let jws_base64 = b64std.encode(jws_compact.as_bytes());
 
-        info!("JWS: complete! alg={}, sig={} bytes, JWS={} chars",
-              algorithm, sig_buf.len(), jws_base64.len());
+        info!("JWS: complete! alg={}, sig={} bytes, JWS={} chars, b64={} chars",
+              algorithm, sig_buf.len(), jws_compact.len(), jws_base64.len());
 
         // Cleanup
         for (ctx, _) in &certs {
