@@ -38,8 +38,8 @@ pub struct JwsSignResult {
 
 /// Sign a FHIR Bundle for CEZIH per RFC 7515 (JWS) + RFC 8785 (JCS).
 ///
-/// Takes the JCS-canonicalized Bundle JSON bytes (with signature.data = "").
-/// The Bundle MUST be JCS-canonicalized (sorted keys) before calling this.
+/// Takes JCS-canonicalized Bundle JSON bytes (with signature.data = "").
+/// JOSE header includes alg + kid + jwk (EC coords) + x5c (cert) per spec.
 ///
 /// Signing input (RFC 7515): base64url(header) + "." + base64url(payload)
 /// Output: base64(JWS_compact) — double base64 for HAPI base64Binary compatibility.
@@ -140,11 +140,35 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             pub_key_blob.cbData as usize,
         );
 
-        // Minimal JOSE header like CEZIH example: just kid + alg.
-        // CEZIH verifier may look up cert by kid or sender identity.
+        // Full JOSE header per CEZIH Simplifier spec: alg + kid + jwk + x5c.
+        // x5c provides the cert so the verifier can find our public key.
+        // jwk provides the EC public key coordinates for verification.
         info!("JWS: cert DER={} bytes, pub_key={} bytes", cert_der.len(), pub_key_data.len());
-        let jose_header = format!(r#"{{"kid":"{}","alg":"{}"}}"#, kid, algorithm);
-        info!("JWS: JOSE header {} bytes: {}", jose_header.len(), jose_header);
+
+        let jose_header = if pub_key_data.len() > 1 && pub_key_data[0] == 0x04 {
+            // EC key: extract x, y coordinates from uncompressed point (0x04 || x || y)
+            let coord_size = (pub_key_data.len() - 1) / 2;
+            let x_b64url = b64url.encode(&pub_key_data[1..1 + coord_size]);
+            let y_b64url = b64url.encode(&pub_key_data[1 + coord_size..]);
+            let crv = match coord_size {
+                32 => "P-256",
+                48 => "P-384",
+                66 => "P-521",
+                _ => "P-384",
+            };
+            format!(
+                r#"{{"alg":"{}","kid":"{}","jwk":{{"crv":"{}","kty":"EC","x":"{}","y":"{}"}},"x5c":["{}"]}}"#,
+                algorithm, kid, crv, x_b64url, y_b64url, cert_b64
+            )
+        } else {
+            // RSA or unknown key type: include x5c but no jwk
+            format!(
+                r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#,
+                algorithm, kid, cert_b64
+            )
+        };
+        info!("JWS: JOSE header {} bytes", jose_header.len());
+        info!("JWS: JOSE header (first 200): {}", &jose_header[..jose_header.len().min(200)]);
 
         // Standard JWS signing input (RFC 7515):
         //   base64url(header) + "." + base64url(payload)

@@ -155,9 +155,9 @@ async def add_signature(
     """
     from app.services.cezih_signing import sign_bundle_for_cezih
 
-    # Add signature structure WITHOUT data field.
-    # Per CEZIH spec: "Bundle.signature.data element must be excluded"
-    # during signing and verification. The data field is added AFTER signing.
+    # Add signature structure WITH data="" (empty string).
+    # Per CEZIH spec + example: signature.data is present but empty during
+    # signing. The verifier sets data="" before re-verifying.
     bundle["signature"] = {
         "type": [
             {
@@ -167,10 +167,11 @@ async def add_signature(
         ],
         "when": _now_iso(),
         "who": practitioner_ref(practitioner_id),
+        "data": "",
     }
 
     # JCS-canonicalize the bundle (RFC 8785): sorted keys + compact JSON.
-    # signature.data is EXCLUDED — added after signing per spec.
+    # signature.data="" is included — verifier does the same before verifying.
     bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(',', ':'), sort_keys=True).encode("utf-8")
 
     if sign_fn:
