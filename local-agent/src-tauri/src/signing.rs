@@ -124,12 +124,23 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             _ => "RS256",
         };
 
-        // Build JOSE header: kid + alg (matches CEZIH example format)
-        let jose_header = format!(
-            r#"{{"kid":"{}","alg":"{}"}}"#,
-            kid, algorithm,
+        // Extract X.509 certificate DER bytes for x5c header parameter.
+        // Per CEZIH spec, JOSE header MUST include alg, jwk/x5c.
+        // x5c contains the certificate whose private key was used for signing.
+        let cert_der = std::slice::from_raw_parts(
+            (**cert_ctx).pbCertEncoded,
+            (**cert_ctx).cbCertEncoded as usize,
         );
-        info!("JWS: JOSE header kid={:.16}, alg={}", kid, algorithm);
+        let cert_b64 = b64std.encode(cert_der);
+        info!("JWS: x5c cert DER={} bytes, b64={} chars", cert_der.len(), cert_b64.len());
+
+        // Build JOSE header with alg, kid, and x5c (certificate chain)
+        // JCS-sort the keys: alg, kid, x5c (alphabetical)
+        let jose_header = format!(
+            r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#,
+            algorithm, kid, cert_b64,
+        );
+        info!("JWS: JOSE header alg={}, kid={:.16}, x5c_len={}", algorithm, kid, cert_b64.len());
 
         // Standard JWS signing input (RFC 7515):
         //   base64url(header) + "." + base64url(payload)
