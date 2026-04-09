@@ -125,22 +125,41 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         };
 
         // Extract X.509 certificate DER bytes for x5c header parameter.
-        // Per CEZIH spec, JOSE header MUST include alg, jwk/x5c.
-        // x5c contains the certificate whose private key was used for signing.
         let cert_der = std::slice::from_raw_parts(
             (**cert_ctx).pbCertEncoded,
             (**cert_ctx).cbCertEncoded as usize,
         );
         let cert_b64 = b64std.encode(cert_der);
-        info!("JWS: x5c cert DER={} bytes, b64={} chars", cert_der.len(), cert_b64.len());
 
-        // Build JOSE header with alg, kid, and x5c (certificate chain)
-        // JCS-sort the keys: alg, kid, x5c (alphabetical)
-        let jose_header = format!(
-            r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#,
-            algorithm, kid, cert_b64,
+        // Extract EC public key coordinates for jwk header parameter.
+        // SubjectPublicKeyInfo.PublicKey = 0x04 || x || y (uncompressed EC point)
+        let cert_info_ptr = (**cert_ctx).pCertInfo;
+        let pub_key_blob = &(*cert_info_ptr).SubjectPublicKeyInfo.PublicKey;
+        let pub_key_data = std::slice::from_raw_parts(
+            pub_key_blob.pbData,
+            pub_key_blob.cbData as usize,
         );
-        info!("JWS: JOSE header alg={}, kid={:.16}, x5c_len={}", algorithm, kid, cert_b64.len());
+
+        // Build JOSE header per CEZIH spec: alg + jwk + kid + x5c (JCS alphabetical order)
+        let jose_header = if pub_key_data.len() >= 3 && pub_key_data[0] == 0x04 {
+            let coord_len = (pub_key_data.len() - 1) / 2;
+            let x_b64url = b64url.encode(&pub_key_data[1..1 + coord_len]);
+            let y_b64url = b64url.encode(&pub_key_data[1 + coord_len..1 + 2 * coord_len]);
+            let crv = match coord_len {
+                32 => "P-256", 48 => "P-384", 66 => "P-521", _ => "P-384",
+            };
+            info!("JWS: EC curve={}, coord_len={}, x5c={} bytes", crv, coord_len, cert_der.len());
+            // JCS-sorted keys at both levels
+            format!(
+                r#"{{"alg":"{}","jwk":{{"crv":"{}","kty":"EC","x":"{}","y":"{}"}},"kid":"{}","x5c":["{}"]}}"#,
+                algorithm, crv, x_b64url, y_b64url, kid, cert_b64,
+            )
+        } else {
+            // Non-EC key — omit jwk
+            info!("JWS: non-EC key ({} bytes), x5c={} bytes", pub_key_data.len(), cert_der.len());
+            format!(r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#, algorithm, kid, cert_b64)
+        };
+        info!("JWS: JOSE header {} bytes, alg={}, kid={:.16}", jose_header.len(), algorithm, kid);
 
         // Standard JWS signing input (RFC 7515):
         //   base64url(header) + "." + base64url(payload)
@@ -189,6 +208,39 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         }
 
         sig_buf.truncate(actual_len as usize);
+        info!("JWS: raw signature {} bytes", sig_buf.len());
+
+        // Self-verify: import public key from cert and verify our own signature.
+        // This catches crypto issues BEFORE sending to CEZIH.
+        {
+            let mut pub_key_handle: *mut core::ffi::c_void = ptr::null_mut();
+            let import_ok = CryptImportPublicKeyInfoEx2(
+                ENCODING,
+                &(*cert_info_ptr).SubjectPublicKeyInfo as *const _ as *mut _,
+                0,
+                ptr::null_mut(),
+                &mut pub_key_handle,
+            );
+            if import_ok != 0 && !pub_key_handle.is_null() {
+                let verify_status = BCryptVerifySignature(
+                    pub_key_handle,
+                    ptr::null(),
+                    hash_bytes.as_ptr(),
+                    hash_bytes.len() as u32,
+                    sig_buf.as_ptr(),
+                    actual_len,
+                    0,
+                );
+                if verify_status == 0 {
+                    info!("JWS: SELF-VERIFICATION PASSED");
+                } else {
+                    warn!("JWS: SELF-VERIFICATION FAILED: 0x{:08x}", verify_status as u32);
+                }
+                BCryptDestroyKey(pub_key_handle);
+            } else {
+                warn!("JWS: Could not import public key for self-verification");
+            }
+        }
 
         // JWS compact serialization (RFC 7515): header.payload.signature
         let sig_b64url = b64url.encode(&sig_buf);
