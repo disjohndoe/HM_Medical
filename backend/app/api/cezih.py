@@ -86,17 +86,6 @@ async def _get_tenant_cezih_config(
     return tenant.sifra_ustanove, tenant.oid
 
 
-@router.get("/probe-remote-signer")
-async def probe_remote_signer_endpoint(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Probe the remote signing API to discover format and cert algorithm."""
-    from app.services.cezih.client import current_tenant_id
-    from app.services.cezih_signing import probe_remote_signer
-    current_tenant_id.set(current_user.tenant_id)
-    return await probe_remote_signer()
-
 
 @router.get("/status", response_model=CezihStatusResponse)
 async def get_cezih_status(

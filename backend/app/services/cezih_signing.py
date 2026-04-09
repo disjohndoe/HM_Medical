@@ -479,59 +479,6 @@ async def sign_document(
     return await sign_bundle_for_cezih(document_bytes)
 
 
-async def probe_remote_signer() -> dict:
-    """Probe the remote signing API to discover its format and cert algorithm.
-
-    Calls the extsigner endpoint through the agent (VPN route) to see
-    what format it expects and what cert it uses.
-    """
-    if not _should_use_agent():
-        return {"error": "Agent not connected"}
-
-    # Try VPN-protected route (same as our other CEZIH calls)
-    base_url = "https://certws2.cezih.hr:8443/services-router/gateway/extsigner/api"
-
-    results = {}
-
-    # 1. Try GET to discover the API
-    try:
-        resp = await _request_via_agent(
-            method="GET", url=f"{base_url}/sign",
-            headers={"Accept": "application/json"},
-            form_data=None, json_body=None, timeout=15,
-        )
-        results["get_sign"] = resp
-    except CezihSigningError as e:
-        results["get_sign"] = {"error": str(e)}
-
-    # 2. Try different field name combinations
-    test_hash = base64.b64encode(b"\x00" * 32).decode()  # fake SHA-256 hash
-
-    field_combos = [
-        ("dataToSign", {"dataToSign": test_hash, "digestAlgorithm": "SHA-256"}),
-        ("digest", {"digest": test_hash, "digestAlgorithm": "SHA-256"}),
-        ("data", {"data": test_hash, "algorithm": "SHA-256"}),
-        ("content", {"content": test_hash}),
-        ("empty", {}),
-    ]
-
-    for name, body in field_combos:
-        try:
-            resp = await _request_via_agent(
-                method="POST", url=f"{base_url}/sign",
-                headers={"Accept": "application/json", "Content-Type": "application/json"},
-                form_data=None, json_body=body, timeout=15,
-            )
-            results[f"post_{name}"] = resp
-        except CezihSigningError as e:
-            results[f"post_{name}"] = {"error": str(e)}
-            # If we get past "Unexpected field" we found the right format
-            if "Unexpected field" not in str(e):
-                break  # different error = progress
-
-    return results
-
-
 async def sign_health_check(client: httpx.AsyncClient) -> dict:
     """Check whether the remote signing endpoint is reachable and auth works."""
     signing_url = settings.CEZIH_SIGNING_URL
