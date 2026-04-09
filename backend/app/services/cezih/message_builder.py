@@ -143,16 +143,15 @@ async def add_signature(
     sign_fn: Any = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
-    """Add a digital signature to the Bundle.
+    """Add a digital signature to the Bundle per RFC 7515 (JWS) + RFC 8785 (JCS).
 
-    Uses CEZIH's custom format:
-    signature.data = base64(JOSE_header_JSON + Bundle_JSON + raw_signature_bytes)
+    signature.data = base64(JWS_compact) — double base64 for HAPI compatibility.
 
     Flow:
     1. Add signature object with data="" to the bundle
-    2. Serialize the bundle (this is what gets signed — raw JSON bytes)
-    3. Send to agent → agent builds JOSE header, hashes raw bundle, signs, assembles
-    4. Set bundle.signature.data to the base64 string
+    2. JCS-canonicalize the bundle (sorted keys, compact JSON — RFC 8785)
+    3. Send to agent → agent builds JOSE header, standard JWS signing, double-base64
+    4. Set bundle.signature.data to the double-base64 string
     """
     from app.services.cezih_signing import sign_bundle_for_cezih
 
@@ -170,8 +169,9 @@ async def add_signature(
         "data": "",
     }
 
-    # Serialize the bundle WITH signature.data="" — compact JSON (no spaces), matches CEZIH format
-    bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(',', ':')).encode("utf-8")
+    # JCS-canonicalize the bundle (RFC 8785): sorted keys + compact JSON.
+    # signature.data="" is included — this is the canonical form that gets signed.
+    bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(',', ':'), sort_keys=True).encode("utf-8")
 
     if sign_fn:
         result = await sign_fn(bundle_json_bytes)

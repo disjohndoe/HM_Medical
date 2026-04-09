@@ -352,15 +352,11 @@ async def sign_bundle_for_cezih(
 ) -> dict:
     """Sign a FHIR Bundle for CEZIH using the agent's smart card.
 
-    Uses CEZIH's custom format:
-      signature.data = base64(JOSE_header_JSON + Bundle_JSON + raw_signature_bytes)
+    Per RFC 7515 (JWS) + RFC 8785 (JCS):
+      Signing input: base64url(header) + "." + base64url(JCS_bundle)
+      Output: base64(JWS_compact) — double base64 for HAPI compatibility.
 
-    Where:
-      - header: {"kid":"<thumbprint>","alg":"<ES384|RS256>"} (metadata only)
-      - Bundle JSON: compact JSON with signature.data = "" (this is what gets hashed)
-      - signature: NCryptSignHash output (ECDSA r||s or RSA PKCS1)
-
-    Signing input: SHA hash of the raw Bundle JSON bytes directly.
+    The Bundle must be JCS-canonicalized (sorted keys) before sending to agent.
     """
     if not _should_use_agent():
         raise CezihSigningError("Neispravna CEZIH konekcija — agent nije spojen")
@@ -370,13 +366,14 @@ async def sign_bundle_for_cezih(
 
     tenant_id = current_tenant_id.get()
 
-    # The agent receives the bundle JSON and internally:
+    # The agent receives the JCS-canonicalized bundle JSON and internally:
     # 1. Finds the cert → gets kid, algorithm
     # 2. Builds JOSE header: {"kid":"<thumbprint>","alg":"<alg>"}
-    # 3. Hashes the raw Bundle JSON bytes directly (NOT JWS base64url input)
-    # 4. Signs hash via NCryptSignHash
-    # 5. Assembles: base64(header_json + bundle_json + raw_sig) (CEZIH format)
-    # 6. Returns the base64 string ready for signature.data
+    # 3. Standard JWS signing input: base64url(header) + "." + base64url(bundle)
+    # 4. Signs SHA hash via NCryptSignHash
+    # 5. Assembles JWS compact: header.payload.signature (with dots)
+    # 6. Double base64: base64(JWS_compact) → no dots → HAPI compatible
+    # 7. Returns the double-base64 string ready for signature.data
     data_b64 = base64.b64encode(bundle_json_bytes).decode("ascii")
 
     logger.info("CEZIH JWS signing via agent (bundle_size=%d)", len(bundle_json_bytes))
