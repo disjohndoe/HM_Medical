@@ -120,7 +120,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Vrsta posjete</Label>
-                <Select value={nacinPrijema} onValueChange={(v: string) => setNacinPrijema(v)}>
+                <Select value={nacinPrijema} onValueChange={(v) => v && setNacinPrijema(v)}>
                   <SelectTrigger className="h-8">
                     <SelectValue placeholder="Odaberi vrstu">
                       {NACIN_PRIJEMA_LABELS[nacinPrijema] || nacinPrijema}
