@@ -283,7 +283,7 @@ async def send_enalaz(
         "practiceSetting": {
             "coding": [{
                 "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/djelatnosti-zz",
-                "code": "0100",
+                "code": "1010000",
                 "display": "Opća/obiteljska medicina",
             }]
         },
