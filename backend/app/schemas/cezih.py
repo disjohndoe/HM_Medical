@@ -274,9 +274,12 @@ class VisitItem(BaseModel):
     patient_mbo: str
     status: str
     visit_type: str
+    visit_type_display: str | None = None
     reason: str | None = None
     period_start: str | None = None
     period_end: str | None = None
+    service_provider_code: str | None = None
+    practitioner_id: str | None = None
 
 
 class VisitsListResponse(BaseModel):

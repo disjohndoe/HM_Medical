@@ -763,9 +763,12 @@ export interface VisitItem {
   patient_mbo: string;
   status: string;
   visit_type: string;
+  visit_type_display: string | null;
   reason: string | null;
   period_start: string | null;
   period_end: string | null;
+  service_provider_code: string | null;
+  practitioner_id: string | null;
 }
 
 export interface VisitsListResponse {
