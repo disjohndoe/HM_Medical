@@ -1,4 +1,4 @@
-"""Application-wide constants — CEZIH document types, LOINC codes, enums."""
+"""Application-wide constants — CEZIH document types, enums."""
 
 from __future__ import annotations
 
@@ -24,17 +24,14 @@ RECORD_TIP_ALLOWED: set[str] = {
     "anamneza",
 }
 
-# Types that MUST be sent to CEZIH when created
-# TODO: Confirm exact types during certification (2026-04-21).
-# For now, only verified types: specijalisticki_nalaz maps to CEZIH code 004
-# "Opći nalaz na internu uputnicu" in HRTipDokumenta CodeSystem.
+# Types that MUST be sent to CEZIH when created.
+# Codes 011-013 are specifically for private healthcare institutions (privatnici).
 CEZIH_MANDATORY_TYPES: set[str] = {
     "specijalisticki_nalaz",
     "nalaz",
 }
 
-# Types eligible for CEZIH submission
-# All clinical document types from HRTipDokumenta CodeSystem.
+# Types eligible for CEZIH submission (maps to HRTipDokumenta codes 011-013).
 CEZIH_ELIGIBLE_TYPES: set[str] = {
     "ambulantno_izvjesce",
     "specijalisticki_nalaz",
@@ -45,65 +42,55 @@ CEZIH_ELIGIBLE_TYPES: set[str] = {
 
 
 # ============================================================
-# CEZIH Document Type → LOINC Code Mapping
+# CEZIH Document Type → HRTipDokumenta Code Mapping
 # ============================================================
-# Used when building FHIRDocumentReference for ITI-65 submission.
-# System: http://fhir.cezih.hr/specifikacije/vrste-dokumenata
-# Codes follow LOINC standard (https://loinc.org).
+# Used when building FHIR DocumentReference for ITI-65 submission.
+# Official CodeSystem: HRTipDokumenta (cezih.hr.cezih-osnova FHIR package v0.2.9)
+# System URI: http://fhir.cezih.hr/specifikacije/CodeSystem/document-type
+#
+# Codes 011-013 are for private healthcare institutions (privatnici):
+#   011 = Izvješće nakon pregleda u ambulanti privatne zdravstvene ustanove
+#   012 = Nalazi iz specijalističke ordinacije privatne zdravstvene ustanove
+#   013 = Otpusno pismo iz privatne zdravstvene ustanove
+#
+# Codes 001-010 are for public/contracted institutions (ugovorni partneri HZZO):
+#   001 = Onkološki relevantni podaci
+#   002 = SGP Nalaz
+#   003 = PD-L1 dokument
+#   004 = Opći nalaz na internu uputnicu
+#   005 = Nalaz nakon hitnog prijema u bolnicu
+#   006 = Otpusno pismo nakon hitnog prijema u bolnicu
+#   007 = Izvješće nakon intervencije hitne pomoći
+#   008 = Crvena uputnica
+#   009 = Nestrukturirani SGP nalaz
+#   010 = Administrirana onkološka terapija
 
 CEZIH_DOCUMENT_TYPE_MAP: dict[str, dict[str, str]] = {
     "ambulantno_izvjesce": {
-        "code": "34764-1",
-        "display": "General medicine Consult note",
-        "display_hr": "Ambulantno izvješće",
+        "code": "011",
+        "display": "Izvješće nakon pregleda u ambulanti privatne zdravstvene ustanove",
     },
     "specijalisticki_nalaz": {
-        "code": "11488-4",
-        "display": "Consultation note",
-        "display_hr": "Specijalistički nalaz",
+        "code": "012",
+        "display": "Nalazi iz specijalističke ordinacije privatne zdravstvene ustanove",
     },
     "otpusno_pismo": {
-        "code": "18842-5",
-        "display": "Discharge summary",
-        "display_hr": "Otpusno pismo",
+        "code": "013",
+        "display": "Otpusno pismo iz privatne zdravstvene ustanove",
     },
+    # Generic "nalaz" falls back to specijalisticki (012) — most common for privatnici
     "nalaz": {
-        "code": "47045-0",
-        "display": "Study report Document",
-        "display_hr": "Nalaz",
+        "code": "012",
+        "display": "Nalazi iz specijalističke ordinacije privatne zdravstvene ustanove",
     },
+    # Epikriza is a summary — closest match is ambulantno izvješće (011)
     "epikriza": {
-        "code": "28570-0",
-        "display": "Procedure note",
-        "display_hr": "Epikriza",
-    },
-    # Fallback for types not directly mapped
-    "dijagnoza": {
-        "code": "29308-4",
-        "display": "Diagnosis",
-        "display_hr": "Dijagnoza",
-    },
-    "misljenje": {
-        "code": "51848-0",
-        "display": "Evaluation note",
-        "display_hr": "Mišljenje",
-    },
-    "preporuka": {
-        "code": "18776-5",
-        "display": "Plan of care note",
-        "display_hr": "Preporuka",
-    },
-    "anamneza": {
-        "code": "10164-2",
-        "display": "History of Present illness Narrative",
-        "display_hr": "Anamneza",
+        "code": "011",
+        "display": "Izvješće nakon pregleda u ambulanti privatne zdravstvene ustanove",
     },
 }
 
-# FHIR system URI for CEZIH document types
-# Official CodeSystem: HRTipDokumenta (from cezih.osnova FHIR package)
-# TODO: LOINC codes below are placeholders. Real codes are numeric (001-010)
-# served dynamically via ITI-96. Update after VPN access / certification.
+# FHIR system URI for CEZIH document types (HRTipDokumenta CodeSystem)
 CEZIH_DOCUMENT_TYPE_SYSTEM = "http://fhir.cezih.hr/specifikacije/CodeSystem/document-type"
 
 
@@ -117,5 +104,5 @@ def get_cezih_document_coding(tip: str) -> dict[str, str]:
     return {
         "system": CEZIH_DOCUMENT_TYPE_SYSTEM,
         "code": mapping["code"],
-        "display": mapping["display_hr"],
+        "display": mapping["display"],
     }

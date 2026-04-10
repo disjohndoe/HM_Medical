@@ -94,8 +94,7 @@ export const RECORD_TIP_OPTIONS = Object.entries(RECORD_TIP).map(
 );
 
 // Types that must be sent to CEZIH when created
-// TODO: Confirm exact types during certification (2026-04-21).
-// Only verified types kept — maps to CEZIH HRTipDokumenta code 004.
+// HRTipDokumenta codes for privatnici: 011 (ambulantno), 012 (specijalisticki/nalaz), 013 (otpusno)
 export const CEZIH_MANDATORY_TYPES = new Set([
   "specijalisticki_nalaz",
   "nalaz",

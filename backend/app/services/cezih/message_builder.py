@@ -195,10 +195,21 @@ def build_iti65_transaction_bundle(
         entry_uuid = doc_ref_uuids[i]
         # Remove internal _uuid marker if present
         resource = {k: v for k, v in entry_resource.items() if k != "_uuid"}
+        resource_type = resource.get("resourceType", "DocumentReference")
+        resource_id = resource.get("id")
+
+        # Use PUT for existing resources (cancel/update), POST for new ones
+        if resource_id:
+            request_entry = {"method": "PUT", "url": f"{resource_type}/{resource_id}"}
+            full_url = f"urn:uuid:{entry_uuid}"
+        else:
+            request_entry = {"method": "POST", "url": resource_type}
+            full_url = f"urn:uuid:{entry_uuid}"
+
         bundle_entries.append({
-            "fullUrl": f"urn:uuid:{entry_uuid}",
+            "fullUrl": full_url,
             "resource": resource,
-            "request": {"method": "POST", "url": resource.get("resourceType", "DocumentReference")},
+            "request": request_entry,
         })
 
     return {
