@@ -10,11 +10,17 @@ git pull origin main
 echo "=== Tagging current images for rollback ==="
 docker compose images -q 2>/dev/null | xargs -r docker tag 2>/dev/null || true
 
-echo "=== Cleaning stale containers ==="
-docker compose down --remove-orphans 2>/dev/null || true
+echo "=== Stopping and removing old containers ==="
+docker compose down --remove-orphans --timeout 30 2>/dev/null || true
 
-echo "=== Building and restarting containers ==="
+echo "=== Building images ==="
 docker compose build
+
+echo "=== Starting database first ==="
+docker compose up -d db
+sleep 5
+
+echo "=== Starting all services ==="
 docker compose up -d
 
 echo "=== Waiting for services to become healthy ==="
