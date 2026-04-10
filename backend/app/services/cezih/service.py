@@ -596,7 +596,11 @@ async def expand_value_set(
     params: dict = {"url": url, "_count": "100"}
     if filter_text:
         params["filter"] = filter_text
-    response = await fhir_client.get("terminology-services/api/v1/ValueSet/$expand", params=params)
+    # Try $expand first, fall back to plain search
+    try:
+        response = await fhir_client.get("terminology-services/api/v1/ValueSet/$expand", params=params)
+    except Exception:
+        response = await fhir_client.get("terminology-services/api/v1/ValueSet", params=params)
 
     concepts = []
     expansion = response.get("expansion", {})
