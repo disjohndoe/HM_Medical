@@ -7,6 +7,7 @@ import type {
   CasesListResponse,
   CezihActivityListResponse,
   CezihDashboardStats,
+  CezihPatientImport,
   CezihStatusResponse,
   CodeSystemItem,
   CreateCaseRequest,
@@ -466,6 +467,18 @@ export function useRetrieveDocument() {
       })
       if (!response.ok) throw new Error("Failed to retrieve document")
       return response.blob()
+    },
+  })
+}
+
+export function useImportPatientFromCezih() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (mbo: string) =>
+      api.post<CezihPatientImport>("/cezih/import-patient", { mbo }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patients"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
 }

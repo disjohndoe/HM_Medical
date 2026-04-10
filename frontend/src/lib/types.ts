@@ -70,6 +70,16 @@ export interface UserCreate {
   practitioner_id?: string | null;
 }
 
+export interface CezihPatientImport {
+  id: string;
+  ime: string;
+  prezime: string;
+  datum_rodjenja: string | null;
+  oib: string | null;
+  spol: string | null;
+  mbo: string;
+}
+
 export interface Patient {
   id: string;
   ime: string;

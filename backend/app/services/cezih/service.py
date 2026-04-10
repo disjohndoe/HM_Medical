@@ -41,6 +41,40 @@ async def fetch_patient_raw(client: httpx.AsyncClient, mbo: str) -> dict:
     return await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
 
 
+async def fetch_patient_demographics(client: httpx.AsyncClient, mbo: str) -> dict:
+    """Fetch patient demographics from CEZIH PDQm and return fields matching our Patient model."""
+    fhir_client = CezihFhirClient(client)
+    params = {"identifier": f"{SYS_MBO}|{mbo}"}
+    response = await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
+
+    if response.get("resourceType") != "Bundle":
+        raise CezihError("Neočekivan format odgovora iz CEZIH-a")
+
+    entries = response.get("entry", [])
+    if not entries:
+        raise CezihError(f"Pacijent s MBO {mbo} nije pronađen u CEZIH registru")
+
+    patient = FHIRPatient.model_validate(entries[0].get("resource", {}))
+    family, given = _extract_name(patient)
+
+    oib = ""
+    for ident in patient.identifier:
+        if ident.system and "OIB" in (ident.system or "").upper() and ident.value:
+            oib = ident.value
+
+    spol_map = {"male": "M", "female": "Z"}
+    spol = spol_map.get(patient.gender or "", None)
+
+    return {
+        "mbo": mbo,
+        "ime": given,
+        "prezime": family,
+        "datum_rodjenja": patient.birthDate or None,
+        "oib": oib or None,
+        "spol": spol,
+    }
+
+
 async def check_insurance(client: httpx.AsyncClient, mbo: str) -> dict:
     """Patient demographics lookup by MBO (ITI-78 PDQm).
 

@@ -56,6 +56,91 @@ def _require_audit_params(
 # http_client is always passed but only used in real mode.
 
 
+async def import_patient_from_cezih(
+    mbo: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+) -> dict:
+    """Fetch patient demographics from CEZIH and create a new local patient."""
+    _require_audit_params(db, user_id, tenant_id)
+
+    from datetime import date as date_type
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models.patient import Patient
+
+    # Check if patient with this MBO already exists
+    result = await db.execute(
+        select(Patient).where(
+            Patient.tenant_id == tenant_id, Patient.mbo == mbo, Patient.is_active.is_(True),
+        )
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pacijent s tim MBO-om već postoji",
+        )
+
+    try:
+        cezih_data = await real_service.fetch_patient_demographics(http_client, mbo)
+    except CezihError as e:
+        logger.error("CEZIH patient import failed: %s", e.message)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+    # Parse date string to date object
+    dob = None
+    if cezih_data.get("datum_rodjenja"):
+        try:
+            dob = date_type.fromisoformat(cezih_data["datum_rodjenja"])
+        except ValueError:
+            pass
+
+    patient = Patient(
+        tenant_id=tenant_id,
+        ime=cezih_data.get("ime") or "Nepoznato",
+        prezime=cezih_data.get("prezime") or "Nepoznato",
+        datum_rodjenja=dob,
+        spol=cezih_data.get("spol"),
+        oib=cezih_data.get("oib"),
+        mbo=mbo,
+        cezih_insurance_status="Aktivan",
+        cezih_insurance_checked_at=datetime.now(UTC),
+    )
+    db.add(patient)
+
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        error_msg = str(e.orig)
+        if "uq_patient_tenant_oib" in error_msg:
+            raise HTTPException(status_code=409, detail="Pacijent s tim OIB-om već postoji") from e
+        raise HTTPException(status_code=409, detail="Pacijent s tim podacima već postoji") from e
+
+    await db.refresh(patient)
+
+    await _write_audit(
+        db, tenant_id, user_id,
+        action="cezih_patient_import",
+        resource_id=patient.id,
+        details={"mbo": mbo, "ime": patient.ime, "prezime": patient.prezime},
+    )
+
+    return {
+        "id": str(patient.id),
+        "ime": patient.ime,
+        "prezime": patient.prezime,
+        "datum_rodjenja": patient.datum_rodjenja.isoformat() if patient.datum_rodjenja else None,
+        "oib": patient.oib,
+        "spol": patient.spol,
+        "mbo": patient.mbo,
+    }
+
+
 async def _persist_insurance_to_patient(
     db: AsyncSession, tenant_id: UUID, mbo: str, status_osiguranja: str,
 ) -> UUID | None:

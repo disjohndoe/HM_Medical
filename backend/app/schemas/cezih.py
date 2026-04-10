@@ -1,7 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
+
+
+class CezihImportRequest(BaseModel):
+    mbo: str
 
 
 class InsuranceCheckRequest(BaseModel):

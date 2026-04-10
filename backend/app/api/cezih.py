@@ -16,6 +16,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.cezih import (
     CaseActionResponse,
+    CezihImportRequest,
     CaseItem,
     CaseResponse,
     CasesListResponse,
@@ -135,6 +136,22 @@ async def debug_patient_raw(
     from app.services.cezih.service import fetch_patient_raw
     current_tenant_id.set(current_user.tenant_id)
     return await fetch_patient_raw(_http_client(request), mbo)
+
+
+@router.post("/import-patient")
+async def import_patient_from_cezih(
+    request: Request,
+    data: CezihImportRequest,
+    current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch patient from CEZIH by MBO and create in local database."""
+    await check_cezih_access(db, current_user.tenant_id)
+    return await cezih.import_patient_from_cezih(
+        data.mbo,
+        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
+    )
 
 
 @router.post("/provjera-osiguranja", response_model=InsuranceCheckResponse)
