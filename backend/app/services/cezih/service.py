@@ -162,10 +162,24 @@ async def send_enalaz(
     clinical_text = "\n".join(content_parts)
     clinical_b64 = base64.b64encode(clinical_text.encode("utf-8")).decode("ascii") if clinical_text else None
 
-    # Build DocumentReference — map tip to CEZIH document type code
+    # Build DocumentReference per HRMinimalDocumentReference profile
+    import uuid as _uuid
+    doc_uuid = str(_uuid.uuid4())
     coding = get_cezih_document_coding(record_data.get("tip", "nalaz"))
+    patient_display = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip()
+
     doc_ref_dict: dict = {
         "resourceType": "DocumentReference",
+        "masterIdentifier": {
+            "use": "usual",
+            "system": f"urn:oid:{source_oid}" if source_oid else "urn:oid:2.16.840.1.113883.2.7",
+            "value": doc_uuid,
+        },
+        "identifier": [{
+            "use": "official",
+            "system": "urn:ietf:rfc:3986",
+            "value": f"urn:uuid:{doc_uuid}",
+        }],
         "status": "current",
         "type": {
             "coding": [{
@@ -180,10 +194,40 @@ async def send_enalaz(
                 "system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
                 "value": patient_data.get("mbo", ""),
             },
-            "display": f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip(),
+            "display": patient_display,
         },
         "date": _now_iso(),
+        "author": [],
     }
+
+    # Author: practitioner (HZJZ ID)
+    if practitioner_id:
+        doc_ref_dict["author"].append({
+            "type": "Practitioner",
+            "identifier": {
+                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika",
+                "value": practitioner_id,
+            },
+        })
+
+    # Author: organization (HZZO code)
+    if org_code:
+        doc_ref_dict["author"].append({
+            "type": "Organization",
+            "identifier": {
+                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije",
+                "value": org_code,
+            },
+        })
+
+    # Custodian: organization
+    if org_code:
+        doc_ref_dict["custodian"] = {
+            "identifier": {
+                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije",
+                "value": org_code,
+            },
+        }
 
     # Include clinical content as attachment (FHIR MHD content element)
     if clinical_b64:
