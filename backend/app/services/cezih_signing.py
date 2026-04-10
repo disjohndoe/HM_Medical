@@ -567,9 +567,15 @@ async def sign_bundle_via_extsigner(
                 timeout=30,
             )
         except CezihSigningError as e:
-            # If it's a 4xx error (not ready yet), keep polling
-            if "HTTP 404" in str(e) or "HTTP 202" in str(e):
-                logger.info("Extsigner: document not ready yet (attempt %d)", attempt)
+            err_str = str(e)
+            # ERROR_CODE_0022 = "not ready yet" (phase=HASH_SENT, waiting for Certilia approval)
+            if "ERROR_CODE_0022" in err_str or "not ready" in err_str.lower():
+                logger.info("Extsigner: document not ready yet — phase=HASH_SENT (attempt %d/%d)", attempt, max_attempts)
+                await asyncio.sleep(poll_interval)
+                continue
+            # Other retriable statuses
+            if "HTTP 404" in err_str or "HTTP 202" in err_str:
+                logger.info("Extsigner: document not ready yet (attempt %d/%d)", attempt, max_attempts)
                 await asyncio.sleep(poll_interval)
                 continue
             raise
