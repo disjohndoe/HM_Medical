@@ -306,7 +306,10 @@ class CaseItem(BaseModel):
     icd_code: str
     icd_display: str
     clinical_status: str
+    verification_status: str | None = None
     onset_date: str
+    abatement_date: str | None = None
+    note: str | None = None
 
 
 class CasesListResponse(BaseModel):

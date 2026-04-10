@@ -9,24 +9,17 @@ from app.constants import get_cezih_document_coding
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
 from app.services.cezih.message_builder import (
+    _now_iso,
     add_signature,
     build_condition_create,
     build_condition_data_update,
     build_condition_delete,
     build_condition_status_update,
+    build_iti65_transaction_bundle,
     build_message_bundle,
     parse_message_response,
 )
-from app.services.cezih.models import (
-    FHIRBundle,
-    FHIRBundleEntry,
-    FHIRCodeableConcept,
-    FHIRCoding,
-    FHIRDocumentReference,
-    FHIRIdentifier,
-    FHIRPatient,
-    FHIRReference,
-)
+from app.services.cezih.models import FHIRPatient
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +127,8 @@ async def send_enalaz(
 ) -> dict:
     """Send clinical document / finding (ITI-65 MHD).
 
-    Builds a FHIR message Bundle with MessageHeader + DocumentReference,
-    signs it via extsigner/smartcard, and POSTs to doc-mhd-svc.
+    Builds an IHE MHD transaction Bundle (type="transaction") with SubmissionSet (List)
+    + DocumentReference, signs it via extsigner/smartcard, and POSTs to doc-mhd-svc.
     """
     import base64
 
@@ -188,7 +181,7 @@ async def send_enalaz(
                 "value": patient_data.get("mbo", ""),
             },
         },
-        "date": datetime.now(UTC).isoformat(),
+        "date": _now_iso(),
     }
 
     # Include clinical content as attachment (FHIR MHD content element)
@@ -201,11 +194,12 @@ async def send_enalaz(
             }
         }]
 
-    # Wrap in a FHIR message Bundle (same format as working visit/case bundles)
-    bundle_dict = await build_message_bundle(
-        "3.1", doc_ref_dict,
-        sender_org_code=org_code, author_practitioner_id=practitioner_id,
-        source_oid=source_oid,
+    # Build IHE MHD ITI-65 transaction bundle (NOT a message bundle!)
+    # ITI-65 requires type="transaction" with SubmissionSet (List) + DocumentReference entries
+    bundle_dict = build_iti65_transaction_bundle(
+        [doc_ref_dict],
+        sender_org_code=org_code,
+        author_practitioner_id=practitioner_id,
     )
 
     # Sign the bundle
@@ -650,12 +644,20 @@ async def retrieve_cases(client: httpx.AsyncClient, patient_mbo: str) -> list[di
             coding = code.get("coding", [{}])[0] if code.get("coding") else {}
             clinical = cond.get("clinicalStatus", {})
             cl_coding = clinical.get("coding", [{}])[0] if clinical.get("coding") else {}
+            ver_status = cond.get("verificationStatus", {})
+            ver_coding = ver_status.get("coding", [{}])[0] if ver_status.get("coding") else {}
+            # Extract note from Condition.note[0].text
+            notes = cond.get("note", [])
+            note_text = notes[0].get("text", "") if notes else ""
             cases.append({
                 "case_id": case_id,
                 "icd_code": coding.get("code", ""),
                 "icd_display": coding.get("display", ""),
                 "clinical_status": cl_coding.get("code", ""),
+                "verification_status": ver_coding.get("code") or None,
                 "onset_date": cond.get("onsetDateTime", ""),
+                "abatement_date": cond.get("abatementDateTime") or None,
+                "note": note_text or None,
             })
     return cases
 
@@ -792,40 +794,42 @@ async def replace_document(
     patient_data: dict,
     record_data: dict,
     practitioner_id: str | None = None,
+    org_code: str = "",
 ) -> dict:
-    """Replace a clinical document (TC19, ITI-65 with relatesTo)."""
+    """Replace a clinical document (TC19, ITI-65 transaction bundle with relatesTo)."""
     fhir_client = CezihFhirClient(client)
     coding = get_cezih_document_coding(record_data.get("tip", "nalaz"))
-    doc_ref = FHIRDocumentReference(
-        status="current",
-        type=FHIRCodeableConcept(
-            coding=[FHIRCoding(
-                system=coding["system"],
-                code=coding["code"],
-                display=coding["display"],
-            )]
-        ),
-        subject=FHIRReference(
-            type="Patient",
-            identifier=FHIRIdentifier(
-                system="http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
-                value=patient_data.get("mbo", ""),
-            ),
-        ),
-        date=datetime.now(UTC).isoformat(),
-    )
-    doc_dict = doc_ref.model_dump(by_alias=True, exclude_none=True)
-    doc_dict["relatesTo"] = [
-        {"code": "replaces", "target": {"reference": f"DocumentReference/{original_reference_id}"}},
-    ]
-    bundle = FHIRBundle(
-        type="document",
-        timestamp=datetime.now(UTC).isoformat(),
-        entry=[FHIRBundleEntry(resource=doc_dict)],
+    doc_ref_dict: dict = {
+        "resourceType": "DocumentReference",
+        "status": "current",
+        "type": {
+            "coding": [{
+                "system": coding["system"],
+                "code": coding["code"],
+                "display": coding["display"],
+            }]
+        },
+        "subject": {
+            "type": "Patient",
+            "identifier": {
+                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
+                "value": patient_data.get("mbo", ""),
+            },
+        },
+        "date": _now_iso(),
+        "relatesTo": [
+            {"code": "replaces", "target": {"reference": f"DocumentReference/{original_reference_id}"}},
+        ],
+    }
+
+    # Build IHE MHD ITI-65 transaction bundle
+    bundle_dict = build_iti65_transaction_bundle(
+        [doc_ref_dict],
+        sender_org_code=org_code,
+        author_practitioner_id=practitioner_id,
     )
 
     # Add digital signature if practitioner_id is provided
-    bundle_dict = bundle.model_dump(by_alias=True, exclude_none=True)
     if practitioner_id:
         bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
 
@@ -853,22 +857,34 @@ async def replace_document(
 # ============================================================
 
 
-async def cancel_document(client: httpx.AsyncClient, reference_id: str) -> dict:
-    """Cancel/storno a clinical document (TC20, ITI-65 status update)."""
+async def cancel_document(
+    client: httpx.AsyncClient,
+    reference_id: str,
+    org_code: str = "",
+    practitioner_id: str | None = None,
+) -> dict:
+    """Cancel/storno a clinical document (TC20, ITI-65 transaction bundle)."""
     fhir_client = CezihFhirClient(client)
-    doc_ref = {
+    doc_ref: dict = {
         "resourceType": "DocumentReference",
         "id": reference_id,
         "status": "entered-in-error",
     }
-    bundle = FHIRBundle(
-        type="document",
-        timestamp=datetime.now(UTC).isoformat(),
-        entry=[FHIRBundleEntry(resource=doc_ref)],
+
+    # Build IHE MHD ITI-65 transaction bundle for cancel
+    bundle_dict = build_iti65_transaction_bundle(
+        [doc_ref],
+        sender_org_code=org_code,
+        author_practitioner_id=practitioner_id,
     )
+
+    # Sign if practitioner provided
+    if practitioner_id:
+        bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
+
     await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
-        json_body=bundle.model_dump(by_alias=True, exclude_none=True),
+        json_body=bundle_dict,
     )
     return {"success": True, "reference_id": reference_id, "status": "entered-in-error"}
 

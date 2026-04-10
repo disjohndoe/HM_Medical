@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { FileText, Plus, Loader2 } from "lucide-react"
+import { FileText, Plus, Loader2, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateHR } from "@/lib/utils"
 
@@ -26,12 +26,21 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
   useRetrieveCases,
   useCreateCase,
   useUpdateCaseStatus,
   useUpdateCaseData,
   useCodeSystemQuery,
 } from "@/lib/hooks/use-cezih"
+import type { CaseItem } from "@/lib/types"
 
 const CLINICAL_STATUS_COLORS: Record<string, string> = {
   active: "bg-blue-100 text-blue-800",
@@ -47,7 +56,17 @@ const CLINICAL_STATUS_LABELS: Record<string, string> = {
   resolved: "Zatvoren",
 }
 
+const VERIFICATION_STATUS_LABELS: Record<string, string> = {
+  unconfirmed: "Nepotvrđen",
+  provisional: "Privremena",
+  "differential": "Diferencijalna",
+  confirmed: "Potvrđen",
+  refuted: "Opovrgnut",
+  "entered-in-error": "Pogreška unosa",
+}
+
 const CASE_ACTIONS = [
+  { value: "create_recurring", label: "Ponavljajući slučaj" },
   { value: "remission", label: "Remisija" },
   { value: "relapse", label: "Relaps" },
   { value: "resolve", label: "Zatvori" },
@@ -67,14 +86,21 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   const [onsetDate, setOnsetDate] = useState(new Date().toISOString().split("T")[0])
   const [note, setNote] = useState("")
 
+  // Edit state
   const [editCaseId, setEditCaseId] = useState<string | null>(null)
   const [editNote, setEditNote] = useState("")
+  const [editVerification, setEditVerification] = useState("")
+  const [editIcdQuery, setEditIcdQuery] = useState("")
+  const [editSelectedIcd, setEditSelectedIcd] = useState<{ code: string; display: string } | null>(null)
+  const [editOnsetDate, setEditOnsetDate] = useState("")
+  const [editAbatementDate, setEditAbatementDate] = useState("")
 
   const casesQuery = useRetrieveCases(patientMbo)
   const createCase = useCreateCase()
   const updateStatus = useUpdateCaseStatus()
   const updateData = useUpdateCaseData()
   const icdSearch = useCodeSystemQuery("icd10-hr", icdQuery)
+  const editIcdSearch = useCodeSystemQuery("icd10-hr", editIcdQuery)
 
   const handleCreate = () => {
     if (!selectedIcd) {
@@ -103,20 +129,65 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
     )
   }
 
-  const [pendingAction, setPendingAction] = useState<Record<string, string>>({})
-
   const handleAction = (caseId: string, action: string) => {
     const actionLabel = CASE_ACTIONS.find((a) => a.value === action)?.label || action
     updateStatus.mutate(
       { caseId, mbo: patientMbo, action },
       {
-        onSuccess: () => {
-          toast.success(`${actionLabel} — uspješno`)
-          setPendingAction((prev) => ({ ...prev, [caseId]: "" }))
-        },
+        onSuccess: () => toast.success(`${actionLabel} — uspješno`),
         onError: (err) => toast.error(err.message),
       }
     )
+  }
+
+  const startEdit = (c: CaseItem) => {
+    setEditCaseId(c.case_id)
+    setEditNote(c.note || "")
+    setEditVerification(c.verification_status || "unconfirmed")
+    setEditSelectedIcd({ code: c.icd_code, display: c.icd_display })
+    setEditIcdQuery(`${c.icd_code} — ${c.icd_display}`)
+    setEditOnsetDate(c.onset_date?.split("T")[0] || "")
+    setEditAbatementDate(c.abatement_date?.split("T")[0] || "")
+  }
+
+  const cancelEdit = () => {
+    setEditCaseId(null)
+    setEditNote("")
+    setEditVerification("")
+    setEditSelectedIcd(null)
+    setEditIcdQuery("")
+    setEditOnsetDate("")
+    setEditAbatementDate("")
+  }
+
+  const handleEditSave = (caseId: string, clinicalStatus: string) => {
+    updateData.mutate(
+      {
+        caseId,
+        mbo: patientMbo,
+        current_clinical_status: clinicalStatus,
+        verification_status: editVerification || undefined,
+        icd_code: editSelectedIcd?.code || undefined,
+        icd_display: editSelectedIcd?.display || undefined,
+        onset_date: editOnsetDate || undefined,
+        abatement_date: editAbatementDate || undefined,
+        note: editNote || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Podaci slučaja ažurirani")
+          cancelEdit()
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  const getAvailableActions = (c: CaseItem) => {
+    if (c.clinical_status === "resolved") return CASE_ACTIONS.filter((a) => ["reopen", "delete"].includes(a.value))
+    if (c.clinical_status === "remission") return CASE_ACTIONS.filter((a) => ["relapse", "resolve", "delete"].includes(a.value))
+    // active or relapse
+    return CASE_ACTIONS.filter((a) => ["create_recurring", "remission", "relapse", "resolve", "delete"].includes(a.value))
   }
 
   const cases = casesQuery.data?.cases || []
@@ -128,79 +199,69 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
           <FileText className="h-5 w-5" />
           Upravljanje slučajevima
         </CardTitle>
-        <div className="flex items-center gap-2">
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger render={<Button size="sm" disabled={!patientMbo} />}>
-              <Plus className="h-4 w-4 mr-1" />
-              Novi slučaj
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Kreiranje novog slučaja</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div>
-                  <Label>MKB/ICD-10 šifra</Label>
-                  <Input
-                    placeholder="Pretraži po šifri ili nazivu..."
-                    value={icdQuery}
-                    onChange={(e) => {
-                      setIcdQuery(e.target.value)
-                      setSelectedIcd(null)
-                    }}
-                  />
-                  {icdSearch.data && icdSearch.data.length > 0 && !selectedIcd && (
-                    <div className="mt-1 border rounded-md max-h-40 overflow-y-auto">
-                      {icdSearch.data.map((item) => (
-                        <button
-                          key={item.code}
-                          className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
-                          onClick={() => {
-                            setSelectedIcd({ code: item.code, display: item.display })
-                            setIcdQuery(`${item.code} — ${item.display}`)
-                          }}
-                        >
-                          <span className="font-mono font-medium">{item.code}</span>{" "}
-                          <span className="text-muted-foreground">{item.display}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {selectedIcd && (
-                    <Badge className="mt-1" variant="secondary">
-                      {selectedIcd.code} — {selectedIcd.display}
-                    </Badge>
-                  )}
-                </div>
-                <div>
-                  <Label>Datum početka</Label>
-                  <Input
-                    type="date"
-                    value={onsetDate}
-                    onChange={(e) => setOnsetDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Napomena (opcionalno)</Label>
-                  <Textarea
-                    placeholder="Napomena o slučaju..."
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  onClick={handleCreate}
-                  disabled={createCase.isPending || !selectedIcd}
-                >
-                  {createCase.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Kreiraj slučaj
-                </Button>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogTrigger render={<Button size="sm" disabled={!patientMbo} />}>
+            <Plus className="h-4 w-4 mr-1" />
+            Novi slučaj
+          </DialogTrigger>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Kreiranje novog slučaja</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div>
+                <Label>MKB/ICD-10 šifra</Label>
+                <Input
+                  placeholder="Pretraži po šifri ili nazivu..."
+                  value={icdQuery}
+                  onChange={(e) => {
+                    setIcdQuery(e.target.value)
+                    setSelectedIcd(null)
+                  }}
+                />
+                {icdSearch.data && icdSearch.data.length > 0 && !selectedIcd && (
+                  <div className="mt-1 border rounded-md max-h-40 overflow-y-auto">
+                    {icdSearch.data.map((item) => (
+                      <button
+                        key={item.code}
+                        className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
+                        onClick={() => {
+                          setSelectedIcd({ code: item.code, display: item.display })
+                          setIcdQuery(`${item.code} — ${item.display}`)
+                        }}
+                      >
+                        <span className="font-mono font-medium">{item.code}</span>{" "}
+                        <span className="text-muted-foreground">{item.display}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedIcd && (
+                  <Badge className="mt-1" variant="secondary">
+                    {selectedIcd.code} — {selectedIcd.display}
+                  </Badge>
+                )}
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+              <div>
+                <Label>Datum početka</Label>
+                <Input type="date" value={onsetDate} onChange={(e) => setOnsetDate(e.target.value)} />
+              </div>
+              <div>
+                <Label>Napomena (opcionalno)</Label>
+                <Textarea
+                  placeholder="Napomena o slučaju..."
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <Button className="w-full" onClick={handleCreate} disabled={createCase.isPending || !selectedIcd}>
+                {createCase.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Kreiraj slučaj
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardHeader>
       <CardContent>
         {casesQuery.isLoading ? (
@@ -221,97 +282,169 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
           </p>
         ) : (
           <div className="space-y-3">
-            {cases.map((c) => (
-              <div key={c.case_id} className="space-y-2">
-              <div
-                className="flex items-center justify-between p-3 rounded-lg border"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100"}>
-                      {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status}
-                    </Badge>
-                    <span className="font-mono text-sm font-medium">{c.icd_code}</span>
-                    <span className="text-sm text-muted-foreground">{c.icd_display}</span>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[100px]">Status</TableHead>
+                    <TableHead className="w-[100px]">Verifikacija</TableHead>
+                    <TableHead>MKB šifra</TableHead>
+                    <TableHead>Naziv</TableHead>
+                    <TableHead>Početak</TableHead>
+                    <TableHead>Završetak</TableHead>
+                    <TableHead className="w-[180px] text-right">Akcije</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cases.map((c) => {
+                    const actions = getAvailableActions(c)
+                    return (
+                      <TableRow key={c.case_id}>
+                        <TableCell>
+                          <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100"}>
+                            {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">
+                            {VERIFICATION_STATUS_LABELS[c.verification_status || ""] || c.verification_status || "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm font-medium">{c.icd_code}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {c.icd_display}
+                          {c.note && (
+                            <span className="ml-1 text-xs text-blue-600" title={c.note}>
+                              [bilješka]
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm">{formatDateHR(c.onset_date)}</TableCell>
+                        <TableCell className="text-sm">{c.abatement_date ? formatDateHR(c.abatement_date) : "—"}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-xs px-2"
+                              onClick={() => editCaseId === c.case_id ? cancelEdit() : startEdit(c)}
+                              title="Izmijeni podatke slučaja (2.6)"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Select
+                              value=""
+                              onValueChange={(action) => {
+                                if (action) handleAction(c.case_id, action)
+                              }}
+                              disabled={updateStatus.isPending}
+                            >
+                              <SelectTrigger className="w-[120px] h-6 text-xs">
+                                <SelectValue placeholder="Akcija..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {actions.map((a) => (
+                                  <SelectItem key={a.value} value={a.value}>
+                                    {a.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Edit form — shown below table */}
+            {editCaseId && (() => {
+              const c = cases.find((x) => x.case_id === editCaseId)
+              if (!c) return null
+              return (
+                <div className="rounded-lg border p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Izmjena slučaja: <span className="font-mono text-xs text-muted-foreground">{editCaseId}</span></span>
+                    <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={cancelEdit}>×</Button>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Od: {formatDateHR(c.onset_date)} | ID: {c.case_id}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Status verifikacije</Label>
+                      <Select value={editVerification} onValueChange={(v) => v && setEditVerification(v)}>
+                        <SelectTrigger className="h-8">
+                          <SelectValue>{VERIFICATION_STATUS_LABELS[editVerification] || editVerification}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(VERIFICATION_STATUS_LABELS).map(([val, label]) => (
+                            <SelectItem key={val} value={val}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Datum početka</Label>
+                      <Input type="date" className="h-8 text-sm" value={editOnsetDate} onChange={(e) => setEditOnsetDate(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Datum završetka</Label>
+                      <Input type="date" className="h-8 text-sm" value={editAbatementDate} onChange={(e) => setEditAbatementDate(e.target.value)} />
+                    </div>
+                    <div className="col-span-3 space-y-1">
+                      <Label className="text-xs">MKB/ICD-10 šifra</Label>
+                      <Input
+                        className="h-8 text-sm"
+                        placeholder="Pretraži po šifri ili nazivu..."
+                        value={editIcdQuery}
+                        onChange={(e) => {
+                          setEditIcdQuery(e.target.value)
+                          setEditSelectedIcd(null)
+                        }}
+                      />
+                      {editIcdSearch.data && editIcdSearch.data.length > 0 && !editSelectedIcd && (
+                        <div className="mt-1 border rounded-md max-h-32 overflow-y-auto">
+                          {editIcdSearch.data.map((item) => (
+                            <button
+                              key={item.code}
+                              className="w-full text-left px-3 py-1.5 hover:bg-accent text-sm"
+                              onClick={() => {
+                                setEditSelectedIcd({ code: item.code, display: item.display })
+                                setEditIcdQuery(`${item.code} — ${item.display}`)
+                              }}
+                            >
+                              <span className="font-mono font-medium">{item.code}</span>{" "}
+                              <span className="text-muted-foreground">{item.display}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {editSelectedIcd && (
+                        <Badge className="mt-1" variant="secondary">
+                          {editSelectedIcd.code} — {editSelectedIcd.display}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="col-span-3 space-y-1">
+                      <Label className="text-xs">Napomena</Label>
+                      <Textarea
+                        value={editNote}
+                        onChange={(e) => setEditNote(e.target.value)}
+                        placeholder="Bilješka o slučaju..."
+                        className="min-h-[50px] text-sm"
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 text-xs"
-                    onClick={() => {
-                      setEditCaseId(editCaseId === c.case_id ? null : c.case_id)
-                      setEditNote("")
-                    }}
-                  >
-                    Uredi
-                  </Button>
-                  <Select
-                    value={pendingAction[c.case_id] || null}
-                    onValueChange={(action) => {
-                      if (action) {
-                        setPendingAction((prev) => ({ ...prev, [c.case_id]: action as string }))
-                        handleAction(c.case_id, action as string)
-                      }
-                    }}
-                    disabled={updateStatus.isPending}
-                  >
-                    <SelectTrigger className="w-[140px] h-8 text-xs">
-                      <SelectValue placeholder="Akcija..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CASE_ACTIONS.filter((a) => {
-                        if (c.clinical_status === "resolved") return ["reopen", "delete"].includes(a.value)
-                        if (c.clinical_status === "remission") return ["relapse", "resolve", "delete"].includes(a.value)
-                        return ["remission", "relapse", "resolve", "delete"].includes(a.value)
-                      }).map((a) => (
-                        <SelectItem key={a.value} value={a.value}>
-                          {a.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              {editCaseId === c.case_id && (
-                <div className="rounded-lg border p-3 space-y-2">
-                  <Label className="text-xs">Bilješka / napomena</Label>
-                  <Textarea
-                    value={editNote}
-                    onChange={(e) => setEditNote(e.target.value)}
-                    placeholder="Ažurirajte bilješku slučaja..."
-                    className="min-h-[60px] text-sm"
-                  />
                   <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setEditCaseId(null)}>Odustani</Button>
-                    <Button
-                      size="sm"
-                      disabled={updateData.isPending}
-                      onClick={() => {
-                        updateData.mutate(
-                          { caseId: c.case_id, mbo: patientMbo, note: editNote || undefined },
-                          {
-                            onSuccess: () => {
-                              toast.success("Podaci slučaja ažurirani")
-                              setEditCaseId(null)
-                            },
-                            onError: (err) => toast.error(err.message),
-                          },
-                        )
-                      }}
-                    >
+                    <Button size="sm" variant="outline" onClick={cancelEdit}>Odustani</Button>
+                    <Button size="sm" disabled={updateData.isPending} onClick={() => handleEditSave(editCaseId, c.clinical_status)}>
                       {updateData.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
-                      Spremi
+                      Spremi izmjene
                     </Button>
                   </div>
                 </div>
-              )}
-              </div>
-            ))}
+              )
+            })()}
           </div>
         )}
       </CardContent>

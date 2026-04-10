@@ -719,7 +719,10 @@ export interface CaseItem {
   icd_code: string;
   icd_display: string;
   clinical_status: string;
+  verification_status: string | null;
   onset_date: string;
+  abatement_date: string | null;
+  note: string | null;
 }
 
 export interface CasesListResponse {
