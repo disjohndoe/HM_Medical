@@ -156,9 +156,23 @@ def build_iti65_transaction_bundle(
     Optionally includes a SubmissionSet (List) as the first entry.
     """
     # Build SubmissionSet (List) — required by IHE MHD ITI-65
+    # HRMinimalSubmissionSet requires 2 identifiers: uniqueId + entryUUID
     submission_set_uuid = str(uuid.uuid4())
+    unique_id = str(uuid.uuid4())
     submission_set: dict[str, Any] = {
         "resourceType": "List",
+        "identifier": [
+            {
+                "use": "official",
+                "system": "urn:ietf:rfc:3986",
+                "value": f"urn:uuid:{unique_id}",
+            },
+            {
+                "use": "usual",
+                "system": "urn:ietf:rfc:3986",
+                "value": f"urn:uuid:{submission_set_uuid}",
+            },
+        ],
         "status": "current",
         "mode": "working",
         "code": {

@@ -168,29 +168,12 @@ async def send_enalaz(
     coding = get_cezih_document_coding(record_data.get("tip", "nalaz"))
     patient_display = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip()
 
-    # Generate document OID via CEZIH identifier registry (TC6)
-    doc_oid = ""
-    try:
-        oid_result = await fhir_client.post(
-            "identifier-registry-services/api/v1/oid/generateOIDBatch",
-            json_body={"oidType": "DOCUMENT", "quantity": 1},
-        )
-        oids = oid_result.get("oids", [])
-        if oids:
-            doc_oid = oids[0]
-            logger.info("Generated document OID from registry: %s", doc_oid)
-    except Exception as e:
-        logger.warning("OID generation failed, using UUID fallback: %s", e)
-
-    # masterIdentifier: use CEZIH-assigned OID or UUID fallback
-    master_id_value = doc_oid or doc_uuid
-
     doc_ref_dict: dict = {
         "resourceType": "DocumentReference",
         "masterIdentifier": {
             "use": "usual",
             "system": "urn:ietf:rfc:3986",
-            "value": f"urn:oid:{master_id_value}" if doc_oid else f"urn:uuid:{doc_uuid}",
+            "value": f"urn:uuid:{doc_uuid}",
         },
         "identifier": [{
             "use": "official",
