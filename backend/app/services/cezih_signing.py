@@ -546,7 +546,7 @@ async def sign_bundle_via_extsigner(
     # Step 2: Poll for signed document (user needs to approve on phone)
     import urllib.parse
     tc_encoded = urllib.parse.quote(transaction_code, safe="")
-    get_url = f"{retrieve_url}?transactionCode={tc_encoded}"
+    get_url = f"{retrieve_url}?transactionId={tc_encoded}"
 
     max_attempts = 24  # 24 x 5s = 120 seconds total
     poll_interval = 5
