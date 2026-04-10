@@ -13,9 +13,10 @@ docker compose images -q 2>/dev/null | xargs -r docker tag 2>/dev/null || true
 echo "=== Cleaning stale containers ==="
 docker container prune -f 2>/dev/null || true
 
-echo "=== Building and restarting containers ==="
+echo "=== Building and restarting services (keep DB running) ==="
 docker compose build
-docker compose up -d --force-recreate --remove-orphans
+docker compose up -d --force-recreate --no-deps backend frontend caddy backup
+docker compose up -d
 
 echo "=== Waiting for services to become healthy ==="
 TIMEOUT=120
