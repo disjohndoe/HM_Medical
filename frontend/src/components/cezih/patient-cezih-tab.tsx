@@ -39,6 +39,7 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
   const replaceDocument = useReplaceDocument()
   const { canUseHzzo } = usePermissions()
   const { tipLabelMap } = useRecordTypeMaps()
+  const [cezihSubTab, setCezihSubTab] = useState("posjete")
   const [eReceptOpen, setEReceptOpen] = useState(false)
   const [nalazStornoTarget, setNalazStornoTarget] = useState<string | null>(null)
   const [nalazReplaceTarget, setNalazReplaceTarget] = useState<string | null>(null)
@@ -144,7 +145,7 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
       </div>
 
       {/* Sub-tabs: Posjete / Slučajevi / e-Nalazi */}
-      <Tabs defaultValue="posjete" className="space-y-4">
+      <Tabs value={cezihSubTab} onValueChange={setCezihSubTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="posjete">Posjete</TabsTrigger>
           <TabsTrigger value="slucajevi">Slučajevi</TabsTrigger>
@@ -153,7 +154,7 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
 
         <TabsContent value="posjete">
           {patientMbo ? (
-            <VisitManagement patientId={patientId} patientMbo={patientMbo} />
+            <VisitManagement patientId={patientId} patientMbo={patientMbo} onNavigateToCase={() => setCezihSubTab("slucajevi")} />
           ) : (
             <p className="text-sm text-muted-foreground py-4 text-center">
               Pacijent nema MBO — posjete nisu dostupne

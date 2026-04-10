@@ -84,9 +84,10 @@ const VISIT_ACTIONS = [
 interface VisitManagementProps {
   patientId: string
   patientMbo: string
+  onNavigateToCase?: () => void
 }
 
-export function VisitManagement({ patientId, patientMbo }: VisitManagementProps) {
+export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: VisitManagementProps) {
   const { tenant } = useAuth()
   const { data: visitsData, isLoading } = useListVisits(patientMbo)
   const createVisit = useCreateVisit()
@@ -352,9 +353,14 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
                           <div>
                             {v.reason || "—"}
                             {v.diagnosis_case_ids?.length > 0 && (
-                              <span className="ml-1 text-xs text-blue-600" title={`Slučajevi: ${v.diagnosis_case_ids.join(", ")}`}>
+                              <button
+                                type="button"
+                                className="ml-1 text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                title={`Slučajevi: ${v.diagnosis_case_ids.join(", ")} — klikni za prikaz`}
+                                onClick={() => onNavigateToCase?.()}
+                              >
                                 [{v.diagnosis_case_ids.length} slučaj]
-                              </span>
+                              </button>
                             )}
                           </div>
                         </TableCell>
