@@ -161,6 +161,9 @@ def build_iti65_transaction_bundle(
     unique_id = str(uuid.uuid4())
     submission_set: dict[str, Any] = {
         "resourceType": "List",
+        "meta": {
+            "profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalSubmissionSet"],
+        },
         "identifier": [
             {
                 "use": "official",
@@ -186,12 +189,13 @@ def build_iti65_transaction_bundle(
     # Copy subject from the first DocumentReference (mustSupport on SubmissionSet)
     if entries and entries[0].get("subject"):
         submission_set["subject"] = entries[0]["subject"]
-    if sender_org_code:
-        submission_set["source"] = org_ref(sender_org_code)
+    # List.source only accepts Practitioner/Patient/Device — NOT Organization
     if author_practitioner_id:
+        submission_set["source"] = practitioner_ref(author_practitioner_id)
+    if sender_org_code:
         submission_set["extension"] = [{
             "url": "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-authorOrg",
-            "valueReference": org_ref(sender_org_code) if sender_org_code else {},
+            "valueReference": org_ref(sender_org_code),
         }]
 
     # SubmissionSet entry references all DocumentReference entries
@@ -232,6 +236,9 @@ def build_iti65_transaction_bundle(
     return {
         "resourceType": "Bundle",
         "id": str(uuid.uuid4()),
+        "meta": {
+            "profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalProvideDocumentBundle"],
+        },
         "type": "transaction",
         "timestamp": _now_iso(),
         "entry": bundle_entries,
