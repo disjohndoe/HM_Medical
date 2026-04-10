@@ -14,7 +14,7 @@ echo "=== Cleaning stale containers ==="
 docker container prune -f 2>/dev/null || true
 
 echo "=== Building and restarting services (keep DB running) ==="
-docker compose build
+docker compose build --no-cache backend frontend
 docker compose up -d --force-recreate --no-deps backend frontend caddy backup
 docker compose up -d
 
