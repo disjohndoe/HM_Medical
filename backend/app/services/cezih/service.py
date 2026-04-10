@@ -212,9 +212,9 @@ async def send_enalaz(
     if practitioner_id:
         bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
 
-    response = await fhir_client.process_message(
-        "doc-mhd-svc/api/v1",
-        bundle_dict,
+    response = await fhir_client.post(
+        "doc-mhd-svc/api/v1/iti-65-service",
+        json_body=bundle_dict,
     )
 
     # Extract reference ID from response
