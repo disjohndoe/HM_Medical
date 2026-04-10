@@ -202,7 +202,7 @@ async def send_enalaz(
     )
 
     # Add digital signature if practitioner_id is provided
-    bundle_dict = bundle.model_dump(by_alias=True)
+    bundle_dict = bundle.model_dump(by_alias=True, exclude_none=True)
     if practitioner_id:
         bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
 
@@ -579,17 +579,32 @@ async def list_visits(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]
                     visit_id = ident.get("value", visit_id)
             enc_class = enc.get("class", {})
             visit_type = enc_class.get("code", "") if isinstance(enc_class, dict) else ""
+            visit_type_display = enc_class.get("display", "") if isinstance(enc_class, dict) else ""
             period = enc.get("period", {})
             reason_list = enc.get("reasonCode", [])
             reason_text = reason_list[0].get("text", "") if reason_list else ""
+            # Extract serviceProvider org code
+            sp = enc.get("serviceProvider", {})
+            sp_ident = sp.get("identifier", {}) if isinstance(sp, dict) else {}
+            sp_code = sp_ident.get("value", "") if isinstance(sp_ident, dict) else ""
+            # Extract participant practitioner ID
+            participants = enc.get("participant", [])
+            practitioner_val = ""
+            if participants:
+                indiv = participants[0].get("individual", {})
+                p_ident = indiv.get("identifier", {}) if isinstance(indiv, dict) else {}
+                practitioner_val = p_ident.get("value", "") if isinstance(p_ident, dict) else ""
             visits.append({
                 "visit_id": visit_id,
                 "patient_mbo": patient_mbo,
                 "status": enc.get("status", ""),
                 "visit_type": visit_type,
+                "visit_type_display": visit_type_display,
                 "reason": reason_text,
                 "period_start": period.get("start"),
                 "period_end": period.get("end"),
+                "service_provider_code": sp_code or None,
+                "practitioner_id": practitioner_val or None,
             })
     return visits
 
@@ -772,7 +787,7 @@ async def replace_document(
         subject=FHIRReference(reference=f"Patient/{patient_data.get('mbo', '')}"),
         date=datetime.now(UTC).isoformat(),
     )
-    doc_dict = doc_ref.model_dump(by_alias=True)
+    doc_dict = doc_ref.model_dump(by_alias=True, exclude_none=True)
     doc_dict["relatesTo"] = [
         {"code": "replaces", "target": {"reference": f"DocumentReference/{original_reference_id}"}},
     ]
@@ -783,7 +798,7 @@ async def replace_document(
     )
 
     # Add digital signature if practitioner_id is provided
-    bundle_dict = bundle.model_dump(by_alias=True)
+    bundle_dict = bundle.model_dump(by_alias=True, exclude_none=True)
     if practitioner_id:
         bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
 
@@ -826,7 +841,7 @@ async def cancel_document(client: httpx.AsyncClient, reference_id: str) -> dict:
     )
     await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
-        json_body=bundle.model_dump(by_alias=True),
+        json_body=bundle.model_dump(by_alias=True, exclude_none=True),
     )
     return {"success": True, "reference_id": reference_id, "status": "entered-in-error"}
 
