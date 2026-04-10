@@ -103,8 +103,11 @@ export const CEZIH_MANDATORY_TYPES = new Set([
 
 // Types eligible for CEZIH submission
 export const CEZIH_ELIGIBLE_TYPES = new Set([
+  "ambulantno_izvjesce",
   "specijalisticki_nalaz",
+  "otpusno_pismo",
   "nalaz",
+  "epikriza",
 ]);
 
 export const RECORD_TIP_COLORS: Record<string, string> = {

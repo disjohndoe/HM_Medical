@@ -34,12 +34,13 @@ CEZIH_MANDATORY_TYPES: set[str] = {
 }
 
 # Types eligible for CEZIH submission
-# Only types confirmed in official HRTipDokumenta CodeSystem.
-# Other types (ambulantno_izvjesce, otpusno_pismo, epikriza) moved to
-# bilješke or deactivated until certification confirms them.
+# All clinical document types from HRTipDokumenta CodeSystem.
 CEZIH_ELIGIBLE_TYPES: set[str] = {
+    "ambulantno_izvjesce",
     "specijalisticki_nalaz",
+    "otpusno_pismo",
     "nalaz",
+    "epikriza",
 }
 
 
