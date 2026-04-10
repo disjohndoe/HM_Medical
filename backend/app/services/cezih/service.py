@@ -202,9 +202,9 @@ async def send_enalaz(
         author_practitioner_id=practitioner_id,
     )
 
-    # Sign the bundle
-    if practitioner_id:
-        bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
+    # NOTE: ITI-65 transaction bundles are NOT signed via extsigner.
+    # Extsigner only accepts FHIR message bundles (visits/cases).
+    # ITI-65 uses mTLS session authentication — signature is optional per spec.
 
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
@@ -850,9 +850,7 @@ async def replace_document(
         author_practitioner_id=practitioner_id,
     )
 
-    # Add digital signature if practitioner_id is provided
-    if practitioner_id:
-        bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
+    # NOTE: ITI-65 transaction bundles are NOT signed — extsigner only accepts message bundles.
 
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
@@ -899,9 +897,7 @@ async def cancel_document(
         author_practitioner_id=practitioner_id,
     )
 
-    # Sign if practitioner provided
-    if practitioner_id:
-        bundle_dict = await add_signature(bundle_dict, practitioner_id, http_client=client)
+    # NOTE: ITI-65 transaction bundles are NOT signed — extsigner only accepts message bundles.
 
     await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
