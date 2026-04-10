@@ -211,7 +211,8 @@ async def _add_signature_extsigner(
     response = result.get("response", {})
 
     # Try to extract signed document from retrieval response
-    documents = response.get("documents")
+    # API returns "signedDocuments" (getSignedDocuments) or "documents" (sign)
+    documents = response.get("signedDocuments") or response.get("documents")
 
     # Case 1: documents is a list with signed bundles
     if isinstance(documents, list) and documents:
