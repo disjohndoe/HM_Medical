@@ -34,6 +34,13 @@ SYS_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
 SYS_OIB = "http://fhir.cezih.hr/specifikacije/identifikatori/oib"
 
 
+async def fetch_patient_raw(client: httpx.AsyncClient, mbo: str) -> dict:
+    """Return raw FHIR Patient Bundle from CEZIH PDQm — debug/exploration."""
+    fhir_client = CezihFhirClient(client)
+    params = {"identifier": f"{SYS_MBO}|{mbo}"}
+    return await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
+
+
 async def check_insurance(client: httpx.AsyncClient, mbo: str) -> dict:
     """Patient demographics lookup by MBO (ITI-78 PDQm).
 
