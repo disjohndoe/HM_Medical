@@ -23,6 +23,7 @@ from app.services.cezih.models import (
     FHIRCodeableConcept,
     FHIRCoding,
     FHIRDocumentReference,
+    FHIRIdentifier,
     FHIRPatient,
     FHIRReference,
 )
@@ -181,8 +182,11 @@ async def send_enalaz(
             }]
         },
         "subject": {
-            "reference": f"Patient/{patient_data.get('mbo', '')}",
-            "display": f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}",
+            "type": "Patient",
+            "identifier": {
+                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
+                "value": patient_data.get("mbo", ""),
+            },
         },
         "date": datetime.now(UTC).isoformat(),
     }
@@ -789,7 +793,13 @@ async def replace_document(
                 display=coding["display"],
             )]
         ),
-        subject=FHIRReference(reference=f"Patient/{patient_data.get('mbo', '')}"),
+        subject=FHIRReference(
+            type="Patient",
+            identifier=FHIRIdentifier(
+                system="http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
+                value=patient_data.get("mbo", ""),
+            ),
+        ),
         date=datetime.now(UTC).isoformat(),
     )
     doc_dict = doc_ref.model_dump(by_alias=True, exclude_none=True)

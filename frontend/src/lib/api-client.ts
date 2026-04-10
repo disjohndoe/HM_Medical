@@ -45,8 +45,12 @@ function extractErrorMessage(detail: unknown): string {
       .join(", ") || "Nevažeći podaci"
   }
   if (typeof detail === "string") {
-    // Sanitize — strip anything that looks like a path, SQL, or internal detail
-    if (/[\\/]/.test(detail) || detail.includes("Traceback") || detail.includes("SELECT")) {
+    // Sanitize — strip anything that looks like an internal path, SQL, or traceback
+    // But allow CEZIH/FHIR error messages that contain URLs (http://, urn:)
+    if (detail.includes("Traceback") || detail.includes("SELECT")) {
+      return "Došlo je do greške. Pokušajte ponovo."
+    }
+    if (/[\\]/.test(detail) || (/[/]/.test(detail) && !detail.includes("CEZIH") && !detail.includes("FHIR") && !detail.includes("http") && !detail.includes("urn:") && !detail.includes("Agent"))) {
       return "Došlo je do greške. Pokušajte ponovo."
     }
     return detail
