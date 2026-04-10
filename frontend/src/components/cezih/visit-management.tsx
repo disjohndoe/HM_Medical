@@ -120,9 +120,11 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Vrsta posjete</Label>
-                <Select value={nacinPrijema} onValueChange={(v) => v && setNacinPrijema(v)}>
+                <Select value={nacinPrijema} onValueChange={setNacinPrijema}>
                   <SelectTrigger className="h-8">
-                    <SelectValue />
+                    <SelectValue placeholder="Odaberi vrstu">
+                      {NACIN_PRIJEMA_LABELS[nacinPrijema] || nacinPrijema}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
