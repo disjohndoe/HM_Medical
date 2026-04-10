@@ -585,6 +585,20 @@ async def list_visits(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]
             period = enc.get("period", {})
             reason_list = enc.get("reasonCode", [])
             reason_text = reason_list[0].get("text", "") if reason_list else ""
+            # Extract Encounter.type slices (vrsta-posjete and hr-tip-posjete)
+            vrsta_posjete = ""
+            vrsta_posjete_display = ""
+            tip_posjete = ""
+            tip_posjete_display = ""
+            for type_entry in enc.get("type", []):
+                for coding_item in type_entry.get("coding", []):
+                    sys = coding_item.get("system", "")
+                    if "vrsta-posjete" in sys:
+                        vrsta_posjete = coding_item.get("code", "")
+                        vrsta_posjete_display = coding_item.get("display", "")
+                    elif "hr-tip-posjete" in sys:
+                        tip_posjete = coding_item.get("code", "")
+                        tip_posjete_display = coding_item.get("display", "")
             # Extract serviceProvider org code
             sp = enc.get("serviceProvider", {})
             sp_ident = sp.get("identifier", {}) if isinstance(sp, dict) else {}
@@ -613,6 +627,10 @@ async def list_visits(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]
                 "status": enc.get("status", ""),
                 "visit_type": visit_type,
                 "visit_type_display": visit_type_display,
+                "vrsta_posjete": vrsta_posjete,
+                "vrsta_posjete_display": vrsta_posjete_display,
+                "tip_posjete": tip_posjete,
+                "tip_posjete_display": tip_posjete_display,
                 "reason": reason_text,
                 "period_start": period.get("start"),
                 "period_end": period.get("end"),

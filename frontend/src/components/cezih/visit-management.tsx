@@ -313,6 +313,8 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                     <TableHead className="w-[100px]">Izvor</TableHead>
                     <TableHead className="w-[100px]">Status</TableHead>
                     <TableHead>Način prijema</TableHead>
+                    <TableHead>Vrsta posjete</TableHead>
+                    <TableHead>Tip posjete</TableHead>
                     <TableHead>Razlog</TableHead>
                     <TableHead>Početak</TableHead>
                     <TableHead>Kraj</TableHead>
@@ -348,6 +350,12 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                         </TableCell>
                         <TableCell className="text-sm">
                           {v.visit_type_display || NACIN_PRIJEMA_LABELS[v.visit_type] || v.visit_type}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {v.vrsta_posjete_display || VRSTA_POSJETE_LABELS[v.vrsta_posjete] || v.vrsta_posjete || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {v.tip_posjete_display || TIP_POSJETE_LABELS[v.tip_posjete] || v.tip_posjete || "—"}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           <div>

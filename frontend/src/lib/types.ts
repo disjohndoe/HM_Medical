@@ -767,6 +767,10 @@ export interface VisitItem {
   status: string;
   visit_type: string;
   visit_type_display: string | null;
+  vrsta_posjete: string;
+  vrsta_posjete_display: string;
+  tip_posjete: string;
+  tip_posjete_display: string;
   reason: string | null;
   period_start: string | null;
   period_end: string | null;
