@@ -563,12 +563,56 @@ async def lookup_oid(client: httpx.AsyncClient, oid: str) -> dict:
 async def query_code_system(
     client: httpx.AsyncClient, system_name: str, query: str, count: int = 20,
 ) -> list[dict]:
-    """Query a CEZIH code system (ITI-96 SVCM)."""
+    """Query a CEZIH code system (ITI-96 SVCM).
+
+    For large code systems (e.g. ICD-10) where concepts are not embedded
+    inline, uses ValueSet/$expand with a filter to search.  Falls back to
+    inline concept extraction for small code systems.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
     fhir_client = CezihFhirClient(client)
-    # Search by URL first (more precise), fall back to name
-    params: dict = {"url:contains": system_name, "_count": str(count)}
+
+    # Step 1: Resolve the CodeSystem URL from the system name
+    cs_url: str | None = None
+    params: dict = {"url:contains": system_name, "_count": "1"}
     response = await fhir_client.get("terminology-services/api/v1/CodeSystem", params=params)
-    # If URL search returns nothing, try name search
+    logger.warning(f"[CS-DEBUG] Step1 url:contains={system_name} -> entries={len(response.get('entry', []))}")
+    if not response.get("entry"):
+        params = {"name:contains": system_name, "_count": "1"}
+        response = await fhir_client.get("terminology-services/api/v1/CodeSystem", params=params)
+        logger.warning(f"[CS-DEBUG] Step1 name:contains={system_name} -> entries={len(response.get('entry', []))}")
+    if response.get("resourceType") == "Bundle" and response.get("entry"):
+        cs_url = response["entry"][0].get("resource", {}).get("url")
+    logger.warning(f"[CS-DEBUG] Resolved cs_url={cs_url}")
+
+    # Step 2: If we have a query and a resolved URL, use ValueSet/$expand
+    # which is the FHIR-standard way to search within a code system
+    if query and cs_url:
+        expand_params: dict = {"url": cs_url, "filter": query, "_count": str(count)}
+        logger.warning(f"[CS-DEBUG] Step2 ValueSet/$expand params={expand_params}")
+        try:
+            expand_resp = await fhir_client.get(
+                "terminology-services/api/v1/ValueSet/$expand", params=expand_params,
+            )
+            logger.warning(f"[CS-DEBUG] Step2 expand response keys={list(expand_resp.keys())}, expansion_contains={len(expand_resp.get('expansion', {}).get('contains', []))}")
+            concepts = []
+            for contains in expand_resp.get("expansion", {}).get("contains", []):
+                concepts.append({
+                    "code": contains.get("code", ""),
+                    "display": contains.get("display", ""),
+                    "system": contains.get("system", cs_url),
+                })
+            if concepts:
+                return concepts
+        except Exception as e:
+            logger.warning(f"[CS-DEBUG] Step2 expand failed: {e}")
+            pass  # Fall through to inline concept extraction
+
+    # Step 3: Fallback — extract inline concepts from the CodeSystem resource
+    # (works for small code systems like nacin-prijema, vrsta-posjete)
+    params = {"url:contains": system_name, "_count": str(count)}
+    response = await fhir_client.get("terminology-services/api/v1/CodeSystem", params=params)
     if not response.get("entry"):
         params = {"name:contains": system_name, "_count": str(count)}
         response = await fhir_client.get("terminology-services/api/v1/CodeSystem", params=params)
@@ -578,9 +622,14 @@ async def query_code_system(
         for entry in response.get("entry", []):
             cs = entry.get("resource", {})
             for concept in cs.get("concept", []):
+                code = concept.get("code", "")
+                display = concept.get("display", "")
+                # Client-side filter for inline concepts
+                if query and query.lower() not in code.lower() and query.lower() not in display.lower():
+                    continue
                 results.append({
-                    "code": concept.get("code", ""),
-                    "display": concept.get("display", ""),
+                    "code": code,
+                    "display": display,
                     "system": cs.get("url", system_name),
                 })
     return results
