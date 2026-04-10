@@ -256,8 +256,11 @@ class CreateVisitRequest(BaseModel):
 class UpdateVisitRequest(BaseModel):
     reason: str | None = None
     nacin_prijema: str | None = None
+    vrsta_posjete: str | None = None
+    tip_posjete: str | None = None
     diagnosis_case_id: str | None = None
     additional_practitioner_id: str | None = None  # HZJZ broj additional doctor
+    period_start: str | None = None  # preserve original visit start time
 
 
 class VisitActionRequest(BaseModel):
@@ -283,6 +286,8 @@ class VisitItem(BaseModel):
     period_end: str | None = None
     service_provider_code: str | None = None
     practitioner_id: str | None = None
+    practitioner_ids: list[str] = []
+    diagnosis_case_ids: list[str] = []
 
 
 class VisitsListResponse(BaseModel):

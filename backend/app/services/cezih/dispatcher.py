@@ -914,8 +914,11 @@ async def dispatch_update_visit(
     reason: str | None = None,
     *,
     nacin_prijema: str | None = None,
+    vrsta_posjete: str | None = None,
+    tip_posjete: str | None = None,
     diagnosis_case_id: str | None = None,
     additional_practitioner_id: str | None = None,
+    period_start: str | None = None,
     db: AsyncSession | None = None,
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
@@ -928,8 +931,7 @@ async def dispatch_update_visit(
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
-            build_encounter_update, build_message_bundle, add_signature, ENCOUNTER_EVENT_PROFILE_MAP,
-            PROFILE_ENCOUNTER, PROFILE_ENCOUNTER_MSG_HEADER,
+            build_encounter_update, build_message_bundle, add_signature,
         )
         fhir_client = CezihFhirClient(http_client)
         if not practitioner_id:
@@ -938,22 +940,19 @@ async def dispatch_update_visit(
             encounter_id=visit_id,
             patient_mbo=patient_mbo,
             nacin_prijema=nacin_prijema or "6",
+            vrsta_posjete=vrsta_posjete or "1",
+            tip_posjete=tip_posjete or "1",
             reason=reason,
             practitioner_id=practitioner_id,
             additional_practitioner_id=additional_practitioner_id,
             org_code=org_code or "",
             diagnosis_case_id=diagnosis_case_id,
+            period_start=period_start,
         )
-        bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get("1.2")
-        profile_urls = {
-            "bundle": bundle_profile,
-            "header": PROFILE_ENCOUNTER_MSG_HEADER,
-            "resource": PROFILE_ENCOUNTER,
-        } if bundle_profile else None
         bundle = await build_message_bundle(
             "1.2", encounter,
             sender_org_code=org_code, author_practitioner_id=practitioner_id,
-            source_oid=source_oid, profile_urls=profile_urls,
+            source_oid=source_oid, profile_urls=None,
         )
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)

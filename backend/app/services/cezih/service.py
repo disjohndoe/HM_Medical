@@ -596,13 +596,23 @@ async def list_visits(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]
             sp_ident = sp.get("identifier", {}) if isinstance(sp, dict) else {}
             sp_code = sp_ident.get("value", "") if isinstance(sp_ident, dict) else ""
             logger.info("Visit %s serviceProvider raw: %s → code: %r", visit_id, sp, sp_code)
-            # Extract participant practitioner ID
+            # Extract all participant practitioner IDs
             participants = enc.get("participant", [])
-            practitioner_val = ""
-            if participants:
-                indiv = participants[0].get("individual", {})
+            practitioner_ids: list[str] = []
+            for p in participants:
+                indiv = p.get("individual", {})
                 p_ident = indiv.get("identifier", {}) if isinstance(indiv, dict) else {}
-                practitioner_val = p_ident.get("value", "") if isinstance(p_ident, dict) else ""
+                val = p_ident.get("value", "") if isinstance(p_ident, dict) else ""
+                if val:
+                    practitioner_ids.append(val)
+            # Extract linked diagnosis/case IDs
+            diagnosis_case_ids: list[str] = []
+            for diag in enc.get("diagnosis", []):
+                cond = diag.get("condition", {})
+                d_ident = cond.get("identifier", {}) if isinstance(cond, dict) else {}
+                val = d_ident.get("value", "") if isinstance(d_ident, dict) else ""
+                if val:
+                    diagnosis_case_ids.append(val)
             visits.append({
                 "visit_id": visit_id,
                 "patient_mbo": patient_mbo,
@@ -613,7 +623,9 @@ async def list_visits(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]
                 "period_start": period.get("start"),
                 "period_end": period.get("end"),
                 "service_provider_code": sp_code or None,
-                "practitioner_id": practitioner_val or None,
+                "practitioner_id": practitioner_ids[0] if practitioner_ids else None,
+                "practitioner_ids": practitioner_ids,
+                "diagnosis_case_ids": diagnosis_case_ids,
             })
     return visits
 

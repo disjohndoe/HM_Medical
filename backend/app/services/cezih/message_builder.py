@@ -427,6 +427,7 @@ def build_encounter_update(
     additional_practitioner_id: str | None = None,
     org_code: str = "",
     diagnosis_case_id: str | None = None,
+    period_start: str | None = None,
 ) -> dict[str, Any]:
     """Build FHIR Encounter resource for visit update (event code 1.2).
 
@@ -453,7 +454,7 @@ def build_encounter_update(
         },
         "type": [],
         "subject": patient_ref(patient_mbo),
-        "period": {"start": _now_iso()},
+        "period": {"start": period_start if period_start else _now_iso()},
     }
     if vrsta_posjete:
         encounter["type"].append({

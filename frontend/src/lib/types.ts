@@ -769,6 +769,8 @@ export interface VisitItem {
   period_end: string | null;
   service_provider_code: string | null;
   practitioner_id: string | null;
+  practitioner_ids: string[];
+  diagnosis_case_ids: string[];
 }
 
 export interface VisitsListResponse {

@@ -63,6 +63,18 @@ const NACIN_PRIJEMA_LABELS: Record<string, string> = {
   "10": "Program+",
 }
 
+const VRSTA_POSJETE_LABELS: Record<string, string> = {
+  "1": "Pacijent prisutan",
+  "2": "Pacijent udaljeno prisutan",
+  "3": "Pacijent nije prisutan",
+}
+
+const TIP_POSJETE_LABELS: Record<string, string> = {
+  "1": "Posjeta LOM",
+  "2": "Posjeta SKZZ",
+  "3": "Hospitalizacija",
+}
+
 const VISIT_ACTIONS = [
   { value: "close", label: "Zatvori" },
   { value: "reopen", label: "Ponovno otvori" },
@@ -81,25 +93,30 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
   const updateVisit = useUpdateVisit()
   const visitAction = useVisitAction()
 
+  // Create form state
   const [showCreate, setShowCreate] = useState(false)
   const [nacinPrijema, setNacinPrijema] = useState("6")
+  const [vrstaPosjete, setVrstaPosjete] = useState("1")
+  const [tipPosjete, setTipPosjete] = useState("2")
   const [reason, setReason] = useState("")
+
+  // Action/edit state
   const [actionVisitId, setActionVisitId] = useState<string | null>(null)
   const [editVisitId, setEditVisitId] = useState<string | null>(null)
   const [editReason, setEditReason] = useState("")
   const [editNacinPrijema, setEditNacinPrijema] = useState("")
+  const [editVrstaPosjete, setEditVrstaPosjete] = useState("1")
+  const [editTipPosjete, setEditTipPosjete] = useState("2")
   const [editCaseId, setEditCaseId] = useState("")
   const [editPractitionerId, setEditPractitionerId] = useState("")
+  const [editPeriodStart, setEditPeriodStart] = useState<string | undefined>()
 
   const visits = visitsData?.visits ?? []
   const myOrgCode = tenant?.sifra_ustanove || ""
 
-  // Only mark as external if we KNOW the provider code AND it doesn't match ours
-  // Unknown provider = assume ours (CEZIH likely scopes results to our org)
   const isExternalVisit = (v: VisitItem) =>
     !!myOrgCode && !!v.service_provider_code && v.service_provider_code !== myOrgCode
 
-  // Sort: our visits first, then by period_start descending
   const sortedVisits = [...visits].sort((a, b) => {
     const aExt = isExternalVisit(a) ? 1 : 0
     const bExt = isExternalVisit(b) ? 1 : 0
@@ -111,7 +128,13 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
 
   const handleCreate = () => {
     createVisit.mutate(
-      { patient_id: patientId, patient_mbo: patientMbo, nacin_prijema: nacinPrijema, reason: reason || undefined },
+      {
+        patient_id: patientId, patient_mbo: patientMbo,
+        nacin_prijema: nacinPrijema,
+        vrsta_posjete: vrstaPosjete,
+        tip_posjete: tipPosjete,
+        reason: reason || undefined,
+      },
       {
         onSuccess: (res) => {
           toast.success(`Posjeta kreirana: ${res.visit_id}`)
@@ -143,18 +166,17 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
         visitId,
         reason: editReason || undefined,
         nacin_prijema: editNacinPrijema || undefined,
+        vrsta_posjete: editVrstaPosjete || undefined,
+        tip_posjete: editTipPosjete || undefined,
         diagnosis_case_id: editCaseId || undefined,
         additional_practitioner_id: editPractitionerId || undefined,
+        period_start: editPeriodStart,
         patientMbo,
       },
       {
         onSuccess: () => {
           toast.success("Posjeta ažurirana")
-          setEditVisitId(null)
-          setEditReason("")
-          setEditNacinPrijema("")
-          setEditCaseId("")
-          setEditPractitionerId("")
+          cancelEdit()
         },
         onError: (err) => toast.error(err.message),
       },
@@ -165,8 +187,11 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
     setEditVisitId(v.visit_id)
     setEditReason(v.reason || "")
     setEditNacinPrijema(v.visit_type || "6")
-    setEditCaseId("")
-    setEditPractitionerId("")
+    setEditVrstaPosjete("1")
+    setEditTipPosjete("2")
+    setEditCaseId(v.diagnosis_case_ids?.[0] || "")
+    setEditPractitionerId(v.practitioner_ids?.length > 1 ? v.practitioner_ids[1] : "")
+    setEditPeriodStart(v.period_start || undefined)
     setActionVisitId(null)
   }
 
@@ -174,8 +199,11 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
     setEditVisitId(null)
     setEditReason("")
     setEditNacinPrijema("")
+    setEditVrstaPosjete("1")
+    setEditTipPosjete("2")
     setEditCaseId("")
     setEditPractitionerId("")
+    setEditPeriodStart(undefined)
   }
 
   const getAvailableActions = (v: VisitItem) => {
@@ -213,12 +241,36 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
                 <Label className="text-xs">Način prijema</Label>
                 <Select value={nacinPrijema} onValueChange={(v) => v && setNacinPrijema(v)}>
                   <SelectTrigger className="h-8">
-                    <SelectValue placeholder="Odaberi način">
-                      {NACIN_PRIJEMA_LABELS[nacinPrijema] || nacinPrijema}
-                    </SelectValue>
+                    <SelectValue>{NACIN_PRIJEMA_LABELS[nacinPrijema] || nacinPrijema}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
+                      <SelectItem key={val} value={val}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Vrsta posjete</Label>
+                <Select value={vrstaPosjete} onValueChange={(v) => v && setVrstaPosjete(v)}>
+                  <SelectTrigger className="h-8">
+                    <SelectValue>{VRSTA_POSJETE_LABELS[vrstaPosjete] || vrstaPosjete}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(VRSTA_POSJETE_LABELS).map(([val, label]) => (
+                      <SelectItem key={val} value={val}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Tip posjete</Label>
+                <Select value={tipPosjete} onValueChange={(v) => v && setTipPosjete(v)}>
+                  <SelectTrigger className="h-8">
+                    <SelectValue>{TIP_POSJETE_LABELS[tipPosjete] || tipPosjete}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(TIP_POSJETE_LABELS).map(([val, label]) => (
                       <SelectItem key={val} value={val}>{label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -297,7 +349,14 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
                           {v.visit_type_display || NACIN_PRIJEMA_LABELS[v.visit_type] || v.visit_type}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {v.reason || "—"}
+                          <div>
+                            {v.reason || "—"}
+                            {v.diagnosis_case_ids?.length > 0 && (
+                              <span className="ml-1 text-xs text-blue-600" title={`Slučajevi: ${v.diagnosis_case_ids.join(", ")}`}>
+                                [{v.diagnosis_case_ids.length} slučaj]
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm">
                           {v.period_start ? formatDateTimeHR(v.period_start) : "—"}
@@ -360,17 +419,41 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
                   <span className="text-sm font-medium">Izmjena posjete: <span className="font-mono text-xs text-muted-foreground">{editVisitId}</span></span>
                   <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={cancelEdit}>×</Button>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Način prijema</Label>
                     <Select value={editNacinPrijema} onValueChange={(v) => v && setEditNacinPrijema(v)}>
                       <SelectTrigger className="h-8">
-                        <SelectValue>
-                          {NACIN_PRIJEMA_LABELS[editNacinPrijema] || editNacinPrijema}
-                        </SelectValue>
+                        <SelectValue>{NACIN_PRIJEMA_LABELS[editNacinPrijema] || editNacinPrijema}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
+                          <SelectItem key={val} value={val}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Vrsta posjete</Label>
+                    <Select value={editVrstaPosjete} onValueChange={(v) => v && setEditVrstaPosjete(v)}>
+                      <SelectTrigger className="h-8">
+                        <SelectValue>{VRSTA_POSJETE_LABELS[editVrstaPosjete] || editVrstaPosjete}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(VRSTA_POSJETE_LABELS).map(([val, label]) => (
+                          <SelectItem key={val} value={val}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Tip posjete</Label>
+                    <Select value={editTipPosjete} onValueChange={(v) => v && setEditTipPosjete(v)}>
+                      <SelectTrigger className="h-8">
+                        <SelectValue>{TIP_POSJETE_LABELS[editTipPosjete] || editTipPosjete}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(TIP_POSJETE_LABELS).map(([val, label]) => (
                           <SelectItem key={val} value={val}>{label}</SelectItem>
                         ))}
                       </SelectContent>
