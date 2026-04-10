@@ -257,6 +257,7 @@ class UpdateVisitRequest(BaseModel):
     reason: str | None = None
     nacin_prijema: str | None = None
     diagnosis_case_id: str | None = None
+    additional_practitioner_id: str | None = None  # HZJZ broj additional doctor
 
 
 class VisitActionRequest(BaseModel):

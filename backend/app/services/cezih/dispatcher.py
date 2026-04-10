@@ -915,6 +915,7 @@ async def dispatch_update_visit(
     *,
     nacin_prijema: str | None = None,
     diagnosis_case_id: str | None = None,
+    additional_practitioner_id: str | None = None,
     db: AsyncSession | None = None,
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
@@ -939,6 +940,7 @@ async def dispatch_update_visit(
             nacin_prijema=nacin_prijema or "6",
             reason=reason,
             practitioner_id=practitioner_id,
+            additional_practitioner_id=additional_practitioner_id,
             org_code=org_code or "",
             diagnosis_case_id=diagnosis_case_id,
         )

@@ -89,6 +89,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
   const [editReason, setEditReason] = useState("")
   const [editNacinPrijema, setEditNacinPrijema] = useState("")
   const [editCaseId, setEditCaseId] = useState("")
+  const [editPractitionerId, setEditPractitionerId] = useState("")
 
   const visits = visitsData?.visits ?? []
   const myOrgCode = tenant?.sifra_ustanove || ""
@@ -143,6 +144,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
         reason: editReason || undefined,
         nacin_prijema: editNacinPrijema || undefined,
         diagnosis_case_id: editCaseId || undefined,
+        additional_practitioner_id: editPractitionerId || undefined,
         patientMbo,
       },
       {
@@ -152,6 +154,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
           setEditReason("")
           setEditNacinPrijema("")
           setEditCaseId("")
+          setEditPractitionerId("")
         },
         onError: (err) => toast.error(err.message),
       },
@@ -163,6 +166,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
     setEditReason(v.reason || "")
     setEditNacinPrijema(v.visit_type || "6")
     setEditCaseId("")
+    setEditPractitionerId("")
     setActionVisitId(null)
   }
 
@@ -171,6 +175,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
     setEditReason("")
     setEditNacinPrijema("")
     setEditCaseId("")
+    setEditPractitionerId("")
   }
 
   const getAvailableActions = (v: VisitItem) => {
@@ -355,7 +360,7 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
                   <span className="text-sm font-medium">Izmjena posjete: <span className="font-mono text-xs text-muted-foreground">{editVisitId}</span></span>
                   <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={cancelEdit}>×</Button>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Način prijema</Label>
                     <Select value={editNacinPrijema} onValueChange={(v) => v && setEditNacinPrijema(v)}>
@@ -378,6 +383,15 @@ export function VisitManagement({ patientId, patientMbo }: VisitManagementProps)
                       placeholder="Razlog posjete"
                       value={editReason}
                       onChange={(e) => setEditReason(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dodatni liječnik (HZJZ broj)</Label>
+                    <Input
+                      className="h-8 text-sm"
+                      placeholder="HZJZ broj (opcionalno)"
+                      value={editPractitionerId}
+                      onChange={(e) => setEditPractitionerId(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1">

@@ -424,6 +424,7 @@ def build_encounter_update(
     tip_posjete: str = "1",
     reason: str | None = None,
     practitioner_id: str = "",
+    additional_practitioner_id: str | None = None,
     org_code: str = "",
     diagnosis_case_id: str | None = None,
 ) -> dict[str, Any]:
@@ -467,9 +468,10 @@ def build_encounter_update(
     if org_code:
         encounter["serviceProvider"] = org_ref(org_code)
     if practitioner_id:
-        encounter["participant"] = [{
-            "individual": practitioner_ref(practitioner_id),
-        }]
+        participants = [{"individual": practitioner_ref(practitioner_id)}]
+        if additional_practitioner_id and additional_practitioner_id != practitioner_id:
+            participants.append({"individual": practitioner_ref(additional_practitioner_id)})
+        encounter["participant"] = participants
     if reason:
         encounter["reasonCode"] = [{"text": reason}]
     if diagnosis_case_id:

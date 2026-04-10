@@ -741,6 +741,7 @@ async def update_visit(
         visit_id, mbo, data.reason,
         nacin_prijema=data.nacin_prijema,
         diagnosis_case_id=data.diagnosis_case_id,
+        additional_practitioner_id=data.additional_practitioner_id,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         practitioner_id=current_user.practitioner_id or "",
