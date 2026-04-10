@@ -416,21 +416,34 @@ async def search_documents(
     if status_filter:
         params["status"] = status_filter
 
-    response = await fhir_client.get("doc-mhd-svc/api/v1/DocumentReference", params=params)
+    import logging
+    _log = logging.getLogger(__name__)
+    try:
+        response = await fhir_client.get("doc-mhd-svc/api/v1/DocumentReference", params=params)
+    except Exception as exc:
+        _log.error("Document search failed: %s", exc)
+        raise CezihError(f"Pretraga dokumenata nije uspjela: {exc}") from exc
 
     items = []
     if response.get("resourceType") == "Bundle":
         for entry in response.get("entry", []):
             doc_ref = entry.get("resource", {})
-            items.append({
-                "id": doc_ref.get("id", ""),
-                "datum_izdavanja": doc_ref.get("date", ""),
-                "izdavatelj": _extract_reference_display(doc_ref.get("context", {}).get("source", {})),
-                "svrha": _extract_codeable_text(doc_ref.get("type")),
-                "specijalist": _extract_reference_display(doc_ref.get("context", {}).get("encounter", {})),
-                "status": _map_fhir_status(doc_ref.get("status", "current")),
-                "type": _extract_codeable_text(doc_ref.get("type")),
-            })
+            try:
+                author = ""
+                for a in doc_ref.get("author", []):
+                    author = a.get("display", "") or author
+                items.append({
+                    "id": doc_ref.get("id", ""),
+                    "datum_izdavanja": doc_ref.get("date", ""),
+                    "izdavatelj": author or _extract_reference_display(doc_ref.get("custodian")),
+                    "svrha": _extract_codeable_text(doc_ref.get("type")),
+                    "specijalist": author,
+                    "status": _map_fhir_status(doc_ref.get("status", "current")),
+                    "type": _extract_codeable_text(doc_ref.get("type")),
+                })
+            except Exception as parse_exc:
+                _log.warning("Skipping unparseable DocumentReference: %s", parse_exc)
+                continue
 
     return items
 
