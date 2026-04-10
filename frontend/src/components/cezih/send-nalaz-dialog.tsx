@@ -56,8 +56,8 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
   type VisitItem = { visit_id: string; status: string; period_start?: string; visit_type_display?: string; service_provider_code?: string | null }
   type CaseItem = { case_id: string; clinical_status: string; icd_code?: string; icd_display?: string }
 
-  const visits = (visitsData ?? []) as VisitItem[]
-  const cases = (casesData ?? []) as CaseItem[]
+  const visits = ((visitsData as { visits?: VisitItem[] })?.visits ?? []) as VisitItem[]
+  const cases = ((casesData as { cases?: CaseItem[] })?.cases ?? []) as CaseItem[]
 
   // Filter to active/in-progress visits and active cases
   const activeVisits = visits.filter((v) => v.status === "in-progress")
