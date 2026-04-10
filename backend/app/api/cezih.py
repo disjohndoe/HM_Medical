@@ -131,7 +131,9 @@ async def debug_patient_raw(
 ):
     """Temporary debug endpoint — returns raw FHIR Patient Bundle from CEZIH."""
     await check_cezih_access(db, current_user.tenant_id)
+    from app.services.cezih.client import current_tenant_id
     from app.services.cezih.service import fetch_patient_raw
+    current_tenant_id.set(current_user.tenant_id)
     return await fetch_patient_raw(_http_client(request), mbo)
 
 
