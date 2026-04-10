@@ -590,7 +590,10 @@ async def list_visits(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]
             vrsta_posjete_display = ""
             tip_posjete = ""
             tip_posjete_display = ""
-            for type_entry in enc.get("type", []):
+            enc_type_raw = enc.get("type", [])
+            if enc_type_raw:
+                logger.info("Visit %s Encounter.type raw: %s", visit_id, enc_type_raw)
+            for type_entry in enc_type_raw:
                 for coding_item in type_entry.get("coding", []):
                     sys = coding_item.get("system", "")
                     if "vrsta-posjete" in sys:
