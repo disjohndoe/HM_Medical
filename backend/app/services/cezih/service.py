@@ -180,6 +180,7 @@ async def send_enalaz(
                 "system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
                 "value": patient_data.get("mbo", ""),
             },
+            "display": f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip(),
         },
         "date": _now_iso(),
     }
@@ -836,6 +837,7 @@ async def replace_document(
                 "system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
                 "value": patient_data.get("mbo", ""),
             },
+            "display": f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip(),
         },
         "date": _now_iso(),
         "relatesTo": [

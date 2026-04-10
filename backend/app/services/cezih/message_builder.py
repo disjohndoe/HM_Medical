@@ -169,6 +169,9 @@ def build_iti65_transaction_bundle(
         },
         "date": _now_iso(),
     }
+    # Copy subject from the first DocumentReference (mustSupport on SubmissionSet)
+    if entries and entries[0].get("subject"):
+        submission_set["subject"] = entries[0]["subject"]
     if sender_org_code:
         submission_set["source"] = org_ref(sender_org_code)
     if author_practitioner_id:
@@ -578,9 +581,7 @@ def build_encounter_close(
     CEZIH example includes: identifier, status, class, period (start+end),
     diagnosis, serviceProvider. See docs/CEZIH/Posjete/.
     """
-    period: dict[str, str] = {"end": _now_iso()}
-    if period_start:
-        period["start"] = period_start
+    period: dict[str, str] = {"start": period_start or _now_iso(), "end": _now_iso()}
 
     encounter: dict[str, Any] = {
         "resourceType": "Encounter",
