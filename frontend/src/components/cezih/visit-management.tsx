@@ -161,8 +161,9 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
   }
 
   const handleAction = (visitId: string, action: string) => {
+    const visit = visits.find((v) => v.visit_id === visitId)
     visitAction.mutate(
-      { visitId, action, patientMbo },
+      { visitId, action, patientMbo, periodStart: visit?.period_start },
       {
         onSuccess: () => {
           const label = VISIT_ACTIONS.find((a) => a.value === action)?.label || action

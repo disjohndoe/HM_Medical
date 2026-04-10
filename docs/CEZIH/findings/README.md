@@ -62,12 +62,14 @@ What needs to be done next...
 | File | Date | Status | Summary |
 |------|------|--------|---------|
 | [signature-scope-clarification.md](signature-scope-clarification.md) | 2026-04-09 | active | Digital signature is for PDF documents only, NOT FHIR Bundles |
+| [cezih-official-signature-format.md](cezih-official-signature-format.md) | 2026-04-09 | active | Definitive analysis: two conflicting formats — spec 3.4 (JWS, normative) vs Posjete example (raw, older) |
 
 ### Documents (ITI-65)
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
-| [ITI-65-403-blocker.md](ITI-65-403-blocker.md) | 2026-04-10 | active | 403 on doc-mhd-svc — wrong bundle type (message vs transaction) |
+| [ITI-65-403-blocker.md](ITI-65-403-blocker.md) | 2026-04-10 | resolved | 403 on doc-mhd-svc — wrong bundle type (message vs transaction) — VERIFIED TC18 2026-04-10 |
+| [ITI-65-document-profile.md](ITI-65-document-profile.md) | 2026-04-10 | active | HRMinimalDocumentReference — full profile field requirements, all CEZIHDR-* rules |
 
 ### Specification Compliance
 

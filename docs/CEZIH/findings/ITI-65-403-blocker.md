@@ -1,7 +1,7 @@
 ---
 date: 2026-04-10
 topic: documents
-status: active
+status: resolved
 ---
 
 # ITI-65 Document Submission — 403 Blocker (TC18-20)
@@ -74,5 +74,5 @@ Rewrote `send_enalaz()`, `replace_document()`, and `cancel_document()` in `servi
 - [x] Rewrite send_enalaz to use transaction bundle
 - [x] Rewrite replace_document to use transaction bundle
 - [x] Rewrite cancel_document to use transaction bundle
-- [ ] Live test TC18 against real CEZIH
-- [ ] If still 403 → contact HZZO about test account permissions
+- [x] Live test TC18 against real CEZIH — **VERIFIED 2026-04-10, HTTP 200**
+- [x] 403 resolved — was bundle type, then 24 more fixes for full profile compliance
