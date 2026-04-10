@@ -540,6 +540,55 @@ async def sign_bundle_via_extsigner(
     }
 
 
+async def check_extsigner_transaction(transaction_code: str) -> dict:
+    """Check the status of an extsigner transaction using the transactionCode.
+
+    Probes various possible retrieval endpoints to discover the API.
+    """
+    if not _should_use_agent():
+        raise CezihSigningError("Agent nije spojen")
+
+    base_url = settings.CEZIH_FHIR_BASE_URL
+    if not base_url:
+        raise CezihSigningError("CEZIH_FHIR_BASE_URL nije postavljen.")
+
+    base = base_url.rstrip("/")
+    results = {}
+
+    # Try different possible retrieval endpoints
+    endpoints = [
+        ("GET", f"{base}/services-router/gateway/extsigner/api/sign/{transaction_code}"),
+        ("GET", f"{base}/services-router/gateway/extsigner/api/status/{transaction_code}"),
+        ("GET", f"{base}/services-router/gateway/extsigner/api/documents/{transaction_code}"),
+        ("POST", f"{base}/services-router/gateway/extsigner/api/retrieve"),
+    ]
+
+    for method, url in endpoints:
+        try:
+            if method == "POST":
+                result = await _request_via_agent(
+                    method="POST", url=url,
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                    form_data=None,
+                    json_body={"transactionCode": transaction_code},
+                    timeout=30,
+                )
+            else:
+                result = await _request_via_agent(
+                    method="GET", url=url,
+                    headers={"Accept": "application/json"},
+                    form_data=None, json_body=None,
+                    timeout=30,
+                )
+            results[url] = result
+            logger.info("Extsigner probe %s %s → %s", method, url, json.dumps(result, ensure_ascii=False)[:500])
+        except CezihSigningError as e:
+            results[url] = {"error": str(e)}
+            logger.info("Extsigner probe %s %s → error: %s", method, url, e)
+
+    return results
+
+
 async def sign_document(
     client: httpx.AsyncClient,
     document_bytes: bytes | str,

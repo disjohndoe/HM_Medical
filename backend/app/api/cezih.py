@@ -743,3 +743,15 @@ async def visit_action(
         practitioner_id=current_user.practitioner_id or "",
         org_code=org_code, source_oid=source_oid,
     )
+
+
+@router.get("/extsigner/probe/{transaction_code}")
+async def probe_extsigner_transaction(
+    transaction_code: str,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Probe extsigner API to discover retrieval endpoint for signed documents."""
+    await check_cezih_access(db, current_user.tenant_id)
+    from app.services.cezih_signing import check_extsigner_transaction
+    return await check_extsigner_transaction(transaction_code)

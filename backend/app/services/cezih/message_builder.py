@@ -209,19 +209,28 @@ async def _add_signature_extsigner(
     result = await sign_bundle_via_extsigner(bundle_json_bytes, message_id=message_id)
 
     response = result.get("response", {})
+    transaction_code = response.get("transactionCode", "")
 
-    # Parse extsigner response — try to extract signed document
-    documents = response.get("documents", [])
-    if documents and documents[0].get("base64Document"):
+    # Extsigner returns a transactionCode (async signing receipt).
+    # The document is signed AND submitted to CEZIH by the extsigner service.
+    # We store the transactionCode in signature.data as a reference.
+    if transaction_code:
+        bundle["signature"]["data"] = transaction_code
+        logger.info(
+            "Extsigner accepted document (transactionCode=%.40s..., documents=%s). "
+            "Document signed and submitted to CEZIH by extsigner.",
+            transaction_code, response.get("documents"),
+        )
+        return bundle
+
+    # Fallback: if response contains the signed document directly
+    documents = response.get("documents")
+    if isinstance(documents, list) and documents and documents[0].get("base64Document"):
         import base64 as _base64
         signed_bundle_bytes = _base64.b64decode(documents[0]["base64Document"])
         signed_bundle = json.loads(signed_bundle_bytes)
-        logger.info("Extsigner returned signed bundle — using CEZIH-signed document directly")
+        logger.info("Extsigner returned signed bundle directly")
         return signed_bundle
-
-    # If response has a different structure, log it so we can adapt
-    logger.warning("Extsigner response format unexpected — raw response: %s",
-                   json.dumps(response, ensure_ascii=False)[:2000])
 
     # Fallback: if extsigner returns signature separately
     signature_data = response.get("signature", response.get("signatureData", ""))
@@ -230,13 +239,10 @@ async def _add_signature_extsigner(
         logger.info("Extsigner returned signature value — applied to bundle")
         return bundle
 
-    # If we got here, the response didn't contain what we expected.
-    # Return the full response for debugging.
     from app.services.cezih.exceptions import CezihSigningError
     raise CezihSigningError(
         f"Extsigner returned unexpected response format. "
-        f"Keys: {list(response.keys())}. "
-        f"Full response logged at WARNING level."
+        f"Keys: {list(response.keys())}."
     )
 
 
