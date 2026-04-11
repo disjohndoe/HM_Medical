@@ -1163,11 +1163,28 @@ async def retrieve_document(client: httpx.AsyncClient, document_url: str) -> byt
     fhir_client = CezihFhirClient(client)
 
     if document_url.startswith("http"):
-        # Full URL from DocumentReference.content.attachment.url
-        response = await fhir_client.get(
-            "doc-mhd-svc/api/v1/iti-68-service",
-            params={"url": document_url},
-        )
+        # Full URL from DocumentReference.content.attachment.url — fetch directly
+        # Strip the base URL prefix if it matches our CEZIH gateway path
+        import re
+        # Extract the path after the gateway prefix
+        match = re.search(r"/services-router/gateway/(.+)", document_url)
+        if match:
+            # Relative path within CEZIH gateway
+            path_with_query = match.group(1)
+            # Split path and query
+            if "?" in path_with_query:
+                path, query_string = path_with_query.split("?", 1)
+                from urllib.parse import parse_qs
+                params = {k: v[0] for k, v in parse_qs(query_string).items()}
+            else:
+                path = path_with_query
+                params = {}
+            response = await fhir_client.get(path, params=params)
+        else:
+            response = await fhir_client.get(
+                "doc-mhd-svc/api/v1/iti-68-service",
+                params={"url": document_url},
+            )
     else:
         # Reference ID — try Binary resource path
         response = await fhir_client.get(
