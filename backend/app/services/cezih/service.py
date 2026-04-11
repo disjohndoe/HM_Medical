@@ -1205,10 +1205,10 @@ async def cancel_document(
     org_code: str = "",
     practitioner_id: str | None = None,
 ) -> dict:
-    """Cancel/storno a clinical document (TC20, ITI-65 transaction bundle).
+    """Cancel/storno a clinical document (TC20).
 
-    Uses PUT with status="entered-in-error" on the existing DocumentReference.
-    Includes meta.profile for CEZIH slicing validation.
+    Strategy: direct PUT to DocumentReference/{id} with status="entered-in-error".
+    CEZIH MHD may not accept cancel via ITI-65 transaction bundle (returns 403).
     """
     fhir_client = CezihFhirClient(client)
     doc_ref: dict = {
@@ -1220,16 +1220,11 @@ async def cancel_document(
         "status": "entered-in-error",
     }
 
-    # Build IHE MHD ITI-65 transaction bundle for cancel
-    bundle_dict = build_iti65_transaction_bundle(
-        [doc_ref],
-        sender_org_code=org_code,
-        author_practitioner_id=practitioner_id,
-    )
-
-    await fhir_client.post(
-        "doc-mhd-svc/api/v1/iti-65-service",
-        json_body=bundle_dict,
+    # Try direct PUT to DocumentReference resource (FHIR RESTful update)
+    await fhir_client.request(
+        "PUT",
+        f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}",
+        json_body=doc_ref,
     )
     return {"success": True, "reference_id": reference_id, "status": "entered-in-error"}
 
