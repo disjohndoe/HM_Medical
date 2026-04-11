@@ -46,8 +46,13 @@ jobs:
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
+            # Debug: show deploy user
+            echo "Deploy user: $(whoami), home: $HOME"
             # Ensure developer SSH key is authorized
             DEVKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILTOvgRK53YCgTOJCAdX/jausflu1Dc1HyjdTH2p25LR hrvoje@hmdigital.hr"
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
             grep -qF "$DEVKEY" ~/.ssh/authorized_keys 2>/dev/null || echo "$DEVKEY" >> ~/.ssh/authorized_keys
+            chmod 600 ~/.ssh/authorized_keys
+            echo "authorized_keys entries: $(wc -l < ~/.ssh/authorized_keys)"
             cd /opt/medical-mvp
             bash deploy.sh
