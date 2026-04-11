@@ -432,6 +432,13 @@ async def search_documents(
                 author = ""
                 for a in doc_ref.get("author", []):
                     author = a.get("display", "") or author
+                # Extract content URL for ITI-68 retrieve
+                content_url = ""
+                for content in doc_ref.get("content", []):
+                    att = content.get("attachment", {})
+                    if att.get("url"):
+                        content_url = att["url"]
+                        break
                 items.append({
                     "id": doc_ref.get("id", ""),
                     "datum_izdavanja": doc_ref.get("date", ""),
@@ -440,6 +447,7 @@ async def search_documents(
                     "specijalist": author,
                     "status": _map_fhir_status(doc_ref.get("status", "current")),
                     "type": _extract_codeable_text(doc_ref.get("type")),
+                    "content_url": content_url,
                 })
             except Exception as parse_exc:
                 _log.warning("Skipping unparseable DocumentReference: %s", parse_exc)
@@ -1149,14 +1157,24 @@ async def cancel_document(
 async def retrieve_document(client: httpx.AsyncClient, document_url: str) -> bytes:
     """Retrieve a clinical document binary content (TC22, ITI-68).
 
-    Official endpoint: doc-mhd-svc/api/v1/iti-68-service?url={document_url}
-    If document_url is a full URL, pass it as a query parameter to the ITI-68 service.
+    If document_url is a full URL (starts with http), fetch it directly.
+    Otherwise, use the ITI-68 service endpoint with the reference ID.
     """
     fhir_client = CezihFhirClient(client)
-    # ITI-68: use the dedicated retrieve service endpoint
-    response = await fhir_client.get(
-        "doc-mhd-svc/api/v1/iti-68-service",
-        params={"url": document_url},
-    )
+
+    if document_url.startswith("http"):
+        # Full URL from DocumentReference.content.attachment.url
+        response = await fhir_client.get(
+            "doc-mhd-svc/api/v1/iti-68-service",
+            params={"url": document_url},
+        )
+    else:
+        # Reference ID — try Binary resource path
+        response = await fhir_client.get(
+            f"doc-mhd-svc/api/v1/Binary/{document_url}",
+        )
+
+    if isinstance(response, bytes):
+        return response
     content = response.get("data", b"") if isinstance(response, dict) else b""
     return content if isinstance(content, bytes) else content.encode("utf-8")

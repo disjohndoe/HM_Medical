@@ -680,6 +680,7 @@ async def cancel_document(
 async def retrieve_document(
     request: Request,
     reference_id: str,
+    url: str = Query(None, description="CEZIH content URL from DocumentReference"),
     current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -688,6 +689,7 @@ async def retrieve_document(
     await check_cezih_access(db, current_user.tenant_id)
     content = await cezih.dispatch_retrieve_document(
         reference_id,
+        document_url=url,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )

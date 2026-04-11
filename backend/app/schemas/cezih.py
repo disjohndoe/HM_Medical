@@ -386,3 +386,4 @@ class DocumentSearchItem(BaseModel):
     specijalist: str
     status: str
     type: str | None = None
+    content_url: str | None = None
