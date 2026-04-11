@@ -771,7 +771,9 @@ def build_condition_status_update(
 ) -> dict[str, Any]:
     """Build Condition for case status update (codes 2.3-2.5, 2.7).
 
-    Minimal payload — global identifier + subject + optional clinicalStatus.
+    Minimal payload — global identifier + subject only.
+    CEZIH profiles forbid clinicalStatus in status-transition messages
+    (remission/relapse/resolve/reopen) — the event code conveys the new status.
     """
     condition: dict[str, Any] = {
         "resourceType": "Condition",
@@ -779,10 +781,8 @@ def build_condition_status_update(
         "subject": patient_ref(patient_mbo),
     }
 
-    if clinical_status:
-        condition["clinicalStatus"] = {
-            "coding": [{"system": CS_CONDITION_CLINICAL, "code": clinical_status}],
-        }
+    # NOTE: Do NOT include clinicalStatus — CEZIH profiles set max=0 for
+    # status transition messages (2.3-2.5, 2.7). The event code is sufficient.
 
     return condition
 
