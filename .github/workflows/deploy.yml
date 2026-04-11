@@ -46,7 +46,5 @@ jobs:
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
-            # Remove previously injected developer key from authorized_keys
-            sed -i '/hrvoje@hmdigital.hr/d' ~/.ssh/authorized_keys 2>/dev/null || true
             cd /opt/medical-mvp
             bash deploy.sh
