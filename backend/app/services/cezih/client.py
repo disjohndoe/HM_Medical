@@ -268,9 +268,25 @@ class CezihFhirClient:
         return await self.request("POST", path, json_body=json_body)
 
     async def process_message(self, service_path: str, bundle: dict) -> dict:
-        """POST a FHIR message Bundle via $process-message operation."""
+        """POST a FHIR message Bundle via $process-message operation.
+
+        Uses lenient error handling: CEZIH may return non-2xx status for
+        successful $process-message calls that include informational
+        OperationOutcome issues. We parse the response Bundle ourselves
+        instead of relying on the generic status-code-based error handler.
+        """
         path = f"{service_path}/$process-message"
-        return await self.post(path, json_body=bundle)
+        try:
+            return await self.post(path, json_body=bundle)
+        except CezihFhirError as e:
+            # If the response is a Bundle with entries, it might be a valid
+            # $process-message response despite the HTTP error status.
+            # Return it for parse_message_response to evaluate.
+            oo = e.operation_outcome or {}
+            if oo.get("resourceType") == "Bundle" and oo.get("entry"):
+                logger.info("process_message: returning error Bundle for parsing (status=%s)", e.status_code)
+                return oo
+            raise
 
     async def health_check(self) -> bool:
         """Quick connectivity check with short timeout."""

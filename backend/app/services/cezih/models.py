@@ -169,12 +169,22 @@ class OperationOutcome(BaseModel):
     @property
     def first_error_message(self) -> str:
         for issue in self.issue:
-            if issue.severity == "error":
+            if issue.severity in ("error", "fatal"):
                 if issue.diagnostics:
                     return issue.diagnostics
                 if issue.details and issue.details.text:
                     return issue.details.text
+                if issue.code:
+                    return f"FHIR issue code: {issue.code}"
+        # No error-severity issues found — might be warning/information only
+        for issue in self.issue:
+            if issue.diagnostics:
+                return issue.diagnostics
         return "Unknown FHIR error"
+
+    @property
+    def has_fatal_error(self) -> bool:
+        return any(i.severity in ("error", "fatal") for i in self.issue)
 
 
 # --- OAuth2 Token Response ---
