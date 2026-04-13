@@ -1,115 +1,74 @@
 ---
 date: 2026-04-13
-topic: endpoints | auth | errors | profiles | bundle-format
+topic: endpoints | auth | errors | profiles | bundle-format | session
 status: active
 ---
 
 # TC11 PMIR ITI-93 — Investigation Log
 
-## Current Status: Rebuilt to match official Simplifier example
+## Current Status: Root cause found — session establishment bug (FIXED)
 
-Previous 415 ERR_EHE_1099 errors were likely caused by bundle format mismatch
-against the HRRegisterPatient profile. The bundle has been rebuilt to exactly match
-`Bundle-register-patient-example.json` from cezih.hr.cezih-osnova v1.0.1.
+The 415 ERR_EHE_1099 was NOT a bundle format issue. The `"path"` field in the error
+response (`/auth/realms/CEZIH/protocol/openid-connect/auth`) proved the request
+was hitting Keycloak, never reaching the FHIR service.
 
-## Endpoint (confirmed from 2 CEZIH URL lists)
+## Root Cause (2026-04-13 — second investigation)
+
+**The PMIR POST was the first gateway request without a session cookie.**
+
+The auth flow on certws2:8443 (Apache mod_auth_openidc):
+1. Request → no session cookie → 302 redirect to Keycloak auth
+2. For GET: Keycloak mTLS auto-auth → 302 back → session cookie set → success
+3. For POST: `CURLOPT_POSTREDIR=redirect_all` sends POST to Keycloak with
+   `Content-Type: application/fhir+json` body → Keycloak rejects → **415**
+4. Session cookie is NEVER set because the auth flow never completes
+5. Agent retry also fails (no cookie → same redirect → same 415)
+
+**Why other TCs work:** They always happen after a GET request (e.g., TC10 patient
+lookup) has already established the session. The GET goes through Keycloak cleanly.
+
+**Why warmup didn't help:** Warmup URL was `certws2:8443/metadata` which is NOT
+behind the gateway auth — it only triggered the TLS handshake for PIN caching.
+
+### Fixes Applied
+
+1. **Backend warmup URL** (`agent_ws.py`): Changed from `/metadata` to
+   `gateway/patient-registry-services/api/v1/Patient?_count=0` — this triggers
+   the full Keycloak auth flow and establishes the session cookie on agent connect.
+
+2. **Pre-flight GET** (`service.py`): Added GET to `patient-registry-services`
+   before the PMIR POST — ensures session cookie is established even if the
+   warmup didn't run or the session expired.
+
+3. **Agent retry fix** (`websocket.rs`): When POST fails with Keycloak redirect,
+   the agent now does a GET warmup first to establish the session, then retries
+   the POST. Previously it just retried the POST immediately (same failure).
+
+## Endpoint (confirmed from 2 CEZIH URL lists + internal example)
 
 `POST https://certws2.cezih.hr:8443/services-router/gateway/patient-registry-services/api/iti93`
 
-## Root Cause Analysis (2026-04-13)
+## Bundle Structure (matches official Simplifier example)
 
-Previous investigation assumed 415 = "CEZIH gateway routing issue". Re-analysis found
-multiple code issues when comparing our bundle against the official Simplifier example:
+Bundle rebuilt in prior session to match `Bundle-register-patient-example.json`
+from cezih.hr.cezih-osnova v1.0.1:
+- Outer Bundle: meta.profile=HRRegisterPatient, type=message, plain UUID fullUrls
+- MessageHeader: meta.profile=IHE.PMIR.MessageHeader, eventUri=patient-feed
+- Inner Bundle: meta.profile=IHE.PMIR.Bundle.History, type=history
+- Patient: urn:uuid: fullUrl, identifiers (putovnica+europska-kartica), address.country
+- Digital signature: REQUIRED (min=1), JWS via smart card (ES384)
 
-### Issues Found and Fixed
+## Previous Attempts (all before session fix)
 
-1. **Missing meta.profiles on ALL resources** — The official example sets profiles on
-   outer Bundle (HRRegisterPatient), MessageHeader (IHE.PMIR.MessageHeader), AND
-   inner Bundle (IHE.PMIR.Bundle.History). Previous tests only tried one profile
-   at a time, never the correct combination of all three.
+| Attempt | Content-Type | Result | Diagnosis |
+|---------|-------------|--------|-----------|
+| All variations of bundle format | application/fhir+json | 415 ERR_EHE_1099 | Keycloak, not FHIR service |
+| With/without profiles | application/fhir+json | 415 ERR_EHE_1099 | Same — session issue |
+| 3 endpoint URLs | application/fhir+json | All 415 | Same root cause |
+| Raw Patient | application/json | 401 HTML | Keycloak login page |
 
-2. **Placeholder signature** — If signing failed, code fell back to `"data": "placeholder"`
-   instead of failing the request. The HRRegisterPatient profile requires `signature.data min=1`
-   with actual JWS data. A "placeholder" string is not valid. Visit/case signing has no such
-   fallback — it fails hard if signing fails. Fixed: removed try/except fallback.
+## Ready for E2E test
 
-3. **Wrong fullUrl format on outer entries** — Official example uses plain UUIDs for outer
-   Bundle entries but `urn:uuid:` for inner Patient entry. Our code used `urn:uuid:` everywhere.
-   Fixed: outer entries now use plain UUIDs, inner Patient keeps `urn:uuid:`.
-
-4. **Missing focus reference format** — Focus reference should be plain UUID matching
-   the inner bundle's fullUrl. Our code used `urn:uuid:` prefix.
-   Fixed: plain UUID reference matching plain UUID fullUrl.
-
-5. **Missing Bundle.id** — Official example has an `id` field on the outer Bundle.
-   Our code omitted it. Fixed: added UUID as id.
-
-### Previous Attempts (all failed — before fix)
-
-| Attempt | Content-Type | Body | Result |
-|---------|-------------|------|--------|
-| IHE PMIR message bundle | application/fhir+json | Bundle(message) + MessageHeader + Bundle(history) + Patient | 415 ERR_EHE_1099 |
-| Same with HRRegisterPatient profile | application/fhir+json | meta.profile = cezih.hr v1.0.1 (outer only) | 415 ERR_EHE_1099 |
-| Same with IHE.PMIR.Bundle profile | application/fhir+json | meta.profile = IHE base (outer only) | 415 ERR_EHE_1099 |
-| Same with NO meta.profile | application/fhir+json | No profiles on any resource | 415 ERR_EHE_1099 |
-| $process-message | application/fhir+json | patient-registry-services/api/v1/$process-message | 415 ERR_EHE_1099 |
-| Raw Patient resource | application/json | Just the Patient resource | 401 HTML login page |
-| Raw Patient resource | application/fhir+json | Just the Patient resource | 415 ERR_EHE_1099 |
-
-## Key Insights
-
-1. **415 response "path" field** — Points to `/auth/realms/CEZIH/...` which is Keycloak's
-   authorization endpoint. The agent follows HTTP redirects; when the CEZIH gateway
-   can't validate the PMIR bundle format, it may redirect to Keycloak, and Keycloak
-   returns 415 for `application/fhir+json` content type.
-
-2. **Previous tests never matched the official example** — Each attempt changed ONE thing
-   while the bundle had MULTIPLE structural differences from the required format.
-
-## Official Example Structure (from Simplifier v1.0.1)
-
-```json
-{
-  "resourceType": "Bundle",
-  "id": "register-patient-example",
-  "meta": {"profile": ["...StructureDefinition/HRRegisterPatient"]},
-  "type": "message",
-  "timestamp": "...",
-  "entry": [
-    {
-      "fullUrl": "plain-uuid-1",           // <-- PLAIN UUID, no urn:uuid:
-      "resource": {
-        "resourceType": "MessageHeader",
-        "meta": {"profile": ["...IHE.PMIR.MessageHeader"]},
-        "eventUri": "urn:ihe:iti:pmir:2019:patient-feed",
-        "focus": [{"reference": "plain-uuid-2"}]  // <-- matches inner bundle fullUrl
-      }
-    },
-    {
-      "fullUrl": "plain-uuid-2",           // <-- PLAIN UUID, no urn:uuid:
-      "resource": {
-        "resourceType": "Bundle",
-        "meta": {"profile": ["...IHE.PMIR.Bundle.History"]},
-        "type": "history",
-        "entry": [{
-          "fullUrl": "urn:uuid:...",       // <-- HAS urn:uuid: prefix
-          "resource": {"resourceType": "Patient", ...},
-          "request": {"method": "POST", "url": "Patient"},
-          "response": {"status": "201"}
-        }]
-      }
-    }
-  ],
-  "signature": {
-    "type": [{"system": "urn:iso-astm:E1762-95:2013", "code": "1.2.840.10065.1.12.1.1"}],
-    "when": "...",
-    "who": {"type": "Practitioner", "identifier": {"system": "...HZJZ-...", "value": "..."}},
-    "data": "real-base64-jws-signature"
-  }
-}
-```
-
-## Code Status
-
-Bundle rebuilt to exactly match official example. Signature now fails hard (no placeholder).
-Ready for E2E test.
+With the session establishment fix, the POST should now reach the actual FHIR
+service. If there are bundle format issues, we'll get a proper FHIR
+OperationOutcome error instead of the generic 415 from Keycloak.

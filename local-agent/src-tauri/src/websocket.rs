@@ -259,9 +259,15 @@ fn do_cezih_request(
 
     // Retry when the request hit Keycloak auth instead of the FHIR service.
     // This happens on first request before mTLS session cookie is established.
-    // After this failed attempt, the session cookie IS set — retry goes direct.
-    // Conditions: 406 (Accept lost), 415 (body sent to auth page), HTML response,
-    // empty POST, or response body mentions Keycloak auth path.
+    //
+    // For POST requests: Keycloak rejects POST with application/fhir+json body
+    // (415 Unsupported Media Type) and the redirect chain never completes, so
+    // the session cookie is NEVER set.  Fix: do a GET to the same URL first to
+    // establish the session cookie (GET goes through Keycloak redirect cleanly),
+    // then retry the POST.
+    //
+    // For GET requests: the first attempt goes through the redirect chain and
+    // establishes the cookie.  Simple retry is sufficient.
     let resp_str = String::from_utf8_lossy(&resp_bytes);
     let resp_has_auth_path = resp_str.contains("/auth/realms/") || resp_str.contains("openid-connect");
     let should_retry = status == 406
@@ -270,7 +276,40 @@ fn do_cezih_request(
         || (method.eq_ignore_ascii_case("POST") && resp_bytes.is_empty() && status < 400)
         || resp_has_auth_path;
     if should_retry {
-        info!("Got {} (redirect/session issue) — retrying with session cookie", status);
+        // For POST/PUT/PATCH: first do a GET warmup to establish the session cookie.
+        // Keycloak accepts GET (no body) but rejects POST with FHIR Content-Type.
+        if !method.eq_ignore_ascii_case("GET") && !method.eq_ignore_ascii_case("DELETE") {
+            info!("Got {} (redirect/session issue) — GET warmup to establish session before retrying {}", status, method);
+            session.reset();
+            session.get_mut().response_body.clear();
+            apply_session_defaults(session)?;
+            session.url(url).map_err(|e| e.to_string())?;
+
+            // Pass Authorization header for the warmup GET
+            let mut warmup_list = List::new();
+            for (k, v) in headers {
+                if k.eq_ignore_ascii_case("Authorization") || k.eq_ignore_ascii_case("Accept") {
+                    warmup_list.append(&format!("{}: {}", k, v)).map_err(|e| e.to_string())?;
+                }
+            }
+            warmup_list.append("Expect:").map_err(|e| e.to_string())?;
+            session.http_headers(warmup_list).map_err(|e| e.to_string())?;
+
+            session.get(true).map_err(|e| e.to_string())?;
+            match session.perform() {
+                Ok(()) => {
+                    let warmup_status = session.response_code().unwrap_or(0);
+                    info!("GET warmup completed — status {} (cookie should be set now)", warmup_status);
+                }
+                Err(e) => {
+                    warn!("GET warmup failed: {} — retrying {} anyway", e, method);
+                }
+            }
+        } else {
+            info!("Got {} (redirect/session issue) — retrying with session cookie", status);
+        }
+
+        // Now retry the original request (session cookie should be set)
         session.reset();
         session.get_mut().response_body.clear();
         apply_session_defaults(session)?;
@@ -301,9 +340,9 @@ fn do_cezih_request(
         session.perform().map_err(|e| format!("curl retry: {}", e))?;
         let status = session.response_code().map_err(|e| e.to_string())?;
         let resp_bytes = session.get_ref().response_body.clone();
-        if method.eq_ignore_ascii_case("POST") {
-            let preview = String::from_utf8_lossy(&resp_bytes[..resp_bytes.len().min(200)]);
-            info!("POST retry — status {} — body (first 200): {}", status, preview);
+        if !method.eq_ignore_ascii_case("GET") {
+            let preview = String::from_utf8_lossy(&resp_bytes[..resp_bytes.len().min(500)]);
+            info!("{} retry — status {} — body (first 500): {}", method, status, preview);
         }
         return Ok((status, resp_bytes));
     }

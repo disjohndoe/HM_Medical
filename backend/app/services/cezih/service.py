@@ -909,28 +909,31 @@ async def register_foreigner(
     # If signing fails, let the error propagate (same pattern as visit/case signing)
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
 
-    # Submit to PMIR ITI-93 — try multiple endpoint paths since the official
-    # URL list path (/api/iti93) returns 415. Other CEZIH services use /api/v1/.
-    endpoints = [
-        "patient-registry-services/api/v1/iti93",
-        "patient-registry-services/api/v1/$process-message",
-        "patient-registry-services/api/iti93",
-    ]
-    last_error = None
-    for ep in endpoints:
-        try:
-            logger.info("PMIR attempt: POST %s", ep)
-            response = await fhir_client.request("POST", ep, json_body=bundle)
-            logger.info("PMIR success on %s", ep)
-            return {
-                "success": True,
-                "patient_id": _extract_patient_id(response),
-                "mbo": _extract_mbo_from_response(response),
-            }
-        except CezihError as e:
-            logger.warning("PMIR %s failed: %s", ep, str(e)[:200])
-            last_error = e
-    raise last_error  # type: ignore[misc]
+    # Pre-flight GET: establish the gateway session cookie before POSTing.
+    # Without a session cookie, POST requests get redirected to Keycloak auth.
+    # Keycloak rejects POST with application/fhir+json body → 415.
+    # A GET goes through the redirect cleanly (no body issue) and sets the cookie.
+    try:
+        await fhir_client.get(
+            "patient-registry-services/api/v1/Patient",
+            params={"_count": "0"},
+            timeout=10,
+        )
+        logger.info("PMIR: gateway session established via pre-flight GET")
+    except CezihError as e:
+        logger.warning("PMIR: pre-flight GET failed (%s), POST may also fail", str(e)[:100])
+
+    # Submit to PMIR ITI-93.
+    # Confirmed endpoint from CEZIH URL list + internal example: /api/iti93
+    ep = "patient-registry-services/api/iti93"
+    logger.info("PMIR: POST %s", ep)
+    response = await fhir_client.request("POST", ep, json_body=bundle)
+    logger.info("PMIR success on %s", ep)
+    return {
+        "success": True,
+        "patient_id": _extract_patient_id(response),
+        "mbo": _extract_mbo_from_response(response),
+    }
 
 
 def _extract_patient_id(response: dict) -> str:

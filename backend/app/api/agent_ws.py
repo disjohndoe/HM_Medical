@@ -60,12 +60,14 @@ async def agent_websocket(websocket: WebSocket):
     conn = await agent_manager.register(tenant_id, websocket, agent_id)
     agent_id = conn.agent_id
     # Include CEZIH warmup URL so agent can establish mTLS session on connect.
-    # /metadata (FHIR CapabilityStatement) always returns 200 without auth —
-    # we only need the TLS handshake to trigger the smart card PIN prompt.
+    # Uses a gateway URL to trigger the full Keycloak auth flow and set the
+    # session cookie.  Without this, the first POST request would go through
+    # a Keycloak redirect and fail with 415 (Keycloak rejects POST with
+    # application/fhir+json body).
     warmup_url = ""
     if settings.CEZIH_FHIR_BASE_URL:
         base = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
-        warmup_url = f"{base}/metadata"
+        warmup_url = f"{base}/services-router/gateway/patient-registry-services/api/v1/Patient?_count=0"
     await websocket.send_json({
         "type": "connected",
         "message": "Agent spojen",
