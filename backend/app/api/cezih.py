@@ -673,12 +673,14 @@ async def cancel_document(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
     return await cezih.dispatch_cancel_document(
         reference_id,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         org_code=org_code,
         practitioner_id=current_user.practitioner_id,
+        practitioner_name=practitioner_name,
     )
 
 

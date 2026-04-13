@@ -851,12 +851,39 @@ async def dispatch_cancel_document(
     http_client=None,
     org_code: str = "",
     practitioner_id: str | None = None,
+    practitioner_name: str = "",
 ) -> dict:
+    from app.models.medical_record import MedicalRecord
+    from app.models.patient import Patient
+    from sqlalchemy import select as sa_select
     _require_audit_params(db, user_id, tenant_id)
+
+    # Look up the record by cezih_reference_id to get patient/encounter/case context
+    patient_data: dict = {}
+    encounter_id = ""
+    case_id = ""
+    if db and tenant_id:
+        result = await db.execute(
+            sa_select(MedicalRecord).where(
+                MedicalRecord.tenant_id == tenant_id,
+                MedicalRecord.cezih_reference_id == reference_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record:
+            if record.patient_id:
+                patient = await db.get(Patient, record.patient_id)
+                if patient:
+                    patient_data = {"mbo": patient.mbo, "ime": patient.ime, "prezime": patient.prezime}
+            encounter_id = record.cezih_encounter_id or ""
+            case_id = record.cezih_case_id or ""
+
     try:
         result = await real_service.cancel_document(
             http_client, reference_id,
             org_code=org_code, practitioner_id=practitioner_id,
+            patient_data=patient_data, encounter_id=encounter_id,
+            case_id=case_id, practitioner_name=practitioner_name,
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
