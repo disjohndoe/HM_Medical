@@ -790,6 +790,18 @@ async def dispatch_replace_document(
     _require_audit_params(db, user_id, tenant_id)
 
     # Load full record and patient data from DB (same pattern as send_enalaz)
+    # Fallback: if no record_id, look up by cezih_reference_id (used when called from e-Nalazi tab)
+    if not record_id and db and tenant_id and not (patient_data and record_data):
+        from sqlalchemy import select as sa_select
+        result = await db.execute(
+            sa_select(MedicalRecord).where(
+                MedicalRecord.tenant_id == tenant_id,
+                MedicalRecord.cezih_reference_id == original_reference_id,
+            )
+        )
+        found = result.scalar_one_or_none()
+        if found:
+            record_id = found.id
     if record_id and not (patient_data and record_data):
         record = await _get_medical_record_by_id(db, tenant_id, record_id)
         if record:
