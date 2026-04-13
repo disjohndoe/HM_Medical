@@ -1,10 +1,12 @@
 "use client"
 
+import { useState } from "react"
 import { Shield, FileText, Pill, Clock, Folder, UserPlus } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { useCezihActivity } from "@/lib/hooks/use-cezih"
 import { CEZIH_ACTION_LABELS, CEZIH_ACTION_COLORS } from "@/lib/constants"
 
@@ -58,8 +60,11 @@ function parseDetails(details: string | null): Record<string, string> | null {
   }
 }
 
+const PAGE_SIZE = 20
+
 export function CezihActivityLog() {
-  const { data, isLoading, isError, error } = useCezihActivity(50)
+  const [page, setPage] = useState(0)
+  const { data, isLoading, isError, error } = useCezihActivity(page * PAGE_SIZE, PAGE_SIZE)
 
   return (
     <Card>
@@ -123,6 +128,16 @@ export function CezihActivityLog() {
               )
             })}
           </div>
+          {data.total > PAGE_SIZE && (
+            <div className="pt-3">
+              <TablePagination
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={data.total}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
         )}
       </CardContent>
     </Card>

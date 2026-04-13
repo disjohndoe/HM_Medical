@@ -178,11 +178,11 @@ export function useCancelERecept() {
 
 // --- Feature 1: Activity Log ---
 
-export function useCezihActivity(limit: number = 20) {
+export function useCezihActivity(skip = 0, limit = 20) {
   return useQuery({
-    queryKey: ["cezih", "activity", limit],
+    queryKey: ["cezih", "activity", skip, limit],
     queryFn: () =>
-      api.get<CezihActivityListResponse>(`/cezih/activity?limit=${limit}`),
+      api.get<CezihActivityListResponse>(`/cezih/activity?skip=${skip}&limit=${limit}`),
   })
 }
 
