@@ -811,6 +811,7 @@ export interface DocumentSearchItem {
   specijalist: string;
   status: string;
   type?: string;
+  content_url?: string;
 }
 
 export interface DocumentActionResponse {

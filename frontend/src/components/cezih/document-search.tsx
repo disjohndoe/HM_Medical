@@ -61,8 +61,8 @@ export function DocumentSearch() {
   const replaceDoc = useReplaceDocument()
   const cancelDoc = useCancelDocument()
 
-  const handleRetrieve = (id: string) => {
-    retrieveDoc.mutate(id, {
+  const handleRetrieve = (id: string, contentUrl?: string) => {
+    retrieveDoc.mutate({ id, contentUrl }, {
       onSuccess: (blob) => {
         const url = URL.createObjectURL(blob)
         const a = document.createElement("a")
@@ -276,7 +276,7 @@ export function DocumentSearch() {
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0"
-                          onClick={() => handleRetrieve(doc.id)}
+                          onClick={() => handleRetrieve(doc.id, doc.content_url)}
                           disabled={retrieveDoc.isPending}
                           title="Preuzmi PDF"
                         >

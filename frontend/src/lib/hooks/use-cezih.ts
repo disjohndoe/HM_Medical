@@ -478,11 +478,12 @@ export function useCancelDocument() {
 
 export function useRetrieveDocument() {
   return useMutation({
-    mutationFn: async (referenceId: string) => {
+    mutationFn: async ({ id, contentUrl }: { id: string; contentUrl?: string }) => {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
-      const response = await fetch(`${API_BASE}/cezih/e-nalaz/${referenceId}/document`, {
-        credentials: "include",
-      })
+      const url = contentUrl
+        ? `${API_BASE}/cezih/e-nalaz/${id}/document?url=${encodeURIComponent(contentUrl)}`
+        : `${API_BASE}/cezih/e-nalaz/${id}/document`
+      const response = await fetch(url, { credentials: "include" })
       if (!response.ok) throw new Error("Failed to retrieve document")
       return response.blob()
     },

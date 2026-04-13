@@ -134,8 +134,8 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
     insuranceMutation.mutate(patientMbo)
   }
 
-  const handleDownloadPdf = (referenceId: string) => {
-    retrieveDoc.mutate(referenceId, {
+  const handleDownloadPdf = (referenceId: string, contentUrl?: string) => {
+    retrieveDoc.mutate({ id: referenceId, contentUrl }, {
       onSuccess: (blob) => {
         const url = URL.createObjectURL(blob)
         const a = document.createElement("a")
@@ -407,7 +407,7 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0 shrink-0"
-                    onClick={() => handleDownloadPdf(d.id)}
+                    onClick={() => handleDownloadPdf(d.id, d.content_url)}
                     disabled={retrieveDoc.isPending}
                     title="Preuzmi PDF"
                   >
