@@ -529,6 +529,16 @@ async def sign_bundle_via_extsigner(
     }
 
     # Step 1: Submit document for signing
+    # Attach OAuth Bearer token — extsigner on certws2:8443 requires auth
+    from app.services.cezih_auth import get_oauth_token
+    from app.services.cezih.client import current_tenant_id
+    token = await get_oauth_token(tenant_id=current_tenant_id.get())
+    sign_headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
+
     logger.info(
         "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes)",
         signer_oib, len(bundle_json_bytes),
@@ -537,7 +547,7 @@ async def sign_bundle_via_extsigner(
     sign_result = await _request_via_agent(
         method="POST",
         url=sign_url,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers=sign_headers,
         form_data=None,
         json_body=payload,
         timeout=30,
@@ -568,10 +578,12 @@ async def sign_bundle_via_extsigner(
         )
 
         try:
+            # Refresh token for polling (may take up to 2 min)
+            token = await get_oauth_token(tenant_id=current_tenant_id.get())
             retrieve_result = await _request_via_agent(
                 method="GET",
                 url=get_url,
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
                 form_data=None,
                 json_body=None,
                 timeout=30,
