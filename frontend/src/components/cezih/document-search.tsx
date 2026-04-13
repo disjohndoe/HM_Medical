@@ -77,7 +77,7 @@ export function DocumentSearch() {
   }
 
   const handleReplace = (id: string) => {
-    replaceDoc.mutate(id, {
+    replaceDoc.mutate({ referenceId: id }, {
       onSuccess: () => toast.success("Dokument zamijenjen"),
       onError: (err) => toast.error(err.message || "Greška pri zamjeni dokumenta"),
     })

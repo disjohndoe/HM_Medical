@@ -304,7 +304,7 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
         confirmLabel="Zamijeni"
         onConfirm={() => {
           if (!nalazReplaceTarget) return
-          replaceDocument.mutate(nalazReplaceTarget, {
+          replaceDocument.mutate({ referenceId: nalazReplaceTarget }, {
             onSuccess: () => {
               toast.success("e-Nalaz zamijenjen")
               setNalazReplaceTarget(null)
