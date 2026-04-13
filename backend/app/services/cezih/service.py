@@ -847,7 +847,24 @@ async def register_foreigner(
             "value": patient_data["ehic_broj"],
         })
 
-    country = patient_data.get("drzavljanstvo") or "HRV"
+    # address.country binding=required to ValueSet/drzave (ISO 3166-1 alpha-3).
+    # Frontend may send alpha-2 (DE) — convert to alpha-3 (DEU).
+    raw_country = (patient_data.get("drzavljanstvo") or "HRV").upper().strip()
+    _ALPHA2_TO_ALPHA3 = {
+        "AF": "AFG", "AL": "ALB", "DZ": "DZA", "AD": "AND", "AO": "AGO",
+        "AR": "ARG", "AM": "ARM", "AU": "AUS", "AT": "AUT", "AZ": "AZE",
+        "BA": "BIH", "BE": "BEL", "BG": "BGR", "BR": "BRA", "CA": "CAN",
+        "CH": "CHE", "CN": "CHN", "CY": "CYP", "CZ": "CZE", "DE": "DEU",
+        "DK": "DNK", "EE": "EST", "ES": "ESP", "FI": "FIN", "FR": "FRA",
+        "GB": "GBR", "GE": "GEO", "GR": "GRC", "HR": "HRV", "HU": "HUN",
+        "IE": "IRL", "IL": "ISR", "IN": "IND", "IS": "ISL", "IT": "ITA",
+        "JP": "JPN", "KR": "KOR", "LT": "LTU", "LU": "LUX", "LV": "LVA",
+        "ME": "MNE", "MK": "MKD", "MT": "MLT", "MX": "MEX", "NL": "NLD",
+        "NO": "NOR", "NZ": "NZL", "PL": "POL", "PT": "PRT", "RO": "ROU",
+        "RS": "SRB", "RU": "RUS", "SE": "SWE", "SI": "SVN", "SK": "SVK",
+        "TR": "TUR", "UA": "UKR", "US": "USA", "XK": "XKX", "ZA": "ZAF",
+    }
+    country = _ALPHA2_TO_ALPHA3.get(raw_country, raw_country) if len(raw_country) == 2 else raw_country
     patient_resource: dict = {
         "resourceType": "Patient",
         "identifier": identifiers,

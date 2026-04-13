@@ -420,12 +420,10 @@ async def _add_signature_smartcard(
                      result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
 
     # Agent returns base64(JWS_compact) — "double base64".
-    # FHIR Signature.data should contain the JWS compact form directly
-    # (header.payload.signature), NOT an extra base64 layer around it.
-    # Decode the outer base64 to get the JWS compact string.
-    jws_compact = _base64.b64decode(jws_base64).decode("ascii")
-    logger.info("JWS compact: %d chars (decoded from %d double-b64 chars)",
-                len(jws_compact), len(jws_base64))
+    # FHIR Signature.data is type base64Binary, so the JWS compact string
+    # must be base64-encoded for valid FHIR JSON.  Single base64 (JWS compact
+    # directly) fails HAPI validation: HAPI-1821 invalid base64Binary.
+    logger.info("JWS double-b64: %d chars", len(jws_base64))
 
     # Add the signature element AFTER signing
     bundle["signature"] = {
@@ -437,7 +435,7 @@ async def _add_signature_smartcard(
         ],
         "when": _now_iso(),
         "who": practitioner_ref(practitioner_id),
-        "data": jws_compact,
+        "data": jws_base64,
     }
 
     return bundle
