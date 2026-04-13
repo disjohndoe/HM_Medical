@@ -17,7 +17,7 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
         except Exception:
             # In production, log minimal info — full traces only in development
             if settings.is_production:
-                logger.error("Unhandled exception on %s %s", request.method, request.url.path)
+                logger.error("Unhandled exception on %s %s", request.method, request.url.path, exc_info=True)
             else:
                 logger.error(
                     "Unhandled exception on %s %s:\n%s",
