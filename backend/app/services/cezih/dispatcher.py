@@ -793,6 +793,7 @@ async def dispatch_replace_document(
     # Fallback: if no record_id, look up by cezih_reference_id (used when called from e-Nalazi tab)
     if not record_id and db and tenant_id and not (patient_data and record_data):
         from sqlalchemy import select as sa_select
+        from app.models.medical_record import MedicalRecord
         result = await db.execute(
             sa_select(MedicalRecord).where(
                 MedicalRecord.tenant_id == tenant_id,
