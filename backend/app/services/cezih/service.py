@@ -1215,13 +1215,21 @@ async def cancel_document(
 ) -> dict:
     """Cancel/storno a clinical document (TC20).
 
-    Strategy: Direct FHIR DELETE on DocumentReference/{id} via the MHD store.
-    ITI-65 bundle approaches fail:
-    - PUT bundle entry → 403 (not supported by iti-65-service)
-    - POST new doc with status=entered-in-error → profile validation fails (slicing CLOSED)
+    Strategy: FHIR JSON Patch (PATCH DocumentReference/{id}) to set status=entered-in-error.
+    Tried approaches:
+    - Direct PUT → 405 (iti-65-service only accepts POST)
+    - ITI-65 bundle PUT entry → 403 (not supported)
+    - ITI-65 bundle POST new doc status=entered-in-error → slice validation fails (profile closed)
+    - Direct DELETE → 404 (not supported)
     """
     fhir_client = CezihFhirClient(client)
-    await fhir_client.request("DELETE", f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}")
+    patch_body = [{"op": "replace", "path": "/status", "value": "entered-in-error"}]
+    await fhir_client.request(
+        "PATCH",
+        f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}",
+        json_body=patch_body,
+        content_type="application/json-patch+json",
+    )
     return {"success": True, "reference_id": reference_id, "status": "entered-in-error"}
 
 

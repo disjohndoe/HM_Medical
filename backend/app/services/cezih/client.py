@@ -102,7 +102,7 @@ class CezihFhirClient:
 
     async def _request_via_agent(
         self, method: str, url: str, headers: dict[str, str],
-        params: dict | None, json_body: dict | None, timeout: int,
+        params: dict | None, json_body: dict | list | None, timeout: int,
     ) -> dict:
         """Route request through the agent's native TLS for mTLS client cert."""
         import json as _json
@@ -192,9 +192,10 @@ class CezihFhirClient:
         path: str,
         *,
         params: dict | None = None,
-        json_body: dict | None = None,
+        json_body: dict | list | None = None,
         timeout: int | None = None,
         accept: str | None = None,
+        content_type: str | None = None,
         _attempt: int = 0,
     ) -> dict:
         url = self._full_url(path)
@@ -203,7 +204,7 @@ class CezihFhirClient:
 
         headers = {
             "Accept": accept or _FHIR_CONTENT_TYPE,
-            "Content-Type": _FHIR_CONTENT_TYPE,
+            "Content-Type": content_type or _FHIR_CONTENT_TYPE,
         }
         headers = await self._attach_auth(headers)
 
