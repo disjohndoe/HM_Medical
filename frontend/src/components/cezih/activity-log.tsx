@@ -98,46 +98,48 @@ export function CezihActivityLog() {
             Nema CEZIH aktivnosti. Izvršite operaciju da biste vidjeli zapis.
           </p>
         ) : (
-          <div className="space-y-3">
-            {data.items.map((item) => {
-              const Icon = ACTION_ICONS[item.action] || FileText
-              const colorClass = CEZIH_ACTION_COLORS[item.action] || "bg-gray-100 text-gray-800"
-              const details = parseDetails(item.details)
+          <>
+            <div className="space-y-3">
+              {data.items.map((item) => {
+                const Icon = ACTION_ICONS[item.action] || FileText
+                const colorClass = CEZIH_ACTION_COLORS[item.action] || "bg-gray-100 text-gray-800"
+                const details = parseDetails(item.details)
 
-              return (
-                <div key={item.id} className="flex items-start gap-3">
-                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${colorClass.split(" ")[0]}`}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={`text-xs ${colorClass}`}>
-                        {CEZIH_ACTION_LABELS[item.action] || item.action}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {timeAgo(item.created_at)}
-                      </span>
+                return (
+                  <div key={item.id} className="flex items-start gap-3">
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${colorClass.split(" ")[0]}`}>
+                      <Icon className="h-4 w-4" />
                     </div>
-                    {details && formatDetail(details) && (
-                      <p className="mt-0.5 text-xs text-muted-foreground truncate">
-                        {formatDetail(details)}
-                      </p>
-                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={`text-xs ${colorClass}`}>
+                          {CEZIH_ACTION_LABELS[item.action] || item.action}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {timeAgo(item.created_at)}
+                        </span>
+                      </div>
+                      {details && formatDetail(details) && (
+                        <p className="mt-0.5 text-xs text-muted-foreground truncate">
+                          {formatDetail(details)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-          {data.total > PAGE_SIZE && (
-            <div className="pt-3">
-              <TablePagination
-                page={page}
-                pageSize={PAGE_SIZE}
-                total={data.total}
-                onPageChange={setPage}
-              />
+                )
+              })}
             </div>
-          )}
+            {data.total > PAGE_SIZE && (
+              <div className="pt-3">
+                <TablePagination
+                  page={page}
+                  pageSize={PAGE_SIZE}
+                  total={data.total}
+                  onPageChange={setPage}
+                />
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
