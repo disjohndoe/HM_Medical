@@ -907,23 +907,24 @@ async def register_foreigner(
             }
 
     # Submit to PMIR ITI-93 endpoint
-    # CEZIH returns 415 ERR_EHE_1099 for PMIR bundles — under investigation.
-    # Log full response for debugging, try bundle first then raw Patient fallback.
-    try:
-        response = await fhir_client.request(
-            "POST",
-            "patient-registry-services/api/iti93",
-            json_body=bundle,
-        )
-    except CezihError as e:
-        logger.error("PMIR iti93 bundle rejected: %s (message=%s)", type(e).__name__, e.message)
-        # Fallback: try raw Patient resource directly
-        logger.info("Trying raw Patient POST to iti93...")
-        response = await fhir_client.request(
-            "POST",
-            "patient-registry-services/api/iti93",
-            json_body=patient_resource,
-        )
+    # CEZIH error path shows Keycloak redirect — try multiple URL patterns.
+    # The official URL list says /api/iti93 but PDQm uses /api/v1/Patient on same service.
+    endpoints = [
+        "patient-registry-services/api/iti93",
+        "patient-registry-services/api/v1/iti93",
+        "pat-mhd-svc/api/v1/pmir-service",
+    ]
+    last_error = None
+    for ep in endpoints:
+        try:
+            logger.info("PMIR attempt: POST %s", ep)
+            response = await fhir_client.request("POST", ep, json_body=bundle)
+            break  # Success!
+        except CezihError as e:
+            logger.error("PMIR %s rejected: %s", ep, e.message[:200])
+            last_error = e
+    else:
+        raise last_error  # type: ignore[misc]
     return {
         "success": True,
         "patient_id": _extract_patient_id(response),
