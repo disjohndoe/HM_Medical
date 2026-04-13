@@ -377,19 +377,28 @@ async def _add_signature_smartcard(
 ) -> dict[str, Any]:
     """Sign bundle via agent's smart card (NCrypt JWS signing).
 
-    Per FHIR R4 spec, the JWS payload is the bundle content EXCLUDING the
-    signature element.  We serialize the bundle without signature, sign that,
-    then add the signature element with the JWS data.
+    Signing payload includes the signature element with data="" (empty).
+    This matches the pattern used for working encounter/case signatures.
     """
     import base64 as _base64
     from app.services.agent_connection_manager import agent_manager
     from app.services.cezih.client import current_tenant_id
 
-    # Ensure no stale signature is in the bundle before serializing.
-    bundle.pop("signature", None)
+    # Add signature structure with data="" placeholder before serializing.
+    # The JWS payload includes this placeholder (same as encounters).
+    bundle["signature"] = {
+        "type": [
+            {
+                "system": SIGNATURE_TYPE_SYSTEM,
+                "code": SIGNATURE_TYPE_CODE,
+            },
+        ],
+        "when": _now_iso(),
+        "who": practitioner_ref(practitioner_id),
+        "data": "",
+    }
 
-    # Serialize bundle to compact JSON WITHOUT the signature element.
-    # This is the canonical content that gets signed (FHIR R4 spec).
+    # Serialize bundle to compact JSON (includes signature with data="").
     bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
     if sign_fn:
@@ -419,24 +428,10 @@ async def _add_signature_smartcard(
         logger.info("JWS signature: kid=%s, alg=%s, data=%d chars",
                      result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
 
-    # Agent returns base64(JWS_compact) — "double base64".
-    # FHIR Signature.data is type base64Binary, so the JWS compact string
-    # must be base64-encoded for valid FHIR JSON.  Single base64 (JWS compact
-    # directly) fails HAPI validation: HAPI-1821 invalid base64Binary.
+    # Replace the empty data placeholder with the actual JWS signature.
+    # Agent returns base64(JWS_compact) — "double base64" for FHIR base64Binary.
     logger.info("JWS double-b64: %d chars", len(jws_base64))
-
-    # Add the signature element AFTER signing
-    bundle["signature"] = {
-        "type": [
-            {
-                "system": SIGNATURE_TYPE_SYSTEM,
-                "code": SIGNATURE_TYPE_CODE,
-            },
-        ],
-        "when": _now_iso(),
-        "who": practitioner_ref(practitioner_id),
-        "data": jws_base64,
-    }
+    bundle["signature"]["data"] = jws_base64
 
     return bundle
 
