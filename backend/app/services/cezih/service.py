@@ -1409,14 +1409,10 @@ async def cancel_document(
     )
 
     # Override DocumentReference status to entered-in-error (built as "current" by default)
-    # DIAGNOSTIC: using "current" to test if OID relatesTo works — if 200, issue is entered-in-error status
-    cancel_status = "current"  # TODO: change back to "entered-in-error" after diagnostic
-    logger.info("TC20: Setting DocumentReference status to '%s'", cancel_status)
-    for entry in bundle_dict.get("entry", []):
-        resource = entry.get("resource", {})
-        if resource.get("resourceType") == "DocumentReference":
-            resource["status"] = cancel_status
-            break
+    # CEZIH rejects entered-in-error status in ITI-65 bundles (ERR_DOM_10057).
+    # Cancel works as a "replace" — the new doc supersedes the original.
+    # The original gets status=superseded automatically in CEZIH's registry.
+    # No status override needed — _build_document_bundle already sets status=current.
 
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
