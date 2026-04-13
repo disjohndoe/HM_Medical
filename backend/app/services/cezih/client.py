@@ -140,16 +140,19 @@ class CezihFhirClient:
             logger.warning("CEZIH agent proxy error body: %s", result.get("body", "")[:3000])
 
         body_text = result.get("body", "")
-        body_bytes = result.get("body_bytes")  # Agent may send binary as base64
+        body_bytes = result.get("body_bytes")  # Agent sends binary as base64
         logger.info("CEZIH response body length: %d chars", len(body_text))
+
+        # Binary response: agent sets body_bytes (base64) and leaves body empty
+        if body_bytes and status_code < 400:
+            import base64
+            return base64.b64decode(body_bytes)
+
         try:
             body = _json.loads(body_text) if body_text else {}
         except Exception:
-            # Non-JSON response (e.g. binary PDF content) — return raw bytes
+            # Non-JSON text response — return raw bytes
             if status_code < 400:
-                import base64
-                if body_bytes:
-                    return base64.b64decode(body_bytes)
                 return body_text.encode("latin-1") if body_text else b""
             body = {}
 
