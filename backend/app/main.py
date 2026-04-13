@@ -42,10 +42,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.halmed_sync_service import start_sync_scheduler, stop_sync_scheduler
+    from app.services.icd10_sync_service import start_icd10_sync_scheduler, stop_icd10_sync_scheduler
 
     app.state.http_client = httpx.AsyncClient(timeout=settings.CEZIH_TIMEOUT)
     start_sync_scheduler()
+    start_icd10_sync_scheduler()
     yield
+    stop_icd10_sync_scheduler()
     stop_sync_scheduler()
     await app.state.http_client.aclose()
 

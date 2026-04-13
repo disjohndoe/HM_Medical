@@ -255,6 +255,16 @@ export function useCodeSystemQuery(system: string, query: string, enableEmpty = 
 }
 
 
+export function useIcd10Search(query: string, limit = 20) {
+  return useQuery({
+    queryKey: ["icd10", "search", query],
+    queryFn: () =>
+      api.get<CodeSystemItem[]>(`/cezih/icd10/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+    enabled: query.length >= 2,
+  })
+}
+
+
 // ============================================================
 // TC8: Value Set Expand
 // ============================================================

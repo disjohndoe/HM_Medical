@@ -38,7 +38,7 @@ import {
   useCreateCase,
   useUpdateCaseStatus,
   useUpdateCaseData,
-  useCodeSystemQuery,
+  useIcd10Search,
 } from "@/lib/hooks/use-cezih"
 import type { CaseItem } from "@/lib/types"
 
@@ -101,8 +101,8 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   const createCase = useCreateCase()
   const updateStatus = useUpdateCaseStatus()
   const updateData = useUpdateCaseData()
-  const icdSearch = useCodeSystemQuery("icd10-hr", icdQuery)
-  const editIcdSearch = useCodeSystemQuery("icd10-hr", editIcdQuery)
+  const icdSearch = useIcd10Search(icdQuery)
+  const editIcdSearch = useIcd10Search(editIcdQuery)
 
   const handleCreate = () => {
     if (!selectedIcd) {
