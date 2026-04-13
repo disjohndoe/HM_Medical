@@ -489,11 +489,11 @@ async def sign_bundle_via_extsigner(
             "CEZIH_SIGNER_OIB nije postavljen. Potrebno je za udaljeno potpisivanje (extsigner)."
         )
 
-    # Use CEZIH_SIGNING_URL (certpubws.cezih.hr — public) for extsigner,
-    # falling back to CEZIH_FHIR_BASE_URL if not set.
-    base_url = settings.CEZIH_SIGNING_URL or settings.CEZIH_FHIR_BASE_URL
+    # Extsigner lives on certws2:8443 (mTLS via agent) — use CEZIH_FHIR_BASE_URL.
+    # Auth is handled entirely by the agent's mTLS session — NO Bearer token needed.
+    base_url = settings.CEZIH_FHIR_BASE_URL
     if not base_url:
-        raise CezihSigningError("CEZIH_SIGNING_URL ni CEZIH_FHIR_BASE_URL nisu postavljeni.")
+        raise CezihSigningError("CEZIH_FHIR_BASE_URL nije postavljen.")
 
     base = base_url.rstrip("/")
     sign_url = f"{base}/services-router/gateway/extsigner/api/sign"
@@ -531,16 +531,10 @@ async def sign_bundle_via_extsigner(
     }
 
     # Step 1: Submit document for signing
-    # Extsigner on certws2:8443 uses the FHIR OAuth token (certsso2, same as visits/cases).
-    from app.services.cezih.oauth import get_oauth_token
-    from app.services.cezih.client import current_tenant_id
-    import httpx as _httpx
-    async with _httpx.AsyncClient(timeout=30) as _token_client:
-        fhir_token = await get_oauth_token(client=_token_client, tenant_id=current_tenant_id.get())
-
+    # Auth: mTLS via agent session — NO Bearer token (adding one causes 401).
     logger.info(
-        "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes, token=%.20s...)",
-        signer_oib, len(bundle_json_bytes), fhir_token,
+        "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes)",
+        signer_oib, len(bundle_json_bytes),
     )
 
     sign_result = await _request_via_agent(
@@ -549,7 +543,6 @@ async def sign_bundle_via_extsigner(
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "Authorization": f"Bearer {fhir_token}",
         },
         form_data=None,
         json_body=payload,
@@ -581,12 +574,10 @@ async def sign_bundle_via_extsigner(
         )
 
         try:
-            async with _httpx.AsyncClient(timeout=30) as _tc:
-                fhir_token = await get_oauth_token(client=_tc, tenant_id=current_tenant_id.get())
             retrieve_result = await _request_via_agent(
                 method="GET",
                 url=get_url,
-                headers={"Accept": "application/json", "Authorization": f"Bearer {fhir_token}"},
+                headers={"Accept": "application/json"},
                 form_data=None,
                 json_body=None,
                 timeout=30,
