@@ -884,17 +884,21 @@ async def register_foreigner(
         "sender": org_ref(org_code) if org_code else {"type": "Organization"},
         "author": practitioner_ref(practitioner_id) if practitioner_id else {"type": "Practitioner"},
         "source": {"endpoint": source_endpoint},
-        "focus": [{"reference": f"urn:uuid:{inner_bundle_uuid}"}],
+        "focus": [{"reference": inner_bundle_uuid}],
     }
 
     # Outer Bundle (type=message) with timestamp and required signature
+    # meta.profile required so CEZIH can identify the message type
     bundle: dict = {
         "resourceType": "Bundle",
+        "meta": {
+            "profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRRegisterPatient"],
+        },
         "type": "message",
         "timestamp": _now_iso(),
         "entry": [
-            {"fullUrl": f"urn:uuid:{header_uuid}", "resource": message_header},
-            {"fullUrl": f"urn:uuid:{inner_bundle_uuid}", "resource": inner_bundle},
+            {"fullUrl": header_uuid, "resource": message_header},
+            {"fullUrl": inner_bundle_uuid, "resource": inner_bundle},
         ],
     }
 
