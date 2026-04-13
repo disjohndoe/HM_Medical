@@ -595,6 +595,7 @@ async def foreigner_registration(
     *,
     org_code: str = "",
     source_oid: str = "",
+    practitioner_id: str = "",
     db: AsyncSession | None = None,
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
@@ -604,6 +605,7 @@ async def foreigner_registration(
     try:
         result = await real_service.register_foreigner(
             http_client, patient_data, org_code=org_code, source_oid=source_oid,
+            practitioner_id=practitioner_id,
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e

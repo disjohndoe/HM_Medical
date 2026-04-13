@@ -504,6 +504,7 @@ async def register_foreigner(
     result = await cezih.foreigner_registration(
         data.model_dump(),
         org_code=org_code, source_oid=source_oid,
+        practitioner_id=current_user.practitioner_id or "",
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )

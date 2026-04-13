@@ -149,6 +149,8 @@ def build_iti65_transaction_bundle(
     *,
     sender_org_code: str | None = None,
     author_practitioner_id: str | None = None,
+    bundle_profile: str | None = None,
+    submission_set_profile: str | None = None,
 ) -> dict[str, Any]:
     """Build a FHIR Bundle type='transaction' for IHE MHD ITI-65 document submission.
 
@@ -163,7 +165,7 @@ def build_iti65_transaction_bundle(
     submission_set: dict[str, Any] = {
         "resourceType": "List",
         "meta": {
-            "profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalSubmissionSet"],
+            "profile": [submission_set_profile or "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalSubmissionSet"],
         },
         "identifier": [
             {
@@ -256,7 +258,7 @@ def build_iti65_transaction_bundle(
         "resourceType": "Bundle",
         "id": str(uuid.uuid4()),
         "meta": {
-            "profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalProvideDocumentBundle"],
+            "profile": [bundle_profile or "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalProvideDocumentBundle"],
         },
         "type": "transaction",
         "timestamp": _now_iso(),

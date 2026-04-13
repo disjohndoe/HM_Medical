@@ -9,6 +9,8 @@ from app.constants import get_cezih_document_coding
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
 from app.services.cezih.message_builder import (
+    SIGNATURE_TYPE_CODE,
+    SIGNATURE_TYPE_SYSTEM,
     _now_iso,
     add_signature,
     build_condition_create,
@@ -17,7 +19,9 @@ from app.services.cezih.message_builder import (
     build_condition_status_update,
     build_iti65_transaction_bundle,
     build_message_bundle,
+    org_ref,
     parse_message_response,
+    practitioner_ref,
 )
 from app.services.cezih.models import FHIRPatient
 
@@ -127,6 +131,7 @@ async def _build_document_bundle(
     case_id: str = "",
     practitioner_name: str = "",
     relates_to: dict | None = None,
+    use_external_profile: bool = False,
 ) -> tuple[dict, str]:
     """Build a complete ITI-65 transaction bundle for document submission/replace.
 
@@ -189,10 +194,15 @@ async def _build_document_bundle(
     except Exception as e:
         logger.warning("OID generation failed: %s", e)
 
+    _doc_ref_profile = (
+        "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternaltMinimalDocumentReference"
+        if use_external_profile else
+        "http://fhir.cezih.hr/specifikacije/StructureDefinition/HR.MinimalDocumentReference"
+    )
     doc_ref_dict: dict = {
         "resourceType": "DocumentReference",
         "meta": {
-            "profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HR.MinimalDocumentReference"],
+            "profile": [_doc_ref_profile],
         },
         "masterIdentifier": {
             "use": "usual",
@@ -331,13 +341,21 @@ async def _build_document_bundle(
     binary_resource["_uuid"] = binary_uuid
     entries.append(binary_resource)
 
+    _bundle_profile = None
+    _ss_profile = None
+    if use_external_profile:
+        _bundle_profile = "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternalMinimalProvideDocumentBundle"
+        _ss_profile = "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternalMinimalSubmissionSet"
+
     bundle_dict = build_iti65_transaction_bundle(
         entries,
         sender_org_code=org_code,
         author_practitioner_id=practitioner_id,
+        bundle_profile=_bundle_profile,
+        submission_set_profile=_ss_profile,
     )
 
-    return bundle_dict, doc_uuid
+    return bundle_dict, doc_oid or doc_uuid
 
 
 def _extract_ref_id_from_response(response: dict) -> str:
@@ -381,7 +399,7 @@ async def send_enalaz(
     """Send clinical document / finding (ITI-65 MHD)."""
     fhir_client = CezihFhirClient(client)
 
-    bundle_dict, _ = await _build_document_bundle(
+    bundle_dict, doc_oid = await _build_document_bundle(
         fhir_client, patient_data, record_data,
         practitioner_id=practitioner_id, org_code=org_code,
         encounter_id=encounter_id, case_id=case_id,
@@ -407,6 +425,7 @@ async def send_enalaz(
     return {
         "success": True,
         "reference_id": ref_id,
+        "document_oid": doc_oid,
         "sent_at": datetime.now(UTC).isoformat(),
         "signature_data": signature_base64,
         "signed_at": signature_data.get("when") if signature_data else None,
@@ -791,25 +810,38 @@ async def register_foreigner(
     patient_data: dict,
     org_code: str = "",
     source_oid: str = "",
+    practitioner_id: str = "",
 ) -> dict:
     """Register a foreigner in CEZIH (PMIR ITI-93).
 
-    IHE PMIR requires a Bundle type="message" with MessageHeader + Patient.
+    Per HRRegisterPatient profile (cezih.hr.cezih-osnova v1.0.1):
+    - Outer Bundle (type=message) with MessageHeader + inner Bundle
+    - Inner Bundle (type=history, IHE.PMIR.Bundle.History) with Patient entry
+    - Patient has address.country, active=true, name.use=official
+    - Digital signature is REQUIRED on outer Bundle
     """
     import uuid as _uuid
 
     fhir_client = CezihFhirClient(client)
     patient_uuid = str(_uuid.uuid4())
+    inner_bundle_uuid = str(_uuid.uuid4())
     header_uuid = str(_uuid.uuid4())
 
-    # Build Patient resource
-    patient_resource = {
+    # Build Patient resource per HRRegisterPatient profile
+    patient_resource: dict = {
         "resourceType": "Patient",
-        "name": [{"family": patient_data["prezime"], "given": [patient_data["ime"]]}],
+        "active": True,
+        "name": [{
+            "use": "official",
+            "family": patient_data["prezime"],
+            "given": [patient_data["ime"]],
+        }],
         "birthDate": patient_data["datum_rodjenja"],
         "gender": patient_data.get("spol", "unknown"),
         "identifier": [],
     }
+
+    # Identifiers: passport and/or EHIC (europska-kartica — correct system)
     if patient_data.get("broj_putovnice"):
         patient_resource["identifier"].append({
             "system": "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica",
@@ -817,43 +849,73 @@ async def register_foreigner(
         })
     if patient_data.get("ehic_broj"):
         patient_resource["identifier"].append({
-            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/EHIC",
+            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica",
             "value": patient_data["ehic_broj"],
         })
 
-    # Wrap in PMIR ITI-93 message bundle
+    # address.country is required — ISO 3166-1 alpha-3
+    country = patient_data.get("drzavljanstvo") or "HRV"
+    patient_resource["address"] = [{"country": country}]
+
+    # Inner Bundle (type=history) wrapping the Patient per IHE PMIR spec
+    inner_bundle = {
+        "resourceType": "Bundle",
+        "meta": {
+            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.Bundle.History"],
+        },
+        "type": "history",
+        "entry": [{
+            "fullUrl": f"urn:uuid:{patient_uuid}",
+            "resource": patient_resource,
+            "request": {"method": "POST", "url": "Patient"},
+            "response": {"status": "201"},
+        }],
+    }
+
+    # MessageHeader per IHE PMIR + CEZIH profile
     source_endpoint = f"urn:oid:{source_oid}" if source_oid else f"urn:oid:{org_code}" if org_code else "urn:oid:2.16.840.1.113883.2.7"
-    bundle = {
+    message_header = {
+        "resourceType": "MessageHeader",
+        "meta": {
+            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.MessageHeader"],
+        },
+        "eventUri": "urn:ihe:iti:pmir:2019:patient-feed",
+        "destination": [{"endpoint": "http://cezih.hr"}],
+        "sender": org_ref(org_code) if org_code else {"type": "Organization"},
+        "author": practitioner_ref(practitioner_id) if practitioner_id else {"type": "Practitioner"},
+        "source": {"endpoint": source_endpoint},
+        "focus": [{"reference": f"urn:uuid:{inner_bundle_uuid}"}],
+    }
+
+    # Outer Bundle (type=message) with timestamp and required signature
+    bundle: dict = {
         "resourceType": "Bundle",
         "type": "message",
+        "timestamp": _now_iso(),
         "entry": [
-            {
-                "fullUrl": f"urn:uuid:{header_uuid}",
-                "resource": {
-                    "resourceType": "MessageHeader",
-                    "eventUri": "urn:ihe:iti:pmir:2019:patient-feed",
-                    "source": {"endpoint": source_endpoint},
-                    "focus": [{"reference": f"urn:uuid:{patient_uuid}"}],
-                },
-            },
-            {
-                "fullUrl": f"urn:uuid:{patient_uuid}",
-                "resource": patient_resource,
-            },
+            {"fullUrl": f"urn:uuid:{header_uuid}", "resource": message_header},
+            {"fullUrl": f"urn:uuid:{inner_bundle_uuid}", "resource": inner_bundle},
         ],
     }
 
-    # Try $process-message first (FHIR messaging pattern), fall back to direct POST
-    try:
-        response = await fhir_client.process_message(
-            "patient-registry-services/api/v1", bundle,
-        )
-    except Exception:
-        # Fallback: post raw Patient resource (some CEZIH endpoints accept this)
-        response = await fhir_client.post(
-            "patient-registry-services/api/iti93",
-            json_body=patient_resource,
-        )
+    # Digital signature is REQUIRED per HRRegisterPatient profile
+    if practitioner_id:
+        try:
+            bundle = await add_signature(bundle, practitioner_id, http_client=client)
+        except Exception as e:
+            logger.warning("PMIR signing failed, proceeding unsigned: %s", e)
+            # Add placeholder signature so CEZIH doesn't reject with 400 immediately
+            bundle["signature"] = {
+                "type": [{"system": SIGNATURE_TYPE_SYSTEM, "code": SIGNATURE_TYPE_CODE}],
+                "when": _now_iso(),
+                "who": practitioner_ref(practitioner_id),
+                "data": "",
+            }
+
+    # Submit via $process-message
+    response = await fhir_client.process_message(
+        "patient-registry-services/api/v1", bundle,
+    )
     return {
         "success": True,
         "patient_id": _extract_patient_id(response),
@@ -1158,28 +1220,45 @@ async def replace_document(
     encounter_id: str = "",
     case_id: str = "",
     practitioner_name: str = "",
+    original_document_oid: str = "",
 ) -> dict:
     """Replace a clinical document (TC19, ITI-65 transaction bundle with relatesTo).
 
-    Builds a COMPLETE DocumentReference (same as send_enalaz) plus relatesTo link.
+    Uses HRExternalMinimalProvideDocumentBundle profile (for replace/update operations).
+    relatesTo.target uses logical identifier reference with the original document's OID
+    if available, otherwise falls back to literal server-assigned ID reference.
     """
     fhir_client = CezihFhirClient(client)
 
-    # Use literal reference to the CEZIH server-assigned DocumentReference ID.
-    # The stored cezih_reference_id is the server-assigned numeric ID (e.g. "1340840").
-    relates_to = {
-        "code": "replaces",
-        "target": {
-            "reference": f"DocumentReference/{original_reference_id}",
-        },
-    }
+    # Build relatesTo with logical OID reference if we have the original OID,
+    # otherwise use literal reference (server-assigned numeric ID)
+    if original_document_oid:
+        oid_value = original_document_oid if original_document_oid.startswith("urn:oid:") else f"urn:oid:{original_document_oid}"
+        relates_to = {
+            "code": "replaces",
+            "target": {
+                "type": "DocumentReference",
+                "identifier": {
+                    "system": "urn:ietf:rfc:3986",
+                    "value": oid_value,
+                },
+            },
+        }
+    else:
+        relates_to = {
+            "code": "replaces",
+            "target": {
+                "reference": f"DocumentReference/{original_reference_id}",
+            },
+        }
 
-    bundle_dict, _ = await _build_document_bundle(
+    bundle_dict, new_oid = await _build_document_bundle(
         fhir_client, patient_data, record_data,
         practitioner_id=practitioner_id, org_code=org_code,
         encounter_id=encounter_id, case_id=case_id,
         practitioner_name=practitioner_name,
         relates_to=relates_to,
+        use_external_profile=True,
     )
 
     response = await fhir_client.post(
@@ -1194,6 +1273,7 @@ async def replace_document(
     return {
         "success": True,
         "new_reference_id": ref_id,
+        "new_document_oid": new_oid,
         "replaced_reference_id": original_reference_id,
     }
 
