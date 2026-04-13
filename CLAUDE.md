@@ -108,6 +108,31 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 | Phase 16 | DONE | CEZIH live verification — TC19 + TC22 verified; TC20 + TC11 investigated (2026-04-13) |
 | Phase 17 | DONE | TC20 cancel document — VERIFIED via ITI-65 replace with OID lookup (2026-04-13) |
 | Phase 18 | DONE | E2E production test — all 16 TCs verified on app.hmdigital.hr against real CEZIH (2026-04-13) |
+| Phase 19 | DONE | TC11 PMIR foreigner registration — VERIFIED (Patient/1348216, 4 stacked fixes) (2026-04-13) |
+
+### Phase 19 Details (completed 2026-04-13)
+
+**TC11 — Foreigner PMIR registration: VERIFIED**
+- Result: Patient/1348216 created in CEZIH (201 Created). 17/22 TCs now verified.
+- Four stacked issues found and fixed (each fix revealed the next):
+
+| # | Issue | Root Cause | Fix |
+|---|-------|-----------|-----|
+| 1 | 415 ERR_EHE_1099 from Keycloak | POST as first gateway request can't establish mTLS session cookie | Warmup URL → gateway path; pre-flight GET before PMIR POST; agent GET-then-retry on POST failure |
+| 2 | 400 ERR_DS_1002 business-rule | Smart card ES384 fails PMIR signature verification (encounters don't verify, PMIR does) | Switch to extsigner (Certilia RS256); remove Bearer token (mTLS only) |
+| 3 | Reference_REF_CantResolve | Plain UUIDs in fullUrl resolved as literal `Bundle/{uuid}` | Use `urn:uuid:` prefix on ALL fullUrls and references |
+| 4 | Empty MBO in response | Foreigners get `jedinstveni-identifikator-pacijenta`, not MBO | Added `_extract_cezih_patient_identifier()` parser |
+
+**Key lesson:** CEZIH signing is two-tier: encounters only check signature presence (ES384 OK), PMIR cryptographically verifies (RS256 via extsigner required).
+
+**Files changed:**
+- `backend/app/api/agent_ws.py` — warmup URL → gateway path for session establishment
+- `backend/app/services/cezih/service.py` — pre-flight GET, urn:uuid refs, alpha-3 country, response parser
+- `backend/app/services/cezih_signing.py` — extsigner auth restored (no Bearer token, mTLS only)
+- `local-agent/src-tauri/src/websocket.rs` — GET warmup before POST retry
+- `backend/app/schemas/cezih.py` — ForeignerRegistrationResponse.local_patient_id field
+- `frontend/src/lib/types.ts` — local_patient_id on ForeignerRegistrationResponse
+- `frontend/src/components/cezih/foreigner-registration.tsx` — input validation, patient link via UUID
 
 ### Phase 18 Details (completed 2026-04-13)
 
@@ -165,10 +190,9 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 - Result: 200, `content-type: application/pdf`, 228 bytes for our own TC18/TC19 document
 - Note: old documents in CEZIH test env (pre-April 2026) return 0 bytes — test data limitation, not our code
 
-**TC11 — Foreigner PMIR: BLOCKED**
-- Endpoint `pat-mhd-svc/api/v1/pmir-service` returns HTML 401 (not JSON/FHIR) — gateway-level rejection
-- Institution `999001464` likely lacks explicit PMIR service permission in CEZIH test env
-- Code is correct (full rewrite per `HRRegisterPatient` profile v1.0.1, commit 5935ba4); documented in `backend/docs/TC11-PMIR-auth-blocker.md`
+**TC11 — Foreigner PMIR: RESOLVED in Phase 19**
+- Was BLOCKED in Phase 16 due to HTML 401; resolved by fixing 4 stacked issues
+- See Phase 19 Details and `docs/CEZIH/findings/TC11-PMIR-auth-blocker.md`
 
 **Files changed:**
 - `backend/app/services/cezih/service.py` — `replace_document()` External profile disabled, `retrieve_document()` content_url routing
@@ -283,7 +307,7 @@ Verified TCs:
 - TC22 (retrieve binary) — FIXED: agent binary transport (2026-04-13), needs verification
 - TC6 (OID lookup) — works in TC18, standalone endpoint untested
 - TC7/8 (CodeSystem/ValueSet) — ICD-10 fallback exists, needs verification
-- TC11 (foreigner PMIR) — implemented, untested
+- TC11 (foreigner PMIR) — VERIFIED 2026-04-13 (Patient/1348216, 201 Created)
 
 ## Certification Status
 
@@ -297,14 +321,14 @@ Verified TCs:
 - **Certilia Cloud cert: ACTIVE** (udaljeni potpisni certifikat, valid until 26.03.2028.) — signing only, NOT usable for VPN
 - Certilia card certs also active (identifikacijski + potpisni na kartici, valid until 26.03.2029.) — waiting for physical card delivery
 - **OAuth2 token: WORKING** (client_credentials grant via certsso2, needs `/auth/` prefix in URL)
-- **16/22 TCs VERIFIED against real CEZIH** (as of 2026-04-13):
+- **17/22 TCs VERIFIED against real CEZIH** (as of 2026-04-13):
   - TC3 (OAuth2), TC5 (cloud signing), TC6 (OID lookup), TC9 (mCSD org+practitioner), TC10 (PDQm patient)
+  - TC11 (foreigner PMIR — Patient/1348216 created, 201)
   - TC12 (visit create), TC13 (visit update), TC14 (visit close)
   - TC15 (retrieve cases), TC16 (create case), TC17 (case remission)
   - TC18 (send document ITI-65), TC19 (replace document), TC20 (cancel document), TC21 (search documents ITI-67), TC22 (retrieve binary ITI-68)
 - **TC1/2/4:** Auth + signing — exercised implicitly by all other TCs
 - **TC7/8:** CodeSystem/ValueSet sync — 200 OK, empty results (CEZIH test data limitation)
-- **TC11 (foreigner PMIR): BLOCKED** — HTML 401 from pat-mhd-svc (institution 999001464 likely lacks PMIR permission); documented in `docs/CEZIH/findings/TC11-PMIR-auth-blocker.md`
 - **All 22 test cases: IMPLEMENTED** (backend + frontend, production-ready — mock mode removed)
 - **Agent v0.9.0:** Binary transport + PUT method fixes (2026-04-13)
 - **Mock services removed:** CEZIH_MODE eliminated, cezih_service.py deleted, all mock branches removed from dispatcher, schemas cleaned (2026-04-08)
@@ -322,7 +346,7 @@ Verified TCs:
   - Download: `curl -sL https://packages.simplifier.net/{package}/{version} -o pkg.tgz && tar xzf pkg.tgz`
   - NOTE: Simplifier UI pages do NOT serve raw JSON — must download tar.gz package
 - **TC11 PMIR profile (HRRegisterPatient from v1.0.1):** Outer Bundle(message) + entry[0]=MessageHeader + entry[1]=Bundle(history) + Patient. Identifier slicing: europskaKartica + putovnica (rules=closed, max=2). `Bundle.signature` min=1 (REQUIRED). `address.country` binding=ValueSet/drzave (required).
-- **Next step:** On-site exam at HZZO Zagreb (proposed 2026-04-21); TC11 needs investigation against Simplifier specs
+- **Next step:** On-site exam at HZZO Zagreb (2026-04-21) — all 22 TCs implemented, 17 verified live, exam-ready
 - Unified private provider certification: PENDING on-site test at HZZO Zagreb
 
 ## Deployment
