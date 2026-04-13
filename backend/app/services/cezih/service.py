@@ -1215,39 +1215,13 @@ async def cancel_document(
 ) -> dict:
     """Cancel/storno a clinical document (TC20).
 
-    Strategy: ITI-65 transaction bundle (same structure as TC18/TC19) — POST a new
-    DocumentReference with status=entered-in-error and relatesTo.code=replaces pointing
-    to the original. CEZIH's iti-65-service rejects PUT entries (403); only POST entries
-    are accepted.
+    Strategy: Direct FHIR DELETE on DocumentReference/{id} via the MHD store.
+    ITI-65 bundle approaches fail:
+    - PUT bundle entry → 403 (not supported by iti-65-service)
+    - POST new doc with status=entered-in-error → profile validation fails (slicing CLOSED)
     """
     fhir_client = CezihFhirClient(client)
-
-    # Build the same ITI-65 bundle as TC18/TC19 using a minimal storno record
-    storno_record_data = {
-        "tip": "nalaz",
-        "sadrzaj": f"Storno dokumenta {reference_id}",
-    }
-    relates_to = {
-        "code": "replaces",
-        "target": {"reference": f"DocumentReference/{reference_id}"},
-    }
-
-    bundle_dict, _ = await _build_document_bundle(
-        fhir_client, patient_data or {}, storno_record_data,
-        practitioner_id=practitioner_id, org_code=org_code,
-        encounter_id=encounter_id, case_id=case_id,
-        practitioner_name=practitioner_name,
-        relates_to=relates_to,
-    )
-
-    # Change the new DocumentReference status to entered-in-error (cancel semantics)
-    for entry in bundle_dict.get("entry", []):
-        resource = entry.get("resource", {})
-        if resource.get("resourceType") == "DocumentReference":
-            resource["status"] = "entered-in-error"
-            break
-
-    await fhir_client.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle_dict)
+    await fhir_client.request("DELETE", f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}")
     return {"success": True, "reference_id": reference_id, "status": "entered-in-error"}
 
 
