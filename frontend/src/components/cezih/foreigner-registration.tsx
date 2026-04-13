@@ -18,6 +18,32 @@ import {
 } from "@/components/ui/select"
 import { useRegisterForeigner } from "@/lib/hooks/use-cezih"
 
+const EHIC_REGEX = /^[0-9A-Za-z]{20}$/
+const PASSPORT_REGEX = /^[A-Za-z0-9]{5,15}$/
+const COUNTRY_REGEX = /^[A-Za-z]{2,3}$/
+
+function validate(form: {
+  ime: string
+  prezime: string
+  datum_rodjenja: string
+  broj_putovnice: string
+  ehic_broj: string
+  drzavljanstvo: string
+}): string | null {
+  if (!form.ime.trim()) return "Ime je obavezno"
+  if (!form.prezime.trim()) return "Prezime je obavezno"
+  if (!form.datum_rodjenja) return "Datum rođenja je obavezan"
+  if (!form.broj_putovnice && !form.ehic_broj)
+    return "Potreban je broj putovnice ili EHIC broj"
+  if (form.broj_putovnice && !PASSPORT_REGEX.test(form.broj_putovnice))
+    return "Broj putovnice: 5-15 alfanumeričkih znakova"
+  if (form.ehic_broj && !EHIC_REGEX.test(form.ehic_broj))
+    return "EHIC broj mora imati točno 20 alfanumeričkih znakova (0-9, A-Z)"
+  if (form.drzavljanstvo && !COUNTRY_REGEX.test(form.drzavljanstvo))
+    return "Državljanstvo: 2 ili 3 slova (npr. DE ili DEU)"
+  return null
+}
+
 export function ForeignerRegistration() {
   const [form, setForm] = useState({
     ime: "",
@@ -32,15 +58,16 @@ export function ForeignerRegistration() {
   const register = useRegisterForeigner()
 
   const handleSubmit = () => {
-    if (!form.ime || !form.prezime || !form.datum_rodjenja) {
-      toast.error("Ime, prezime i datum rođenja su obavezni")
+    const err = validate(form)
+    if (err) {
+      toast.error(err)
       return
     }
     register.mutate(form, {
       onSuccess: (data) => {
-        toast.success(`Stranac registriran. MBO: ${data.mbo}`)
+        toast.success(`Stranac registriran u CEZIH (ID: ${data.patient_id})`)
       },
-      onError: (err) => toast.error(err.message),
+      onError: (e) => toast.error(e.message),
     })
   }
 
@@ -104,26 +131,31 @@ export function ForeignerRegistration() {
             <Label>Državljanstvo</Label>
             <Input
               value={form.drzavljanstvo}
-              onChange={(e) => update("drzavljanstvo", e.target.value)}
-              placeholder="GB, DE, AT..."
+              onChange={(e) => update("drzavljanstvo", e.target.value.toUpperCase())}
+              placeholder="DE, AT, GB..."
+              maxLength={3}
             />
+            <p className="text-xs text-muted-foreground mt-1">ISO kod (2 ili 3 slova)</p>
           </div>
           <div>
-            <Label>Broj putovnice</Label>
+            <Label>Broj putovnice *</Label>
             <Input
               value={form.broj_putovnice}
-              onChange={(e) => update("broj_putovnice", e.target.value)}
+              onChange={(e) => update("broj_putovnice", e.target.value.toUpperCase())}
               placeholder="AB1234567"
+              maxLength={15}
             />
           </div>
         </div>
         <div>
-          <Label>EHIC broj (opcionalno)</Label>
+          <Label>EHIC broj (europska kartica, opcionalno)</Label>
           <Input
             value={form.ehic_broj}
-            onChange={(e) => update("ehic_broj", e.target.value)}
-            placeholder="Europska kartica zdravstvenog osiguranja"
+            onChange={(e) => update("ehic_broj", e.target.value.toUpperCase())}
+            placeholder="20 znakova, npr. HR12345678901234567X"
+            maxLength={20}
           />
+          <p className="text-xs text-muted-foreground mt-1">Točno 20 alfanumeričkih znakova (0-9, A-Z)</p>
         </div>
         <Button
           className="w-full"
@@ -142,8 +174,10 @@ export function ForeignerRegistration() {
           <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
             <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
             <div className="text-sm flex-1">
-              <span className="font-medium">Registrirano!</span> MBO:{" "}
-              <span className="font-mono">{register.data.mbo}</span>
+              <span className="font-medium">Registrirano!</span>{" "}
+              {register.data.mbo && (
+                <span>ID: <span className="font-mono">{register.data.mbo}</span></span>
+              )}
               {register.data.local_patient_id && (
                 <Link
                   href={`/pacijenti/${register.data.local_patient_id}`}
