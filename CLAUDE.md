@@ -316,7 +316,13 @@ Verified TCs:
   - `ID_CASE_REF` = `.../identifikatori/slucaj` (Encounter.diagnosis case reference)
   - Case status transitions: NO clinicalStatus in message body (event code is sufficient)
 - **TC20 cancel mechanism (DISCOVERED 2026-04-13):** Cancel = ITI-65 replace with status=current + relatesTo OID. CEZIH rejects entered-in-error. OID from ITI-67 content_url base64 data param.
-- **Next step:** On-site exam at HZZO Zagreb (proposed 2026-04-21); TC11 requires HZZO clarification
+- **Simplifier FHIR packages (authoritative specs):**
+  - `cezih.osnova` v0.2.3 — basic profiles (hr-pacijent, hr-encounter, hr-condition, CodeSystems)
+  - `cezih.hr.cezih-osnova` v1.0.1 — COMPLETE: includes PMIR (HRRegisterPatient, HRPMIRBundle), hr-delete-patient, hr-update-patient, updated hr-pacijent (adds OIB + bolesnicki-list)
+  - Download: `curl -sL https://packages.simplifier.net/{package}/{version} -o pkg.tgz && tar xzf pkg.tgz`
+  - NOTE: Simplifier UI pages do NOT serve raw JSON — must download tar.gz package
+- **TC11 PMIR profile (HRRegisterPatient from v1.0.1):** Outer Bundle(message) + entry[0]=MessageHeader + entry[1]=Bundle(history) + Patient. Identifier slicing: europskaKartica + putovnica (rules=closed, max=2). `Bundle.signature` min=1 (REQUIRED). `address.country` binding=ValueSet/drzave (required).
+- **Next step:** On-site exam at HZZO Zagreb (proposed 2026-04-21); TC11 needs investigation against Simplifier specs
 - Unified private provider certification: PENDING on-site test at HZZO Zagreb
 
 ## Deployment

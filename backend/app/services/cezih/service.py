@@ -872,23 +872,19 @@ async def register_foreigner(
         }],
     }
 
-    # MessageHeader per IHE PMIR + CEZIH profile
+    # MessageHeader per HRRegisterPatient profile (CEZIH-specific, not IHE base)
     source_endpoint = f"urn:oid:{source_oid}" if source_oid else f"urn:oid:{org_code}" if org_code else "urn:oid:2.16.840.1.113883.2.7"
     message_header = {
         "resourceType": "MessageHeader",
-        "meta": {
-            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.MessageHeader"],
-        },
         "eventUri": "urn:ihe:iti:pmir:2019:patient-feed",
         "destination": [{"endpoint": "http://cezih.hr"}],
         "sender": org_ref(org_code) if org_code else {"type": "Organization"},
         "author": practitioner_ref(practitioner_id) if practitioner_id else {"type": "Practitioner"},
         "source": {"endpoint": source_endpoint},
-        "focus": [{"reference": inner_bundle_uuid}],
+        "focus": [{"reference": f"urn:uuid:{inner_bundle_uuid}"}],
     }
 
-    # Outer Bundle (type=message) with timestamp and required signature
-    # meta.profile required so CEZIH can identify the message type
+    # Outer Bundle (type=message) per HRRegisterPatient profile
     bundle: dict = {
         "resourceType": "Bundle",
         "meta": {
@@ -897,33 +893,39 @@ async def register_foreigner(
         "type": "message",
         "timestamp": _now_iso(),
         "entry": [
-            {"fullUrl": header_uuid, "resource": message_header},
-            {"fullUrl": inner_bundle_uuid, "resource": inner_bundle},
+            {"fullUrl": f"urn:uuid:{header_uuid}", "resource": message_header},
+            {"fullUrl": f"urn:uuid:{inner_bundle_uuid}", "resource": inner_bundle},
         ],
     }
 
-    # Digital signature is REQUIRED per HRRegisterPatient profile
+    # Digital signature is REQUIRED (Bundle.signature min=1)
     if practitioner_id:
         try:
             bundle = await add_signature(bundle, practitioner_id, http_client=client)
         except Exception as e:
-            logger.warning("PMIR signing failed, proceeding unsigned: %s", e)
-            # Add placeholder signature so CEZIH doesn't reject with 400 immediately
+            logger.warning("PMIR signing failed, adding placeholder: %s", e)
             bundle["signature"] = {
                 "type": [{"system": SIGNATURE_TYPE_SYSTEM, "code": SIGNATURE_TYPE_CODE}],
                 "when": _now_iso(),
                 "who": practitioner_ref(practitioner_id),
-                "data": "",
+                "data": "placeholder",
             }
+    else:
+        # Signature is mandatory — add placeholder even without practitioner
+        bundle["signature"] = {
+            "type": [{"system": SIGNATURE_TYPE_SYSTEM, "code": SIGNATURE_TYPE_CODE}],
+            "when": _now_iso(),
+            "who": {"type": "Practitioner"},
+            "data": "placeholder",
+        }
 
-    # Submit to the PMIR ITI-93 endpoint (confirmed from CEZIH URL list)
-    # Some CEZIH endpoints use plain application/json instead of application/fhir+json
+    # Submit to PMIR ITI-93 endpoint (CEZIH URL list row 18)
+    # Try application/fhir+json first — 415 error we got before was likely due
+    # to wrong bundle structure, not wrong content-type
     response = await fhir_client.request(
         "POST",
         "patient-registry-services/api/iti93",
         json_body=bundle,
-        content_type="application/json",
-        accept="application/json",
     )
     return {
         "success": True,
