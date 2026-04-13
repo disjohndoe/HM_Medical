@@ -827,9 +827,17 @@ async def dispatch_replace_document(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
 
+    # Update the DB record's reference_id to the new document created by replace
+    new_ref = result.get("new_reference_id")
+    if record_id and new_ref:
+        record = await _get_medical_record_by_id(db, tenant_id, record_id)
+        if record:
+            record.cezih_reference_id = new_ref
+            await db.flush()
+
     await _write_audit(
         db, tenant_id, user_id, action="e_nalaz_replace",
-        details={"reference_id": original_reference_id},
+        details={"reference_id": original_reference_id, "new_reference_id": new_ref},
     )
     return result
 
