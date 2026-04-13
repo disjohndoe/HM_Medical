@@ -830,35 +830,35 @@ async def register_foreigner(
     inner_bundle_uuid = str(_uuid.uuid4())
     header_uuid = str(_uuid.uuid4())
 
-    # Build Patient resource per HRRegisterPatient profile
+    # Build Patient resource per HRRegisterPatient profile.
+    # Field order and content matches the official Simplifier example exactly.
+    # Profile constraints: identifier min=1 max=2 (rules=closed: putovnica + europska-kartica only),
+    # name min=1 max=1, address min=1 max=1, address.country min=1.
+    # birthDate and gender are NOT in the official example — omit them.
+    identifiers = []
+    if patient_data.get("broj_putovnice"):
+        identifiers.append({
+            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica",
+            "value": patient_data["broj_putovnice"],
+        })
+    if patient_data.get("ehic_broj"):
+        identifiers.append({
+            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica",
+            "value": patient_data["ehic_broj"],
+        })
+
+    country = patient_data.get("drzavljanstvo") or "HRV"
     patient_resource: dict = {
         "resourceType": "Patient",
+        "identifier": identifiers,
         "active": True,
         "name": [{
             "use": "official",
             "family": patient_data["prezime"],
             "given": [patient_data["ime"]],
         }],
-        "birthDate": patient_data["datum_rodjenja"],
-        "gender": patient_data.get("spol", "unknown"),
-        "identifier": [],
+        "address": [{"country": country}],
     }
-
-    # Identifiers: passport and/or EHIC (closed slicing, max=2)
-    if patient_data.get("broj_putovnice"):
-        patient_resource["identifier"].append({
-            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica",
-            "value": patient_data["broj_putovnice"],
-        })
-    if patient_data.get("ehic_broj"):
-        patient_resource["identifier"].append({
-            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica",
-            "value": patient_data["ehic_broj"],
-        })
-
-    # address.country is required — ISO 3166-1 alpha-3 (ValueSet/drzave binding)
-    country = patient_data.get("drzavljanstvo") or "HRV"
-    patient_resource["address"] = [{"country": country}]
 
     # Inner Bundle (type=history) — IHE PMIR profile on meta
     inner_bundle = {
