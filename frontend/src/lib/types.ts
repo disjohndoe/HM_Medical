@@ -701,10 +701,10 @@ export interface ForeignerRegistrationRequest {
 }
 
 export interface ForeignerRegistrationResponse {
-
   success: boolean;
   patient_id: string;
   mbo: string;
+  local_patient_id?: string;
 }
 
 // ============================================================
