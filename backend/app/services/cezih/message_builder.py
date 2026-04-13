@@ -419,6 +419,14 @@ async def _add_signature_smartcard(
         logger.info("JWS signature: kid=%s, alg=%s, data=%d chars",
                      result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
 
+    # Agent returns base64(JWS_compact) — "double base64".
+    # FHIR Signature.data should contain the JWS compact form directly
+    # (header.payload.signature), NOT an extra base64 layer around it.
+    # Decode the outer base64 to get the JWS compact string.
+    jws_compact = _base64.b64decode(jws_base64).decode("ascii")
+    logger.info("JWS compact: %d chars (decoded from %d double-b64 chars)",
+                len(jws_compact), len(jws_base64))
+
     # Add the signature element AFTER signing
     bundle["signature"] = {
         "type": [
@@ -429,7 +437,7 @@ async def _add_signature_smartcard(
         ],
         "when": _now_iso(),
         "who": practitioner_ref(practitioner_id),
-        "data": jws_base64,
+        "data": jws_compact,
     }
 
     return bundle
