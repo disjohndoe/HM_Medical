@@ -70,6 +70,7 @@ What needs to be done next...
 |------|------|--------|---------|
 | [ITI-65-403-blocker.md](ITI-65-403-blocker.md) | 2026-04-10 | resolved | 403 on doc-mhd-svc — wrong bundle type (message vs transaction) — VERIFIED TC18 2026-04-10 |
 | [ITI-65-document-profile.md](ITI-65-document-profile.md) | 2026-04-10 | active | HRMinimalDocumentReference — full profile field requirements, all CEZIHDR-* rules |
+| [TC20-cancel-document-blocker.md](TC20-cancel-document-blocker.md) | 2026-04-13 | resolved | TC20 cancel = ITI-65 replace with OID. entered-in-error rejected; literal refs rejected. VERIFIED 2026-04-13 |
 
 ### Specification Compliance
 

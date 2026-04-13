@@ -106,6 +106,27 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 | Phase 14 | DONE | CEZIH live verification — 12/22 TCs verified against real CEZIH, FHIR compliance fixes (2026-04-11) |
 | Phase 15 | DONE | CEZIH exam prep — TC19/20/22 fixes (agent binary transport, PUT method, relatesTo format) (2026-04-13) |
 | Phase 16 | DONE | CEZIH live verification — TC19 + TC22 verified; TC20 + TC11 investigated (2026-04-13) |
+| Phase 17 | DONE | TC20 cancel document — VERIFIED via ITI-65 replace with OID lookup (2026-04-13) |
+
+### Phase 17 Details (completed 2026-04-13)
+
+**TC20 — Cancel document: VERIFIED ✓**
+- Cancel works as ITI-65 replace (same bundle as TC18/TC19) — new doc supersedes the original
+- CEZIH rejects `entered-in-error` status in ITI-65 bundles (ERR_DOM_10057); use `status=current` instead
+- CEZIH resolves `relatesTo.target` by OID (masterIdentifier), NOT by server-assigned numeric ID
+- New `_lookup_document_oid()` searches ITI-67, extracts OID from content_url base64 data param
+- Result: 200, original document superseded in CEZIH registry
+- Dispatcher sets `cezih_storno=True` on DB record after success
+
+**Key discoveries:**
+1. Literal reference `DocumentReference/{id}` fails with ERR_DOM_10057 — CEZIH only resolves OID-based logical references in relatesTo
+2. `entered-in-error` status fails with ERR_DOM_10057 — CEZIH ITI-65 only accepts `status=current`
+3. Document cancel = document replace — original gets `status=superseded` automatically in CEZIH registry
+4. OID is encoded in ITI-67 content_url `data` param as base64: `documentUniqueId=urn:ietf:rfc:3986|urn:oid:X.X.X`
+
+**Files changed:**
+- `backend/app/services/cezih/service.py` — `_lookup_document_oid()`, `cancel_document()` rewritten, `replace_document()` OID lookup added
+- `backend/app/services/cezih/dispatcher.py` — `dispatch_cancel_document()` loads full record data, sets `cezih_storno=True`
 
 ### Phase 16 Details (completed 2026-04-13)
 
@@ -119,11 +140,6 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 - Frontend passes `content_url` from TC21 search results as `?url=` query param — routes directly to ITI-68 endpoint
 - Result: 200, `content-type: application/pdf`, 228 bytes for our own TC18/TC19 document
 - Note: old documents in CEZIH test env (pre-April 2026) return 0 bytes — test data limitation, not our code
-
-**TC20 — Cancel document: BLOCKED**
-- All 5 approaches exhausted: PUT (405), DELETE (404), ITI-65+entered-in-error (403), JSON Patch (404), ITI-65+transforms (403)
-- Root cause: `doc-mhd-svc` only exposes named IHE service endpoints — no FHIR base REST for DocumentReference
-- No known correct mechanism; documented in `backend/docs/TC20-cancel-document-blocker.md`
 
 **TC11 — Foreigner PMIR: BLOCKED**
 - Endpoint `pat-mhd-svc/api/v1/pmir-service` returns HTML 401 (not JSON/FHIR) — gateway-level rejection
@@ -257,12 +273,11 @@ Verified TCs:
 - **Certilia Cloud cert: ACTIVE** (udaljeni potpisni certifikat, valid until 26.03.2028.) — signing only, NOT usable for VPN
 - Certilia card certs also active (identifikacijski + potpisni na kartici, valid until 26.03.2029.) — waiting for physical card delivery
 - **OAuth2 token: WORKING** (client_credentials grant via certsso2, needs `/auth/` prefix in URL)
-- **14/22 TCs VERIFIED against real CEZIH** (as of 2026-04-13):
+- **15/22 TCs VERIFIED against real CEZIH** (as of 2026-04-13):
   - TC3 (OAuth2), TC5 (cloud signing), TC9 (mCSD org+practitioner), TC10 (PDQm patient)
   - TC12 (visit create), TC13 (visit update), TC14 (visit close)
   - TC15 (retrieve cases), TC16 (create case), TC17 (case remission)
-  - TC18 (send document ITI-65), TC19 (replace document), TC21 (search documents ITI-67), TC22 (retrieve binary ITI-68)
-- **TC20 (cancel document): BLOCKED** — all FHIR REST operations return 404/405/403; doc-mhd-svc has no writable DocumentReference endpoint; documented in `backend/docs/TC20-cancel-document-blocker.md`
+  - TC18 (send document ITI-65), TC19 (replace document), TC20 (cancel document), TC21 (search documents ITI-67), TC22 (retrieve binary ITI-68)
 - **TC11 (foreigner PMIR): BLOCKED** — HTML 401 from pat-mhd-svc (institution 999001464 likely lacks PMIR permission); documented in `backend/docs/TC11-PMIR-auth-blocker.md`
 - **TC6/7/8:** Work at protocol level (200 OK); TC7/8 return empty results (CEZIH test data limitation)
 - **TC1/2/4:** Auth — exercised implicitly by all other TCs
@@ -276,7 +291,8 @@ Verified TCs:
   - `ID_CASE_GLOBAL` = `.../identifikatori/identifikator-slucaja` (Condition.identifier in messages)
   - `ID_CASE_REF` = `.../identifikatori/slucaj` (Encounter.diagnosis case reference)
   - Case status transitions: NO clinicalStatus in message body (event code is sufficient)
-- **Next step:** On-site exam at HZZO Zagreb (proposed 2026-04-21); TC20 + TC11 require HZZO clarification
+- **TC20 cancel mechanism (DISCOVERED 2026-04-13):** Cancel = ITI-65 replace with status=current + relatesTo OID. CEZIH rejects entered-in-error. OID from ITI-67 content_url base64 data param.
+- **Next step:** On-site exam at HZZO Zagreb (proposed 2026-04-21); TC11 requires HZZO clarification
 - Unified private provider certification: PENDING on-site test at HZZO Zagreb
 
 ## Deployment
