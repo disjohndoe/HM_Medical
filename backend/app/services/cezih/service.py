@@ -825,10 +825,13 @@ async def register_foreigner(
     import uuid as _uuid
 
     fhir_client = CezihFhirClient(client)
-    # Plain UUIDs for outer entries (matching official example), urn:uuid: for inner Patient
+    # Use urn:uuid: for ALL fullUrls and references (like working encounters).
+    # The official Simplifier example uses plain UUIDs, but CEZIH's HAPI server
+    # resolves plain UUIDs as literal references (Bundle/{uuid}) instead of
+    # matching fullUrl — causing "Reference_REF_CantResolve".
     patient_uuid = str(_uuid.uuid4())
-    inner_bundle_uuid = str(_uuid.uuid4())
-    header_uuid = str(_uuid.uuid4())
+    inner_bundle_uuid = f"urn:uuid:{_uuid.uuid4()}"
+    header_uuid = f"urn:uuid:{_uuid.uuid4()}"
 
     # Build Patient resource per HRRegisterPatient profile.
     # Field order and content matches the official Simplifier example exactly.
