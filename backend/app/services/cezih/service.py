@@ -1267,7 +1267,7 @@ async def replace_document(
         encounter_id=encounter_id, case_id=case_id,
         practitioner_name=practitioner_name,
         relates_to=relates_to,
-        use_external_profile=True,
+        use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
     )
 
     response = await fhir_client.post(
