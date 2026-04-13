@@ -1360,7 +1360,24 @@ async def retrieve_document(client: httpx.AsyncClient, document_url: str) -> byt
                 accept="*/*",
             )
     else:
-        # Reference ID — try Binary resource path
+        # Reference ID — look up DocumentReference first to get content_url (ITI-67 by ID)
+        # CEZIH does not expose Binary/{id} directly; content URL is in DocumentReference.content
+        content_url = ""
+        try:
+            doc_ref = await fhir_client.get(f"doc-mhd-svc/api/v1/DocumentReference/{document_url}")
+            for content_entry in doc_ref.get("content", []):
+                att = content_entry.get("attachment", {})
+                if att.get("url"):
+                    content_url = att["url"]
+                    break
+        except Exception as lookup_exc:
+            logger.warning("DocumentReference lookup failed for %s: %s", document_url, lookup_exc)
+
+        if content_url:
+            # Recurse with the resolved full URL
+            return await retrieve_document(client, content_url)
+
+        # Last resort: try Binary/{id} directly
         response = await fhir_client.get(
             f"doc-mhd-svc/api/v1/Binary/{document_url}",
             accept="*/*",
