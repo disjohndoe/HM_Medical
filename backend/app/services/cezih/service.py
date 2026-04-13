@@ -906,25 +906,15 @@ async def register_foreigner(
                 "data": "placeholder",
             }
 
-    # Submit to PMIR ITI-93 endpoint
-    # CEZIH error path shows Keycloak redirect — try multiple URL patterns.
-    # The official URL list says /api/iti93 but PDQm uses /api/v1/Patient on same service.
-    endpoints = [
+    # Submit to PMIR ITI-93 endpoint (CEZIH URL list row 18)
+    # NOTE: CEZIH gateway returns 415 with path="/auth/realms/CEZIH/..." for ALL
+    # PMIR endpoints — the request never reaches the FHIR service. This means
+    # PMIR is not routed for institution 999001464. Needs HZZO activation.
+    response = await fhir_client.request(
+        "POST",
         "patient-registry-services/api/iti93",
-        "patient-registry-services/api/v1/iti93",
-        "pat-mhd-svc/api/v1/pmir-service",
-    ]
-    last_error = None
-    for ep in endpoints:
-        try:
-            logger.info("PMIR attempt: POST %s", ep)
-            response = await fhir_client.request("POST", ep, json_body=bundle)
-            break  # Success!
-        except CezihError as e:
-            logger.error("PMIR %s rejected: %s", ep, e.message[:200])
-            last_error = e
-    else:
-        raise last_error  # type: ignore[misc]
+        json_body=bundle,
+    )
     return {
         "success": True,
         "patient_id": _extract_patient_id(response),
