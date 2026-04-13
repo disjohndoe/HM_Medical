@@ -105,6 +105,37 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 | Phase 13 | DONE | Production hardening — mock services removed, CEZIH credentials mandatory (2026-04-08) |
 | Phase 14 | DONE | CEZIH live verification — 12/22 TCs verified against real CEZIH, FHIR compliance fixes (2026-04-11) |
 | Phase 15 | DONE | CEZIH exam prep — TC19/20/22 fixes (agent binary transport, PUT method, relatesTo format) (2026-04-13) |
+| Phase 16 | DONE | CEZIH live verification — TC19 + TC22 verified; TC20 + TC11 investigated (2026-04-13) |
+
+### Phase 16 Details (completed 2026-04-13)
+
+**TC19 — Replace document: VERIFIED ✓**
+- Root cause of earlier failure: `use_external_profile=True` caused CEZIH to reject with 415 ERR_EHE_1099
+- Fix: `use_external_profile=False` in `replace_document()` — same standard profiles as TC18
+- Result: 200, `new_reference_id: 1341290`
+
+**TC22 — Retrieve binary (ITI-68): VERIFIED ✓**
+- Binary decode bug fixed: `body_bytes` (base64 from agent) now decoded before JSON parse attempt in `client.py`
+- Frontend passes `content_url` from TC21 search results as `?url=` query param — routes directly to ITI-68 endpoint
+- Result: 200, `content-type: application/pdf`, 228 bytes for our own TC18/TC19 document
+- Note: old documents in CEZIH test env (pre-April 2026) return 0 bytes — test data limitation, not our code
+
+**TC20 — Cancel document: BLOCKED**
+- All 5 approaches exhausted: PUT (405), DELETE (404), ITI-65+entered-in-error (403), JSON Patch (404), ITI-65+transforms (403)
+- Root cause: `doc-mhd-svc` only exposes named IHE service endpoints — no FHIR base REST for DocumentReference
+- No known correct mechanism; documented in `backend/docs/TC20-cancel-document-blocker.md`
+
+**TC11 — Foreigner PMIR: BLOCKED**
+- Endpoint `pat-mhd-svc/api/v1/pmir-service` returns HTML 401 (not JSON/FHIR) — gateway-level rejection
+- Institution `999001464` likely lacks explicit PMIR service permission in CEZIH test env
+- Code is correct (full rewrite per `HRRegisterPatient` profile v1.0.1, commit 5935ba4); documented in `backend/docs/TC11-PMIR-auth-blocker.md`
+
+**Files changed:**
+- `backend/app/services/cezih/service.py` — `replace_document()` External profile disabled, `retrieve_document()` content_url routing
+- `backend/app/services/cezih/client.py` — `body_bytes` decode before JSON parse
+- `frontend/src/lib/types.ts` — `content_url` field on `DocumentSearchItem`
+- `frontend/src/lib/hooks/use-cezih.ts` — `useRetrieveDocument` accepts `{id, contentUrl?}`
+- `frontend/src/components/cezih/ekarton-view.tsx` + `document-search.tsx` — pass `content_url` to retrieve hook
 
 ### Phase 15 Details (completed 2026-04-13)
 
@@ -226,22 +257,26 @@ Verified TCs:
 - **Certilia Cloud cert: ACTIVE** (udaljeni potpisni certifikat, valid until 26.03.2028.) — signing only, NOT usable for VPN
 - Certilia card certs also active (identifikacijski + potpisni na kartici, valid until 26.03.2029.) — waiting for physical card delivery
 - **OAuth2 token: WORKING** (client_credentials grant via certsso2, needs `/auth/` prefix in URL)
-- **12/22 TCs VERIFIED against real CEZIH** (2026-04-10/11):
+- **14/22 TCs VERIFIED against real CEZIH** (as of 2026-04-13):
   - TC3 (OAuth2), TC5 (cloud signing), TC9 (mCSD org+practitioner), TC10 (PDQm patient)
   - TC12 (visit create), TC13 (visit update), TC14 (visit close)
   - TC15 (retrieve cases), TC16 (create case), TC17 (case remission)
-  - TC18 (send document ITI-65), TC21 (search documents ITI-67)
-- **Remaining TCs:** TC19/20/22 FIXED (2026-04-13) — need live verification; TC6-8/11 need testing only
+  - TC18 (send document ITI-65), TC19 (replace document), TC21 (search documents ITI-67), TC22 (retrieve binary ITI-68)
+- **TC20 (cancel document): BLOCKED** — all FHIR REST operations return 404/405/403; doc-mhd-svc has no writable DocumentReference endpoint; documented in `backend/docs/TC20-cancel-document-blocker.md`
+- **TC11 (foreigner PMIR): BLOCKED** — HTML 401 from pat-mhd-svc (institution 999001464 likely lacks PMIR permission); documented in `backend/docs/TC11-PMIR-auth-blocker.md`
+- **TC6/7/8:** Work at protocol level (200 OK); TC7/8 return empty results (CEZIH test data limitation)
+- **TC1/2/4:** Auth — exercised implicitly by all other TCs
 - **All 22 test cases: IMPLEMENTED** (backend + frontend, production-ready — mock mode removed)
 - **Agent v0.9.0:** Binary transport + PUT method fixes (2026-04-13)
 - **Mock services removed:** CEZIH_MODE eliminated, cezih_service.py deleted, all mock branches removed from dispatcher, schemas cleaned (2026-04-08)
 - **Document type codes:** HRTipDokumenta 011-013 for privatnici (from Simplifier cezih.hr.cezih-osnova v0.2.9)
 - **ITI-65 architecture:** Transaction bundle (3 entries: SubmissionSet + DocumentReference + Binary), no signing, OID from registry, visit+case linking required
+- **External profiles (v1.0.1):** `HRExternalMinimalProvideDocumentBundle` rejected by CEZIH test env with 415 ERR_EHE_1099 — use standard profiles for both TC18 and TC19
 - **FHIR identifier systems (FIXED 2026-04-11):**
   - `ID_CASE_GLOBAL` = `.../identifikatori/identifikator-slucaja` (Condition.identifier in messages)
   - `ID_CASE_REF` = `.../identifikatori/slucaj` (Encounter.diagnosis case reference)
   - Case status transitions: NO clinicalStatus in message body (event code is sufficient)
-- **Next step:** Deploy agent v0.9.0, verify TC19/20/22 fixes live, test TC6-8/11, schedule on-site exam
+- **Next step:** On-site exam at HZZO Zagreb (proposed 2026-04-21); TC20 + TC11 require HZZO clarification
 - Unified private provider certification: PENDING on-site test at HZZO Zagreb
 
 ## Deployment

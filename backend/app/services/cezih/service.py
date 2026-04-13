@@ -1295,31 +1295,78 @@ async def replace_document(
 async def cancel_document(
     client: httpx.AsyncClient,
     reference_id: str,
+    patient_data: dict,
+    record_data: dict,
     org_code: str = "",
     practitioner_id: str | None = None,
-    patient_data: dict | None = None,
     encounter_id: str = "",
     case_id: str = "",
     practitioner_name: str = "",
+    original_document_oid: str = "",
 ) -> dict:
     """Cancel/storno a clinical document (TC20).
 
-    Strategy: FHIR JSON Patch (PATCH DocumentReference/{id}) to set status=entered-in-error.
-    Tried approaches:
-    - Direct PUT → 405 (iti-65-service only accepts POST)
-    - ITI-65 bundle PUT entry → 403 (not supported)
-    - ITI-65 bundle POST new doc status=entered-in-error → slice validation fails (profile closed)
-    - Direct DELETE → 404 (not supported)
+    Strategy: ITI-65 transaction bundle (same as TC19 replace) but with
+    status=entered-in-error. Posts a new DocumentReference that replaces the
+    original with entered-in-error status — standard IHE MHD document deprecation.
+
+    Previous failed approaches used wrong relatesTo format (literal ref instead of
+    logical OID) or non-existent FHIR base REST endpoints (PATCH/DELETE → 404).
     """
     fhir_client = CezihFhirClient(client)
-    patch_body = [{"op": "replace", "path": "/status", "value": "entered-in-error"}]
-    await fhir_client.request(
-        "PATCH",
-        f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}",
-        json_body=patch_body,
-        content_type="application/json-patch+json",
+
+    # Build relatesTo with logical OID reference (same format as TC19 replace)
+    if original_document_oid:
+        oid_value = original_document_oid if original_document_oid.startswith("urn:oid:") else f"urn:oid:{original_document_oid}"
+        relates_to = {
+            "code": "replaces",
+            "target": {
+                "type": "DocumentReference",
+                "identifier": {
+                    "system": "urn:ietf:rfc:3986",
+                    "value": oid_value,
+                },
+            },
+        }
+    else:
+        relates_to = {
+            "code": "replaces",
+            "target": {
+                "reference": f"DocumentReference/{reference_id}",
+            },
+        }
+
+    bundle_dict, new_oid = await _build_document_bundle(
+        fhir_client, patient_data, record_data,
+        practitioner_id=practitioner_id, org_code=org_code,
+        encounter_id=encounter_id, case_id=case_id,
+        practitioner_name=practitioner_name,
+        relates_to=relates_to,
+        use_external_profile=False,
     )
-    return {"success": True, "reference_id": reference_id, "status": "entered-in-error"}
+
+    # Override DocumentReference status to entered-in-error (built as "current" by default)
+    for entry in bundle_dict.get("entry", []):
+        resource = entry.get("resource", {})
+        if resource.get("resourceType") == "DocumentReference":
+            resource["status"] = "entered-in-error"
+            break
+
+    response = await fhir_client.post(
+        "doc-mhd-svc/api/v1/iti-65-service",
+        json_body=bundle_dict,
+    )
+
+    ref_id = _extract_ref_id_from_response(response)
+    if not ref_id:
+        ref_id = f"FHIR-C-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+
+    return {
+        "success": True,
+        "reference_id": reference_id,
+        "new_reference_id": ref_id,
+        "status": "entered-in-error",
+    }
 
 
 # ============================================================

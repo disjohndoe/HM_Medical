@@ -873,8 +873,9 @@ async def dispatch_cancel_document(
     from sqlalchemy import select as sa_select
     _require_audit_params(db, user_id, tenant_id)
 
-    # Look up the record by cezih_reference_id to get patient/encounter/case context
+    # Look up the record by cezih_reference_id — need full record data for ITI-65 bundle
     patient_data: dict = {}
+    record_data: dict = {}
     encounter_id = ""
     case_id = ""
     if db and tenant_id:
@@ -892,19 +893,43 @@ async def dispatch_cancel_document(
                     patient_data = {"mbo": patient.mbo, "ime": patient.ime, "prezime": patient.prezime}
             encounter_id = record.cezih_encounter_id or ""
             case_id = record.cezih_case_id or ""
+            if not practitioner_id and record.doktor_id:
+                practitioner_id = str(record.doktor_id)
+            record_data = {
+                "tip": record.tip,
+                "dijagnoza_mkb": record.dijagnoza_mkb,
+                "dijagnoza_tekst": record.dijagnoza_tekst,
+                "sadrzaj": f"Storno dokumenta {reference_id}",
+                "created_at": record.created_at.isoformat() if record.created_at else None,
+            }
 
     try:
         result = await real_service.cancel_document(
             http_client, reference_id,
+            patient_data=patient_data, record_data=record_data,
             org_code=org_code, practitioner_id=practitioner_id,
-            patient_data=patient_data, encounter_id=encounter_id,
-            case_id=case_id, practitioner_name=practitioner_name,
+            encounter_id=encounter_id, case_id=case_id,
+            practitioner_name=practitioner_name,
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+    # Mark record as storniran in DB
+    if db and tenant_id:
+        rec_result = await db.execute(
+            sa_select(MedicalRecord).where(
+                MedicalRecord.tenant_id == tenant_id,
+                MedicalRecord.cezih_reference_id == reference_id,
+            )
+        )
+        rec = rec_result.scalar_one_or_none()
+        if rec:
+            rec.cezih_storno = True
+            await db.flush()
+
     await _write_audit(
         db, tenant_id, user_id, action="e_nalaz_cancel",
-        details={"reference_id": reference_id},
+        details={"reference_id": reference_id, "new_reference_id": result.get("new_reference_id")},
     )
     return result
 
