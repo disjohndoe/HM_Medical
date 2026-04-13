@@ -489,9 +489,11 @@ async def sign_bundle_via_extsigner(
             "CEZIH_SIGNER_OIB nije postavljen. Potrebno je za udaljeno potpisivanje (extsigner)."
         )
 
-    base_url = settings.CEZIH_FHIR_BASE_URL
+    # Use CEZIH_SIGNING_URL (certpubws.cezih.hr — public) for extsigner,
+    # falling back to CEZIH_FHIR_BASE_URL if not set.
+    base_url = settings.CEZIH_SIGNING_URL or settings.CEZIH_FHIR_BASE_URL
     if not base_url:
-        raise CezihSigningError("CEZIH_FHIR_BASE_URL nije postavljen.")
+        raise CezihSigningError("CEZIH_SIGNING_URL ni CEZIH_FHIR_BASE_URL nisu postavljeni.")
 
     base = base_url.rstrip("/")
     sign_url = f"{base}/services-router/gateway/extsigner/api/sign"
@@ -529,16 +531,14 @@ async def sign_bundle_via_extsigner(
     }
 
     # Step 1: Submit document for signing
-    # Attach OAuth Bearer token — extsigner on certws2:8443 requires auth
-    from app.services.cezih.oauth import get_oauth_token
-    from app.services.cezih.client import current_tenant_id
+    # Use signing-specific OAuth token (certpubsso.cezih.hr, separate from FHIR auth)
     import httpx as _httpx
     async with _httpx.AsyncClient() as _token_client:
-        token = await get_oauth_token(client=_token_client, tenant_id=current_tenant_id.get())
+        signing_token = await _get_signing_token(_token_client)
     sign_headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {signing_token}",
     }
 
     logger.info(
@@ -580,13 +580,13 @@ async def sign_bundle_via_extsigner(
         )
 
         try:
-            # Refresh token for polling (may take up to 2 min)
+            # Refresh signing token for polling (may take up to 2 min)
             async with _httpx.AsyncClient() as _tc:
-                token = await get_oauth_token(client=_tc, tenant_id=current_tenant_id.get())
+                signing_token = await _get_signing_token(_tc)
             retrieve_result = await _request_via_agent(
                 method="GET",
                 url=get_url,
-                headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
+                headers={"Accept": "application/json", "Authorization": f"Bearer {signing_token}"},
                 form_data=None,
                 json_body=None,
                 timeout=30,
