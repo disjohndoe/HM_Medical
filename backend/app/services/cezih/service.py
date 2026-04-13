@@ -1228,7 +1228,6 @@ async def cancel_document(
     oid_response = await fhir_client.post(
         "identifier-registry-services/api/v1/oid/generateOIDBatch",
         json_body={"oidType": {"system": "http://ent.hr/fhir/CodeSystem/ehe-oid-types", "code": "1"}, "quantity": 1},
-        port=9443,
     )
     oid_list = oid_response.get("oid", []) if isinstance(oid_response, dict) else []
     submission_oid = oid_list[0] if oid_list else f"2.16.840.1.113883.2.7.50.2.1.{_uuid.uuid4().int >> 64}"
