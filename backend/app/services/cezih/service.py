@@ -917,9 +917,13 @@ async def register_foreigner(
             }
 
     # Submit to the PMIR ITI-93 endpoint (confirmed from CEZIH URL list)
-    response = await fhir_client.post(
+    # Some CEZIH endpoints use plain application/json instead of application/fhir+json
+    response = await fhir_client.request(
+        "POST",
         "patient-registry-services/api/iti93",
         json_body=bundle,
+        content_type="application/json",
+        accept="application/json",
     )
     return {
         "success": True,
