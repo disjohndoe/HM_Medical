@@ -907,30 +907,23 @@ async def register_foreigner(
             }
 
     # Submit to PMIR ITI-93 endpoint
-    # Try $process-message first (standard FHIR messaging pattern for PMIR),
-    # fallback to direct POST to iti93
+    # CEZIH returns 415 ERR_EHE_1099 for PMIR bundles — under investigation.
+    # Log full response for debugging, try bundle first then raw Patient fallback.
     try:
-        response = await fhir_client.process_message(
-            "patient-registry-services/api/v1", bundle,
+        response = await fhir_client.request(
+            "POST",
+            "patient-registry-services/api/iti93",
+            json_body=bundle,
         )
-    except Exception as e1:
-        logger.warning("PMIR $process-message failed (%s), trying direct iti93 POST", e1)
-        try:
-            response = await fhir_client.request(
-                "POST",
-                "patient-registry-services/api/iti93",
-                json_body=bundle,
-            )
-        except Exception as e2:
-            logger.warning("PMIR iti93 bundle failed (%s), trying raw Patient POST", e2)
-            # Last resort: post raw Patient resource (original Phase 11 approach)
-            response = await fhir_client.request(
-                "POST",
-                "patient-registry-services/api/iti93",
-                json_body=patient_resource,
-                content_type="application/json",
-                accept="application/json",
-            )
+    except CezihError as e:
+        logger.error("PMIR iti93 bundle rejected: %s (message=%s)", type(e).__name__, e.message)
+        # Fallback: try raw Patient resource directly
+        logger.info("Trying raw Patient POST to iti93...")
+        response = await fhir_client.request(
+            "POST",
+            "patient-registry-services/api/iti93",
+            json_body=patient_resource,
+        )
     return {
         "success": True,
         "patient_id": _extract_patient_id(response),
