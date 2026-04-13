@@ -531,12 +531,15 @@ async def sign_bundle_via_extsigner(
     }
 
     # Step 1: Submit document for signing
-    # certpubws.cezih.hr requires VPN — route through agent.
-    # Agent handles auth via mTLS session cookie (same as FHIR endpoints).
-    # No Bearer token needed — extsigner authenticates via mTLS + session.
+    # Extsigner needs signing-specific OAuth token (certpubsso.cezih.hr).
+    # Route through agent for VPN connectivity to certws2:8443.
+    import httpx as _httpx
+    async with _httpx.AsyncClient(timeout=30) as _token_client:
+        signing_token = await _get_signing_token(_token_client)
+
     logger.info(
-        "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes)",
-        signer_oib, len(bundle_json_bytes),
+        "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes, token=%.20s...)",
+        signer_oib, len(bundle_json_bytes), signing_token,
     )
 
     sign_result = await _request_via_agent(
@@ -545,6 +548,7 @@ async def sign_bundle_via_extsigner(
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "Authorization": f"Bearer {signing_token}",
         },
         form_data=None,
         json_body=payload,
@@ -576,10 +580,12 @@ async def sign_bundle_via_extsigner(
         )
 
         try:
+            async with _httpx.AsyncClient(timeout=30) as _tc:
+                signing_token = await _get_signing_token(_tc)
             retrieve_result = await _request_via_agent(
                 method="GET",
                 url=get_url,
-                headers={"Accept": "application/json"},
+                headers={"Accept": "application/json", "Authorization": f"Bearer {signing_token}"},
                 form_data=None,
                 json_body=None,
                 timeout=30,
