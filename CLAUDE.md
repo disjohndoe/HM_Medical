@@ -107,6 +107,30 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 | Phase 15 | DONE | CEZIH exam prep — TC19/20/22 fixes (agent binary transport, PUT method, relatesTo format) (2026-04-13) |
 | Phase 16 | DONE | CEZIH live verification — TC19 + TC22 verified; TC20 + TC11 investigated (2026-04-13) |
 | Phase 17 | DONE | TC20 cancel document — VERIFIED via ITI-65 replace with OID lookup (2026-04-13) |
+| Phase 18 | DONE | E2E production test — all 16 TCs verified on app.hmdigital.hr against real CEZIH (2026-04-13) |
+
+### Phase 18 Details (completed 2026-04-13)
+
+**Full E2E production test on app.hmdigital.hr — all 16 TCs executed in browser against real CEZIH:**
+
+| TC | Action | Result |
+|----|--------|--------|
+| TC6 | Generiraj OID | OID `2.16.840.1.113883.2.7.50.2.1.744367` returned |
+| TC7 | CodeSystem query (djelatnosti-zz) | 200 OK, empty (CEZIH test data limitation) |
+| TC8 | ValueSet expand (nacin-prijema) | 200 OK, 0 pojmova (same limitation) |
+| TC9 | Organization search "HM DIGITAL" | 2 results: HM DIGITAL + HM DIGITAL ordinacija 999001464 |
+| TC9 | Practitioner search "TESTNI55" | TESTNIPREZIME55, HZJZ 7659059, Aktivan |
+| TC10 | MBO 999990260 insurance check | GORAN PACPRIVATNICI19, Aktivan, OIB 99999900187 |
+| TC12 | Nova posjeta (Ostalo, SKZZ) | Created, 6 naše visits (was 5) |
+| TC13 | Izmijeni podatke posjete (1.2) | Reason updated to "TC13 update verified" |
+| TC14 | Zatvori posjetu | Završena, end time 08:38 |
+| TC16 | Novi slučaj J06.9 | Created in CEZIH, Aktivan, manual ICD-10 entry |
+| TC17 | Remisija on J06.9 case | Status → Remisija (then Relaps from CEZIH side) |
+| TC18 | Pošalji nalaz (ITI-65) | Ref 1341900, OID ...744368, Poslan |
+| TC19 | Zamijeni e-Nalaz | Ref 1341900 → superseded, new Ref 1341924, Poslan |
+| TC20 | Storno e-Nalaza | Ref 1341924 → Storniran |
+
+**Zero browser console errors. Zero server errors.**
 
 ### Phase 17 Details (completed 2026-04-13)
 
