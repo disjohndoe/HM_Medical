@@ -271,6 +271,10 @@ async def send_enalaz(
         record.cezih_sent = True
         record.cezih_sent_at = now
         record.cezih_reference_id = ref
+        if encounter_id:
+            record.cezih_encounter_id = encounter_id
+        if case_id:
+            record.cezih_case_id = case_id
         # Persist signature data if returned
         if result.get("signature_data"):
             record.cezih_signature_data = result["signature_data"]
@@ -806,6 +810,11 @@ async def dispatch_replace_document(
                         "ime": patient.ime,
                         "prezime": patient.prezime,
                     }
+            # Restore encounter and case from original send
+            if not encounter_id and record.cezih_encounter_id:
+                encounter_id = record.cezih_encounter_id
+            if not case_id and record.cezih_case_id:
+                case_id = record.cezih_case_id
 
     try:
         result = await real_service.replace_document(

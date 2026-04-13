@@ -30,6 +30,8 @@ class MedicalRecord(BaseTenantModel):
     cezih_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cezih_reference_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     cezih_storno: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    cezih_encounter_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cezih_case_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     cezih_signature_data: Mapped[str | None] = mapped_column(Text, nullable=True)
     cezih_signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sensitivity: Mapped[str] = mapped_column(String(20), nullable=False, server_default="standard")
