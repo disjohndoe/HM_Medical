@@ -884,11 +884,12 @@ async def register_foreigner(
         "focus": [{"reference": f"urn:uuid:{inner_bundle_uuid}"}],
     }
 
-    # Outer Bundle (type=message) per HRRegisterPatient profile
+    # Outer Bundle (type=message) — use IHE base profile, NOT cezih.hr v1.0.1
+    # CEZIH test env rejects v1.0.1 profiles with ERR_EHE_1099 (same as TC19)
     bundle: dict = {
         "resourceType": "Bundle",
         "meta": {
-            "profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRRegisterPatient"],
+            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.Bundle"],
         },
         "type": "message",
         "timestamp": _now_iso(),
