@@ -78,6 +78,12 @@ What needs to be done next...
 |------|------|--------|---------|
 | [TC11-PMIR-auth-blocker.md](TC11-PMIR-auth-blocker.md) | 2026-04-13 | active | TC11 PMIR ITI-93 returns HTML 401 — institution 999001464 likely lacks PMIR permission |
 
+### Terminology
+
+| File | Date | Status | Summary |
+|------|------|--------|---------|
+| [icd10-search-limitation.md](icd10-search-limitation.md) | 2026-04-13 | active | ICD-10 ValueSet/$expand returns empty in test env — manual fallback works, ValueSet URL confirmed correct |
+
 ### Specification Compliance
 
 | File | Date | Status | Summary |

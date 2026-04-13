@@ -116,7 +116,7 @@ export function useInsuranceCheck() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
-      queryClient.invalidateQueries({ queryKey: ["cezih", "patient"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       queryClient.invalidateQueries({ queryKey: ["patients"] })
     },
   })
@@ -146,7 +146,7 @@ export function useSendENalaz() {
       queryClient.invalidateQueries({ queryKey: ["medical-records"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
-      queryClient.invalidateQueries({ queryKey: ["cezih", "patient"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
     },
   })
 }
@@ -159,7 +159,7 @@ export function useSendERecept() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
-      queryClient.invalidateQueries({ queryKey: ["cezih", "patient"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
     },
   })
 }
@@ -170,7 +170,7 @@ export function useCancelERecept() {
     mutationFn: (receptId: string) =>
       api.delete<EReceptStornoResponse>(`/cezih/e-recept/${receptId}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "patient"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
@@ -328,7 +328,7 @@ export function useCreateVisit() {
     mutationFn: (data: CreateVisitRequest) =>
       api.post<VisitResponse>("/cezih/visits", data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "visits"], exact: false })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
@@ -350,7 +350,7 @@ export function useUpdateVisit() {
         diagnosis_case_id, additional_practitioner_id, period_start,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "visits"], exact: false })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
@@ -362,7 +362,7 @@ export function useVisitAction() {
     mutationFn: ({ visitId, action, patientMbo, periodStart }: { visitId: string; action: string; patientMbo: string; periodStart?: string | null }) =>
       api.post<VisitResponse>(`/cezih/visits/${visitId}/action?mbo=${encodeURIComponent(patientMbo)}`, { action, period_start: periodStart || undefined }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "visits"], exact: false })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
@@ -388,7 +388,7 @@ export function useCreateCase() {
     mutationFn: (data: CreateCaseRequest) =>
       api.post<CaseResponse>("/cezih/cases", data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "cases"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "cases"], exact: false })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
@@ -401,7 +401,7 @@ export function useUpdateCaseStatus() {
     mutationFn: ({ caseId, mbo, action }: { caseId: string; mbo: string; action: string }) =>
       api.put<CaseActionResponse>(`/cezih/cases/${caseId}/status?mbo=${encodeURIComponent(mbo)}`, { action }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "cases"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "cases"], exact: false })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
@@ -418,7 +418,7 @@ export function useUpdateCaseData() {
     }) =>
       api.put<CaseActionResponse>(`/cezih/cases/${caseId}/data?mbo=${encodeURIComponent(mbo)}`, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "cases"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "cases"], exact: false })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
@@ -456,7 +456,7 @@ export function useReplaceDocument() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cezih", "documents"] })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "patient"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
   })
@@ -470,7 +470,7 @@ export function useCancelDocument() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cezih", "documents"] })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "patient"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
   })
