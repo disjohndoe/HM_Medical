@@ -42,7 +42,7 @@ What needs to be done next...
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
-| [ERR_DS_1002-signature-debugging.md](ERR_DS_1002-signature-debugging.md) | 2026-04-09 | active | Full history of signature debugging attempts |
+| [ERR_DS_1002-signature-debugging.md](ERR_DS_1002-signature-debugging.md) | 2026-04-09 | resolved | Full history of signature debugging attempts — root cause was POST→GET redirect |
 | [ERR_DS_1002-post-redirect-fix.md](ERR_DS_1002-post-redirect-fix.md) | 2026-04-08 | resolved | POST→GET redirect was the real cause of ERR_DS_1002 |
 
 ### Authentication
@@ -71,6 +71,12 @@ What needs to be done next...
 | [ITI-65-403-blocker.md](ITI-65-403-blocker.md) | 2026-04-10 | resolved | 403 on doc-mhd-svc — wrong bundle type (message vs transaction) — VERIFIED TC18 2026-04-10 |
 | [ITI-65-document-profile.md](ITI-65-document-profile.md) | 2026-04-10 | active | HRMinimalDocumentReference — full profile field requirements, all CEZIHDR-* rules |
 | [TC20-cancel-document-blocker.md](TC20-cancel-document-blocker.md) | 2026-04-13 | resolved | TC20 cancel = ITI-65 replace with OID. entered-in-error rejected; literal refs rejected. VERIFIED 2026-04-13 |
+
+### Patient Registry (PMIR)
+
+| File | Date | Status | Summary |
+|------|------|--------|---------|
+| [TC11-PMIR-auth-blocker.md](TC11-PMIR-auth-blocker.md) | 2026-04-13 | active | TC11 PMIR ITI-93 returns HTML 401 — institution 999001464 likely lacks PMIR permission |
 
 ### Specification Compliance
 

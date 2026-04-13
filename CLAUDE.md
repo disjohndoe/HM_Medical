@@ -273,14 +273,14 @@ Verified TCs:
 - **Certilia Cloud cert: ACTIVE** (udaljeni potpisni certifikat, valid until 26.03.2028.) — signing only, NOT usable for VPN
 - Certilia card certs also active (identifikacijski + potpisni na kartici, valid until 26.03.2029.) — waiting for physical card delivery
 - **OAuth2 token: WORKING** (client_credentials grant via certsso2, needs `/auth/` prefix in URL)
-- **15/22 TCs VERIFIED against real CEZIH** (as of 2026-04-13):
-  - TC3 (OAuth2), TC5 (cloud signing), TC9 (mCSD org+practitioner), TC10 (PDQm patient)
+- **16/22 TCs VERIFIED against real CEZIH** (as of 2026-04-13):
+  - TC3 (OAuth2), TC5 (cloud signing), TC6 (OID lookup), TC9 (mCSD org+practitioner), TC10 (PDQm patient)
   - TC12 (visit create), TC13 (visit update), TC14 (visit close)
   - TC15 (retrieve cases), TC16 (create case), TC17 (case remission)
   - TC18 (send document ITI-65), TC19 (replace document), TC20 (cancel document), TC21 (search documents ITI-67), TC22 (retrieve binary ITI-68)
-- **TC11 (foreigner PMIR): BLOCKED** — HTML 401 from pat-mhd-svc (institution 999001464 likely lacks PMIR permission); documented in `backend/docs/TC11-PMIR-auth-blocker.md`
-- **TC6/7/8:** Work at protocol level (200 OK); TC7/8 return empty results (CEZIH test data limitation)
-- **TC1/2/4:** Auth — exercised implicitly by all other TCs
+- **TC1/2/4:** Auth + signing — exercised implicitly by all other TCs
+- **TC7/8:** CodeSystem/ValueSet sync — 200 OK, empty results (CEZIH test data limitation)
+- **TC11 (foreigner PMIR): BLOCKED** — HTML 401 from pat-mhd-svc (institution 999001464 likely lacks PMIR permission); documented in `docs/CEZIH/findings/TC11-PMIR-auth-blocker.md`
 - **All 22 test cases: IMPLEMENTED** (backend + frontend, production-ready — mock mode removed)
 - **Agent v0.9.0:** Binary transport + PUT method fixes (2026-04-13)
 - **Mock services removed:** CEZIH_MODE eliminated, cezih_service.py deleted, all mock branches removed from dispatcher, schemas cleaned (2026-04-08)
