@@ -72,7 +72,7 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
 
   const handleReplaceDocument = () => {
     if (!record.cezih_reference_id) return
-    replaceDocument.mutate(record.cezih_reference_id, {
+    replaceDocument.mutate({ referenceId: record.cezih_reference_id, record_id: record.id }, {
       onSuccess: () => {
         toast.success("Dokument zamijenjen na CEZIH")
         setConfirmReplace(false)

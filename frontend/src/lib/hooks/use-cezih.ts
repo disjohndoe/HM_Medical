@@ -451,8 +451,8 @@ export function useDocumentSearch(params: {
 export function useReplaceDocument() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (referenceId: string) =>
-      api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}`, {}),
+    mutationFn: ({ referenceId, record_id }: { referenceId: string; record_id?: string }) =>
+      api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}`, record_id ? { record_id } : {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cezih", "documents"] })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
