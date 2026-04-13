@@ -944,11 +944,15 @@ async def register_foreigner(
     ep = "patient-registry-services/api/iti93"
     logger.info("PMIR: POST %s", ep)
     response = await fhir_client.request("POST", ep, json_body=bundle)
-    logger.info("PMIR success on %s", ep)
+    import json as _json_log
+    logger.info("PMIR success on %s — response: %s", ep, _json_log.dumps(response, ensure_ascii=False)[:3000])
+    patient_id = _extract_patient_id(response)
+    mbo = _extract_mbo_from_response(response)
+    logger.info("PMIR extracted: patient_id=%s, mbo=%s", patient_id, mbo)
     return {
         "success": True,
-        "patient_id": _extract_patient_id(response),
-        "mbo": _extract_mbo_from_response(response),
+        "patient_id": patient_id,
+        "mbo": mbo,
     }
 
 
