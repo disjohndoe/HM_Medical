@@ -1165,9 +1165,20 @@ async def replace_document(
     """
     fhir_client = CezihFhirClient(client)
 
+    # Use logical reference (identifier-based) instead of literal reference.
+    # CEZIH requires logical references per their FHIR pitfalls documentation.
+    # The masterIdentifier system uses urn:ietf:rfc:3986 with urn:uuid: or urn:oid: values.
     relates_to = {
         "code": "replaces",
-        "target": {"reference": f"DocumentReference/{original_reference_id}"},
+        "target": {
+            "type": "DocumentReference",
+            "identifier": {
+                "system": "urn:ietf:rfc:3986",
+                "value": f"urn:uuid:{original_reference_id}"
+                if "-" in original_reference_id  # Looks like UUID
+                else original_reference_id,  # Use as-is (might be server ID or OID)
+            },
+        },
     }
 
     bundle_dict, _ = await _build_document_bundle(

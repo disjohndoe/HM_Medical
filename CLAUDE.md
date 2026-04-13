@@ -104,6 +104,20 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 | Phase 12 | DONE | Nalazi/Biljeske separation + CEZIH compliance audit (2026-04-07) |
 | Phase 13 | DONE | Production hardening — mock services removed, CEZIH credentials mandatory (2026-04-08) |
 | Phase 14 | DONE | CEZIH live verification — 12/22 TCs verified against real CEZIH, FHIR compliance fixes (2026-04-11) |
+| Phase 15 | DONE | CEZIH exam prep — TC19/20/22 fixes (agent binary transport, PUT method, relatesTo format) (2026-04-13) |
+
+### Phase 15 Details (completed 2026-04-13)
+
+**Agent fixes (v0.9.0):**
+1. TC22 (Binary retrieval): Fixed `String::from_utf8_lossy` corrupting PDF content — agent now returns `body_bytes` (base64-encoded) for binary responses, `body` (text) for JSON
+2. TC20 (Cancel document PUT): Fixed libcurl method override bug — removed `session.post(true)` that was overriding `custom_request("PUT")` back to POST
+
+**Backend fixes:**
+3. TC19 (Replace document): Changed `relatesTo.target` from literal reference (`DocumentReference/{id}`) to logical reference with identifier (`type: "DocumentReference", identifier: {system, value}`)
+
+**Files changed:**
+- `local-agent/src-tauri/src/websocket.rs` — binary detection + base64 encoding, PUT method fix
+- `backend/app/services/cezih/service.py` — relatesTo logical reference
 
 ### Phase 12 Details (completed 2026-04-07)
 
@@ -193,11 +207,12 @@ Verified TCs:
 11. ICD-10 code search: try ValueSet/$expand + CodeSystem/$lookup, fallback to inline concepts
 12. Manual ICD-10 code entry UI in case-management when CEZIH search returns no results
 
-**Remaining TCs (need on-site investigation):**
-- TC19/20 (replace/cancel doc) — 403 from CEZIH, transaction bundle format needs investigation
-- TC22 (retrieve binary) — binary content transport through WebSocket agent proxy needs work
-- TC6 (OID lookup) — ERR_OID_1000, generateOIDBatch endpoint format mismatch
-- TC7/8 (CodeSystem/ValueSet) — CEZIH terminology server doesn't expose ICD-10 concepts inline
+**Remaining TCs (need live verification):**
+- TC19/20 (replace/cancel doc) — FIXED: PUT method + relatesTo format (2026-04-13), needs verification
+- TC22 (retrieve binary) — FIXED: agent binary transport (2026-04-13), needs verification
+- TC6 (OID lookup) — works in TC18, standalone endpoint untested
+- TC7/8 (CodeSystem/ValueSet) — ICD-10 fallback exists, needs verification
+- TC11 (foreigner PMIR) — implemented, untested
 
 ## Certification Status
 
@@ -216,8 +231,9 @@ Verified TCs:
   - TC12 (visit create), TC13 (visit update), TC14 (visit close)
   - TC15 (retrieve cases), TC16 (create case), TC17 (case remission)
   - TC18 (send document ITI-65), TC21 (search documents ITI-67)
-- **Remaining TCs:** TC19/20 (replace/cancel doc — 403), TC22 (retrieve binary — transport issue), TC6-8 (reference format), TC11 (foreigner — untested)
+- **Remaining TCs:** TC19/20/22 FIXED (2026-04-13) — need live verification; TC6-8/11 need testing only
 - **All 22 test cases: IMPLEMENTED** (backend + frontend, production-ready — mock mode removed)
+- **Agent v0.9.0:** Binary transport + PUT method fixes (2026-04-13)
 - **Mock services removed:** CEZIH_MODE eliminated, cezih_service.py deleted, all mock branches removed from dispatcher, schemas cleaned (2026-04-08)
 - **Document type codes:** HRTipDokumenta 011-013 for privatnici (from Simplifier cezih.hr.cezih-osnova v0.2.9)
 - **ITI-65 architecture:** Transaction bundle (3 entries: SubmissionSet + DocumentReference + Binary), no signing, OID from registry, visit+case linking required
@@ -225,7 +241,7 @@ Verified TCs:
   - `ID_CASE_GLOBAL` = `.../identifikatori/identifikator-slucaja` (Condition.identifier in messages)
   - `ID_CASE_REF` = `.../identifikatori/slucaj` (Encounter.diagnosis case reference)
   - Case status transitions: NO clinicalStatus in message body (event code is sufficient)
-- **Next step:** Fix TC19/20/22, prepare for on-site exam at HZZO Zagreb
+- **Next step:** Deploy agent v0.9.0, verify TC19/20/22 fixes live, test TC6-8/11, schedule on-site exam
 - Unified private provider certification: PENDING on-site test at HZZO Zagreb
 
 ## Deployment

@@ -190,13 +190,14 @@ fn apply_session_defaults(easy: &mut Easy2<CezihCollector>) -> Result<(), String
 }
 
 /// Execute a single CEZIH HTTP request via libcurl. Synchronous — call from spawn_blocking.
+/// Returns raw response bytes to preserve binary content (e.g., PDF documents).
 fn do_cezih_request(
     session: &mut Easy2<CezihCollector>,
     method: &str,
     url: &str,
     headers: &[(String, String)],
     body: Option<&[u8]>,
-) -> Result<(u32, String), String> {
+) -> Result<(u32, Vec<u8>), String> {
     // Reset per-request state, preserve cookies + connections
     session.reset();
     session.get_mut().response_body.clear();
@@ -228,10 +229,11 @@ fn do_cezih_request(
             session.custom_request("DELETE").map_err(|e| e.to_string())?;
         }
         other => {
-            // PUT, PATCH, etc.
+            // PUT, PATCH, etc. — use custom_request + post_fields_copy (WITHOUT post(true)
+            // which would override the method back to POST)
             session.custom_request(other).map_err(|e| e.to_string())?;
             if let Some(b) = body {
-                session.post(true).map_err(|e| e.to_string())?;
+                // post_fields_copy sets body without overriding custom method
                 session.post_fields_copy(b).map_err(|e| e.to_string())?;
             }
         }
@@ -247,11 +249,12 @@ fn do_cezih_request(
     session.perform().map_err(|e| format!("curl: {}", e))?;
 
     let status = session.response_code().map_err(|e| e.to_string())?;
-    let resp = String::from_utf8_lossy(&session.get_ref().response_body).to_string();
+    let resp_bytes = session.get_ref().response_body.clone();
 
     // Diagnostic logging for POST failures (helps debug CEZIH $process-message issues)
-    if method.eq_ignore_ascii_case("POST") && (status >= 400 || resp.starts_with('<') || resp.is_empty()) {
-        warn!("POST {} — status {} — body (first 2000): {}", url, status, &resp[..resp.len().min(2000)]);
+    if method.eq_ignore_ascii_case("POST") && status >= 400 {
+        let resp_preview = String::from_utf8_lossy(&resp_bytes[..resp_bytes.len().min(2000)]);
+        warn!("POST {} — status {} — body (first 2000): {}", url, status, resp_preview);
     }
 
     // Retry when the request hit Keycloak auth instead of the FHIR service.
@@ -259,11 +262,12 @@ fn do_cezih_request(
     // After this failed attempt, the session cookie IS set — retry goes direct.
     // Conditions: 406 (Accept lost), 415 (body sent to auth page), HTML response,
     // empty POST, or response body mentions Keycloak auth path.
-    let resp_has_auth_path = resp.contains("/auth/realms/") || resp.contains("openid-connect");
+    let resp_str = String::from_utf8_lossy(&resp_bytes);
+    let resp_has_auth_path = resp_str.contains("/auth/realms/") || resp_str.contains("openid-connect");
     let should_retry = status == 406
         || status == 415
-        || (resp.starts_with('<') && !resp.is_empty())
-        || (method.eq_ignore_ascii_case("POST") && resp.is_empty() && status < 400)
+        || (resp_str.starts_with('<') && !resp_bytes.is_empty())
+        || (method.eq_ignore_ascii_case("POST") && resp_bytes.is_empty() && status < 400)
         || resp_has_auth_path;
     if should_retry {
         info!("Got {} (redirect/session issue) — retrying with session cookie", status);
@@ -289,7 +293,6 @@ fn do_cezih_request(
             other => {
                 session.custom_request(other).map_err(|e| e.to_string())?;
                 if let Some(b) = body {
-                    session.post(true).map_err(|e| e.to_string())?;
                     session.post_fields_copy(b).map_err(|e| e.to_string())?;
                 }
             }
@@ -297,14 +300,15 @@ fn do_cezih_request(
 
         session.perform().map_err(|e| format!("curl retry: {}", e))?;
         let status = session.response_code().map_err(|e| e.to_string())?;
-        let resp = String::from_utf8_lossy(&session.get_ref().response_body).to_string();
+        let resp_bytes = session.get_ref().response_body.clone();
         if method.eq_ignore_ascii_case("POST") {
-            info!("POST retry — status {} — body (first 200): {}", status, &resp[..resp.len().min(200)]);
+            let preview = String::from_utf8_lossy(&resp_bytes[..resp_bytes.len().min(200)]);
+            info!("POST retry — status {} — body (first 200): {}", status, preview);
         }
-        return Ok((status, resp));
+        return Ok((status, resp_bytes));
     }
 
-    Ok((status, resp))
+    Ok((status, resp_bytes))
 }
 
 /// Handle an HTTP proxy request using in-process libcurl with SChannel mTLS.
@@ -337,14 +341,28 @@ async fn handle_http_proxy(msg: serde_json::Value, session: CezihSession) -> Str
         let mut s = session.lock().map_err(|e| format!("Session lock poisoned: {}", e))?;
         do_cezih_request(&mut s, &method, &url, &hdrs, body_bytes.as_deref())
     }).await {
-        Ok(Ok((status, body))) => {
-            info!("HTTP proxy {} — {} ({} bytes) body: {}", rid, status, body.len(), &body[..body.len().min(2000)]);
+        Ok(Ok((status, body_raw))) => {
+            // Detect if response is valid UTF-8 JSON or binary content
+            let (body_text, body_bytes_b64) = match String::from_utf8(body_raw.clone()) {
+                Ok(s) if s.starts_with('{') || s.starts_with('[') || s.starts_with('<') => {
+                    // Valid UTF-8 text (JSON or HTML/XML error) — return as body
+                    (s, serde_json::Value::Null)
+                }
+                _ => {
+                    // Binary content (PDF, etc.) — base64 encode for transport
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&body_raw);
+                    ("".to_string(), serde_json::Value::String(b64))
+                }
+            };
+            let preview = String::from_utf8_lossy(&body_raw[..body_raw.len().min(500)]);
+            info!("HTTP proxy {} — {} ({} bytes) preview: {}", rid, status, body_raw.len(), preview);
             json!({
                 "type": "http_proxy_response",
                 "request_id": request_id,
                 "status_code": status,
                 "headers": {},
-                "body": body
+                "body": body_text,
+                "body_bytes": body_bytes_b64
             }).to_string()
         }
         Ok(Err(e)) => {
