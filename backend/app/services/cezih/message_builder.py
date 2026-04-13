@@ -375,31 +375,27 @@ async def _add_signature_smartcard(
     practitioner_id: str,
     sign_fn: Any = None,
 ) -> dict[str, Any]:
-    """Sign bundle via agent's smart card (NCrypt JWS signing)."""
+    """Sign bundle via agent's smart card (NCrypt JWS signing).
+
+    Per FHIR R4 spec, the JWS payload is the bundle content EXCLUDING the
+    signature element.  We serialize the bundle without signature, sign that,
+    then add the signature element with the JWS data.
+    """
     import base64 as _base64
     from app.services.agent_connection_manager import agent_manager
     from app.services.cezih.client import current_tenant_id
 
-    # Add signature structure WITH data="" (empty string).
-    bundle["signature"] = {
-        "type": [
-            {
-                "system": SIGNATURE_TYPE_SYSTEM,
-                "code": SIGNATURE_TYPE_CODE,
-            },
-        ],
-        "when": _now_iso(),
-        "who": practitioner_ref(practitioner_id),
-        "data": "",
-    }
+    # Ensure no stale signature is in the bundle before serializing.
+    bundle.pop("signature", None)
 
-    # Serialize bundle to compact JSON (no whitespace, preserve insertion order).
+    # Serialize bundle to compact JSON WITHOUT the signature element.
+    # This is the canonical content that gets signed (FHIR R4 spec).
     bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
     if sign_fn:
         # Test hook — custom sign function
         result = await sign_fn(bundle_json_bytes)
-        bundle["signature"]["data"] = result.get("jws_base64", "")
+        jws_base64 = result.get("jws_base64", "")
     else:
         # Production: use agent's JWS signing (builds JOSE header with x5c + signs)
         tenant_id = current_tenant_id.get()
@@ -422,7 +418,19 @@ async def _add_signature_smartcard(
 
         logger.info("JWS signature: kid=%s, alg=%s, data=%d chars",
                      result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
-        bundle["signature"]["data"] = jws_base64
+
+    # Add the signature element AFTER signing
+    bundle["signature"] = {
+        "type": [
+            {
+                "system": SIGNATURE_TYPE_SYSTEM,
+                "code": SIGNATURE_TYPE_CODE,
+            },
+        ],
+        "when": _now_iso(),
+        "who": practitioner_ref(practitioner_id),
+        "data": jws_base64,
+    }
 
     return bundle
 
