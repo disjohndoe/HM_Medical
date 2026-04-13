@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { useCezihUnsentRecords } from "@/lib/hooks/use-medical-records"
 import { useSendENalaz } from "@/lib/hooks/use-cezih"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -33,9 +34,12 @@ function CheckIcon({ checked }: { checked: boolean }) {
   )
 }
 
+const PAGE_SIZE = 20
+
 export default function CezihNalaziPage() {
   const { canPerformCezihOps } = usePermissions()
-  const { data, isLoading, isError, error } = useCezihUnsentRecords()
+  const [page, setPage] = useState(0)
+  const { data, isLoading, isError, error } = useCezihUnsentRecords(page * PAGE_SIZE, PAGE_SIZE)
   const sendENalaz = useSendENalaz()
   const { tipLabelMap, tipColorMap, isCezihMandatory } = useRecordTypeMaps()
 
@@ -256,6 +260,15 @@ export default function CezihNalaziPage() {
               })}
             </TableBody>
           </Table>
+
+          {data && data.total > 0 && (
+            <TablePagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={data.total}
+              onPageChange={setPage}
+            />
+          )}
         </>
       )}
     </div>

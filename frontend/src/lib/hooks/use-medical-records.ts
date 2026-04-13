@@ -13,16 +13,19 @@ export function useMedicalRecords(
   tip?: string,
   dateFrom?: string,
   dateTo?: string,
+  skip = 0,
+  limit = 20,
 ) {
   const params = new URLSearchParams()
   if (patientId) params.set("patient_id", patientId)
   if (tip) params.set("tip", tip)
   if (dateFrom) params.set("date_from", dateFrom)
   if (dateTo) params.set("date_to", dateTo)
-  params.set("limit", "50")
+  params.set("skip", String(skip))
+  params.set("limit", String(limit))
 
   return useQuery({
-    queryKey: ["medical-records", patientId, tip, dateFrom, dateTo],
+    queryKey: ["medical-records", patientId, tip, dateFrom, dateTo, skip, limit],
     queryFn: () =>
       api.get<PaginatedResponse<MedicalRecord>>(
         `/medical-records?${params.toString()}`
@@ -31,12 +34,12 @@ export function useMedicalRecords(
   })
 }
 
-export function useCezihUnsentRecords() {
+export function useCezihUnsentRecords(skip = 0, limit = 20) {
   return useQuery({
-    queryKey: ["medical-records", "cezih-unsent"],
+    queryKey: ["medical-records", "cezih-unsent", skip, limit],
     queryFn: () =>
       api.get<PaginatedResponse<MedicalRecord>>(
-        "/medical-records?cezih_sent=false&limit=100"
+        `/medical-records?cezih_sent=false&skip=${skip}&limit=${limit}`
       ),
   })
 }

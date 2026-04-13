@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { RecordForm } from "./record-form"
 import { RecordDetail } from "./record-detail"
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
@@ -30,12 +31,15 @@ import { RECORD_SENSITIVITY, RECORD_SENSITIVITY_COLORS } from "@/lib/constants"
 import { formatDateHR } from "@/lib/utils"
 import type { MedicalRecord } from "@/lib/types"
 
+const PAGE_SIZE = 20
+
 interface RecordListProps {
   patientId: string
 }
 
 export function RecordList({ patientId }: RecordListProps) {
   const [tipFilter, setTipFilter] = useState<string>("")
+  const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [viewRecordId, setViewRecordId] = useState<string | null>(null)
   const [editRecord, setEditRecord] = useState<MedicalRecord | null>(null)
@@ -46,6 +50,10 @@ export function RecordList({ patientId }: RecordListProps) {
   const { data, isLoading } = useMedicalRecords(
     patientId,
     tipFilter || undefined,
+    undefined,
+    undefined,
+    page * PAGE_SIZE,
+    PAGE_SIZE,
   )
   const records = (data?.items ?? []).filter((r) => isCezihEligible.has(r.tip))
   const viewRecord = viewRecordId ? records.find((r) => r.id === viewRecordId) ?? null : null
@@ -62,7 +70,7 @@ export function RecordList({ patientId }: RecordListProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Select value={tipFilter} onValueChange={(v) => setTipFilter(v ?? "")}>
+        <Select value={tipFilter} onValueChange={(v) => { setTipFilter(v ?? ""); setPage(0) }}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Svi tipovi">
               {tipFilter ? recordTypes.find((rt) => rt.slug === tipFilter)?.label : undefined}
@@ -167,6 +175,15 @@ export function RecordList({ patientId }: RecordListProps) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {data && data.total > 0 && (
+        <TablePagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={data.total}
+          onPageChange={setPage}
+        />
       )}
 
       <RecordForm

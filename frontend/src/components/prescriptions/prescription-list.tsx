@@ -22,12 +22,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { PrescriptionForm } from "./prescription-form"
 import { PrescriptionDetail } from "./prescription-detail"
 import { usePrescriptions, useSendPrescription, useDeletePrescription } from "@/lib/hooks/use-prescriptions"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { formatDateTimeHR } from "@/lib/utils"
 import type { Prescription } from "@/lib/types"
+
+const PAGE_SIZE = 20
 
 interface PrescriptionListProps {
   patientId: string
@@ -48,6 +51,7 @@ function statusBadge(p: Prescription) {
 
 export function PrescriptionList({ patientId }: PrescriptionListProps) {
   const [statusFilter, setStatusFilter] = useState("")
+  const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [viewId, setViewId] = useState<string | null>(null)
 
@@ -55,6 +59,8 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
   const { data, isLoading } = usePrescriptions(
     patientId,
     statusFilter && statusFilter !== "all" ? statusFilter : undefined,
+    page * PAGE_SIZE,
+    PAGE_SIZE,
   )
   const sendPrescription = useSendPrescription()
   const deletePrescription = useDeletePrescription()
@@ -83,7 +89,7 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "")}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v ?? ""); setPage(0) }}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Svi statusi">
               {statusFilter ? STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label : undefined}
@@ -172,6 +178,15 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
             })}
           </TableBody>
         </Table>
+      )}
+
+      {data && data.total > 0 && (
+        <TablePagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={data.total}
+          onPageChange={setPage}
+        />
       )}
 
       <PrescriptionForm

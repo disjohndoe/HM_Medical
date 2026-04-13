@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { BiljeskaForm } from "./biljeska-form"
 import { BiljeskaDetail } from "./biljeska-detail"
@@ -31,19 +32,22 @@ import { BILJESKA_KATEGORIJA, BILJESKA_KATEGORIJA_COLORS } from "@/lib/constants
 import { formatDateHR } from "@/lib/utils"
 import type { Biljeska } from "@/lib/types"
 
+const PAGE_SIZE = 20
+
 interface BiljeskaListProps {
   patientId: string
 }
 
 export function BiljeskaList({ patientId }: BiljeskaListProps) {
   const [kategorijaFilter, setKategorijaFilter] = useState<string>("")
+  const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [viewBiljeska, setViewBiljeska] = useState<Biljeska | null>(null)
   const [editBiljeska, setEditBiljeska] = useState<Biljeska | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Biljeska | null>(null)
 
   const { canCreateMedicalRecord, canEditMedicalRecord } = usePermissions()
-  const { data, isLoading } = useBiljeske(patientId, kategorijaFilter || undefined)
+  const { data, isLoading } = useBiljeske(patientId, kategorijaFilter || undefined, page * PAGE_SIZE, PAGE_SIZE)
   const deleteMutation = useDeleteBiljeska()
   const biljeske = data?.items ?? []
 
@@ -70,7 +74,7 @@ export function BiljeskaList({ patientId }: BiljeskaListProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Select value={kategorijaFilter} onValueChange={(v) => setKategorijaFilter(v ?? "")}>
+        <Select value={kategorijaFilter} onValueChange={(v) => { setKategorijaFilter(v ?? ""); setPage(0) }}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Sve kategorije">
               {kategorijaFilter ? BILJESKA_KATEGORIJA[kategorijaFilter] : undefined}
@@ -166,6 +170,15 @@ export function BiljeskaList({ patientId }: BiljeskaListProps) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {data && data.total > 0 && (
+        <TablePagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={data.total}
+          onPageChange={setPage}
+        />
       )}
 
       <BiljeskaForm

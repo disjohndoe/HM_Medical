@@ -35,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
+import { TablePagination } from "@/components/shared/table-pagination"
 import {
   usePerformedProcedures,
   useCreatePerformed,
@@ -56,6 +57,8 @@ const performedSchema = z.object({
 
 type PerformedFormData = z.infer<typeof performedSchema>
 
+const PAGE_SIZE = 20
+
 interface PerformedListProps {
   patientId: string
 }
@@ -64,7 +67,8 @@ export function PerformedList({ patientId }: PerformedListProps) {
   const [formOpen, setFormOpen] = useState(false)
   const [predracunOpen, setPredracunOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const { data, isLoading } = usePerformedProcedures(patientId)
+  const [page, setPage] = useState(0)
+  const { data, isLoading } = usePerformedProcedures(patientId, undefined, undefined, undefined, undefined, page * PAGE_SIZE, PAGE_SIZE)
   const { data: proceduresData } = useProcedures(undefined, undefined, 0, 100)
   const { data: recordsData } = useMedicalRecords(patientId)
   const createMutation = useCreatePerformed()
@@ -85,6 +89,10 @@ export function PerformedList({ patientId }: PerformedListProps) {
 
   const procedureId = useWatch({ control, name: "procedure_id" })
   const selectedProcedure = procedures.find((p) => p.id === procedureId)
+
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [page])
 
   useEffect(() => {
     if (formOpen) {
@@ -218,6 +226,15 @@ export function PerformedList({ patientId }: PerformedListProps) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {data && data.total > 0 && (
+        <TablePagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={data.total}
+          onPageChange={setPage}
+        />
       )}
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>

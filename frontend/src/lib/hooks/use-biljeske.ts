@@ -8,14 +8,15 @@ import type {
   PaginatedResponse,
 } from "@/lib/types"
 
-export function useBiljeske(patientId?: string, kategorija?: string) {
+export function useBiljeske(patientId?: string, kategorija?: string, skip = 0, limit = 20) {
   const params = new URLSearchParams()
   if (patientId) params.set("patient_id", patientId)
   if (kategorija) params.set("kategorija", kategorija)
-  params.set("limit", "50")
+  params.set("skip", String(skip))
+  params.set("limit", String(limit))
 
   return useQuery({
-    queryKey: ["biljeske", patientId, kategorija],
+    queryKey: ["biljeske", patientId, kategorija, skip, limit],
     queryFn: () =>
       api.get<PaginatedResponse<Biljeska>>(
         `/biljeske?${params.toString()}`

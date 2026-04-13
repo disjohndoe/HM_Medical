@@ -59,7 +59,7 @@ function parseDetails(details: string | null): Record<string, string> | null {
 }
 
 export function CezihActivityLog() {
-  const { data, isLoading, isError, error } = useCezihActivity(15)
+  const { data, isLoading, isError, error } = useCezihActivity(50)
 
   return (
     <Card>
