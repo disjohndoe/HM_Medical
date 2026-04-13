@@ -531,15 +531,16 @@ async def sign_bundle_via_extsigner(
     }
 
     # Step 1: Submit document for signing
-    # Extsigner needs signing-specific OAuth token (certpubsso.cezih.hr).
-    # Route through agent for VPN connectivity to certws2:8443.
+    # Extsigner on certws2:8443 uses the FHIR OAuth token (certsso2, same as visits/cases).
+    from app.services.cezih.oauth import get_oauth_token
+    from app.services.cezih.client import current_tenant_id
     import httpx as _httpx
     async with _httpx.AsyncClient(timeout=30) as _token_client:
-        signing_token = await _get_signing_token(_token_client)
+        fhir_token = await get_oauth_token(client=_token_client, tenant_id=current_tenant_id.get())
 
     logger.info(
         "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes, token=%.20s...)",
-        signer_oib, len(bundle_json_bytes), signing_token,
+        signer_oib, len(bundle_json_bytes), fhir_token,
     )
 
     sign_result = await _request_via_agent(
@@ -548,7 +549,7 @@ async def sign_bundle_via_extsigner(
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "Authorization": f"Bearer {signing_token}",
+            "Authorization": f"Bearer {fhir_token}",
         },
         form_data=None,
         json_body=payload,
@@ -581,11 +582,11 @@ async def sign_bundle_via_extsigner(
 
         try:
             async with _httpx.AsyncClient(timeout=30) as _tc:
-                signing_token = await _get_signing_token(_tc)
+                fhir_token = await get_oauth_token(client=_tc, tenant_id=current_tenant_id.get())
             retrieve_result = await _request_via_agent(
                 method="GET",
                 url=get_url,
-                headers={"Accept": "application/json", "Authorization": f"Bearer {signing_token}"},
+                headers={"Accept": "application/json", "Authorization": f"Bearer {fhir_token}"},
                 form_data=None,
                 json_body=None,
                 timeout=30,
