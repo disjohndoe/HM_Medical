@@ -912,9 +912,10 @@ async def register_foreigner(
                 "data": "",
             }
 
-    # Submit via $process-message
-    response = await fhir_client.process_message(
-        "patient-registry-services/api/v1", bundle,
+    # Submit to the PMIR ITI-93 endpoint (confirmed from CEZIH URL list)
+    response = await fhir_client.post(
+        "patient-registry-services/api/iti93",
+        json_body=bundle,
     )
     return {
         "success": True,
