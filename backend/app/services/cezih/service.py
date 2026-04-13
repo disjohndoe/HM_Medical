@@ -948,11 +948,12 @@ async def register_foreigner(
     logger.info("PMIR success on %s — response: %s", ep, _json_log.dumps(response, ensure_ascii=False)[:3000])
     patient_id = _extract_patient_id(response)
     mbo = _extract_mbo_from_response(response)
-    logger.info("PMIR extracted: patient_id=%s, mbo=%s", patient_id, mbo)
+    cezih_patient_id = _extract_cezih_patient_identifier(response)
+    logger.info("PMIR extracted: patient_id=%s, mbo=%s, cezih_id=%s", patient_id, mbo, cezih_patient_id)
     return {
         "success": True,
         "patient_id": patient_id,
-        "mbo": mbo,
+        "mbo": mbo or cezih_patient_id,  # foreigners get unique ID instead of MBO
     }
 
 
@@ -986,6 +987,28 @@ def _find_mbo_in_identifiers(identifiers: list) -> str:
     for ident in identifiers:
         if ident.get("system") and "MBO" in ident["system"].upper():
             return ident.get("value", "")
+    return ""
+
+
+def _extract_cezih_patient_identifier(response: dict) -> str:
+    """Extract CEZIH unique patient identifier from PMIR response.
+
+    Foreigners don't get MBO — they get 'jedinstveni-identifikator-pacijenta'.
+    """
+    def _find_in_identifiers(identifiers: list) -> str:
+        for ident in identifiers:
+            sys = ident.get("system", "")
+            if "jedinstveni-identifikator" in sys:
+                return ident.get("value", "")
+        return ""
+
+    if response.get("resourceType") == "Patient":
+        return _find_in_identifiers(response.get("identifier", []))
+    if response.get("resourceType") == "Bundle":
+        for entry in response.get("entry", []):
+            resource = entry.get("resource", {})
+            if resource.get("resourceType") == "Patient":
+                return _find_in_identifiers(resource.get("identifier", []))
     return ""
 
 
