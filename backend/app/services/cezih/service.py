@@ -858,11 +858,9 @@ async def register_foreigner(
     patient_resource["address"] = [{"country": country}]
 
     # Inner Bundle (type=history) wrapping the Patient per IHE PMIR spec
+    # NO meta.profile — CEZIH test env rejects external profiles with ERR_EHE_1099
     inner_bundle = {
         "resourceType": "Bundle",
-        "meta": {
-            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.Bundle.History"],
-        },
         "type": "history",
         "entry": [{
             "fullUrl": f"urn:uuid:{patient_uuid}",
@@ -872,7 +870,7 @@ async def register_foreigner(
         }],
     }
 
-    # MessageHeader per HRRegisterPatient profile (CEZIH-specific, not IHE base)
+    # MessageHeader — minimal, same pattern as working visit/case messages
     source_endpoint = f"urn:oid:{source_oid}" if source_oid else f"urn:oid:{org_code}" if org_code else "urn:oid:2.16.840.1.113883.2.7"
     message_header = {
         "resourceType": "MessageHeader",
@@ -884,13 +882,9 @@ async def register_foreigner(
         "focus": [{"reference": f"urn:uuid:{inner_bundle_uuid}"}],
     }
 
-    # Outer Bundle (type=message) — use IHE base profile, NOT cezih.hr v1.0.1
-    # CEZIH test env rejects v1.0.1 profiles with ERR_EHE_1099 (same as TC19)
+    # Outer Bundle (type=message) — NO meta.profile to avoid ERR_EHE_1099
     bundle: dict = {
         "resourceType": "Bundle",
-        "meta": {
-            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.Bundle"],
-        },
         "type": "message",
         "timestamp": _now_iso(),
         "entry": [
@@ -899,7 +893,7 @@ async def register_foreigner(
         ],
     }
 
-    # Digital signature is REQUIRED (Bundle.signature min=1)
+    # Digital signature — try real signing, fallback to placeholder
     if practitioner_id:
         try:
             bundle = await add_signature(bundle, practitioner_id, http_client=client)
@@ -911,23 +905,32 @@ async def register_foreigner(
                 "who": practitioner_ref(practitioner_id),
                 "data": "placeholder",
             }
-    else:
-        # Signature is mandatory — add placeholder even without practitioner
-        bundle["signature"] = {
-            "type": [{"system": SIGNATURE_TYPE_SYSTEM, "code": SIGNATURE_TYPE_CODE}],
-            "when": _now_iso(),
-            "who": {"type": "Practitioner"},
-            "data": "placeholder",
-        }
 
-    # Submit to PMIR ITI-93 endpoint (CEZIH URL list row 18)
-    # Try application/fhir+json first — 415 error we got before was likely due
-    # to wrong bundle structure, not wrong content-type
-    response = await fhir_client.request(
-        "POST",
-        "patient-registry-services/api/iti93",
-        json_body=bundle,
-    )
+    # Submit to PMIR ITI-93 endpoint
+    # Try $process-message first (standard FHIR messaging pattern for PMIR),
+    # fallback to direct POST to iti93
+    try:
+        response = await fhir_client.process_message(
+            "patient-registry-services/api/v1", bundle,
+        )
+    except Exception as e1:
+        logger.warning("PMIR $process-message failed (%s), trying direct iti93 POST", e1)
+        try:
+            response = await fhir_client.request(
+                "POST",
+                "patient-registry-services/api/iti93",
+                json_body=bundle,
+            )
+        except Exception as e2:
+            logger.warning("PMIR iti93 bundle failed (%s), trying raw Patient POST", e2)
+            # Last resort: post raw Patient resource (original Phase 11 approach)
+            response = await fhir_client.request(
+                "POST",
+                "patient-registry-services/api/iti93",
+                json_body=patient_resource,
+                content_type="application/json",
+                accept="application/json",
+            )
     return {
         "success": True,
         "patient_id": _extract_patient_id(response),
