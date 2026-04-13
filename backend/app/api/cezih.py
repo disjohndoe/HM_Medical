@@ -523,14 +523,19 @@ async def register_foreigner(
     if result.get("success"):
         spol_map = {"male": "M", "female": "Z"}
         dob = date.fromisoformat(data.datum_rodjenja) if data.datum_rodjenja else None
+        # MBO is varchar(9) — foreigners get a longer unique ID instead.
+        # Store MBO only if it fits (9 digits); put CEZIH ID in napomena.
+        cezih_id = result.get("mbo", "")
+        mbo = cezih_id if len(cezih_id) <= 9 else None
+        napomena = f"CEZIH PMIR: {cezih_id}" if cezih_id else "Registriran putem CEZIH PMIR"
         patient = Patient(
             tenant_id=current_user.tenant_id,
             ime=data.ime,
             prezime=data.prezime,
             datum_rodjenja=dob,
             spol=spol_map.get(data.spol),
-            mbo=result.get("mbo"),
-            napomena="Registriran putem CEZIH PMIR",
+            mbo=mbo,
+            napomena=napomena,
         )
         db.add(patient)
         await db.flush()
