@@ -877,12 +877,11 @@ async def register_foreigner(
         "address": [{"country": country}],
     }
 
-    # Inner Bundle (type=history) — IHE PMIR profile on meta
+    # Inner Bundle (type=history).
+    # NOTE: working encounters use NO meta.profile on individual resources.
+    # CEZIH knows expected profiles from the StructureDefinition, not meta.profile.
     inner_bundle = {
         "resourceType": "Bundle",
-        "meta": {
-            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.Bundle.History"],
-        },
         "type": "history",
         "entry": [{
             "fullUrl": f"urn:uuid:{patient_uuid}",
@@ -896,9 +895,6 @@ async def register_foreigner(
     source_endpoint = f"urn:oid:{source_oid}" if source_oid else f"urn:oid:{org_code}" if org_code else "urn:oid:2.16.840.1.113883.2.7"
     message_header = {
         "resourceType": "MessageHeader",
-        "meta": {
-            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.MessageHeader"],
-        },
         "eventUri": "urn:ihe:iti:pmir:2019:patient-feed",
         "destination": [{"endpoint": "http://cezih.hr/pmir"}],
         "sender": org_ref(org_code) if org_code else {"type": "Organization"},
