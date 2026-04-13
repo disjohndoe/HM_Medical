@@ -531,30 +531,25 @@ async def sign_bundle_via_extsigner(
     }
 
     # Step 1: Submit document for signing
-    # certpubws.cezih.hr is PUBLIC — request directly from backend, no agent/VPN needed.
-    # Uses signing-specific OAuth token from certpubsso.cezih.hr.
-    import httpx as _httpx
-    async with _httpx.AsyncClient(timeout=30) as _sign_client:
-        signing_token = await _get_signing_token(_sign_client)
+    # certpubws.cezih.hr requires VPN — route through agent.
+    # Agent handles auth via mTLS session cookie (same as FHIR endpoints).
+    # No Bearer token needed — extsigner authenticates via mTLS + session.
+    logger.info(
+        "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes)",
+        signer_oib, len(bundle_json_bytes),
+    )
 
-        logger.info(
-            "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes)",
-            signer_oib, len(bundle_json_bytes),
-        )
-
-        sign_response = await _sign_client.post(
-            sign_url,
-            json=payload,
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {signing_token}",
-            },
-        )
-        logger.info("CEZIH extsigner step 1 response: %d (%.1fms)", sign_response.status_code, sign_response.elapsed.total_seconds() * 1000)
-        if sign_response.status_code >= 400:
-            logger.warning("CEZIH extsigner error body: %s", sign_response.text[:2000])
-            raise CezihSigningError(f"Extsigner sign failed: HTTP {sign_response.status_code}")
-        sign_result = sign_response.json()
+    sign_result = await _request_via_agent(
+        method="POST",
+        url=sign_url,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        form_data=None,
+        json_body=payload,
+        timeout=30,
+    )
 
     transaction_code = sign_result.get("transactionCode", "")
     if not transaction_code:
@@ -581,17 +576,14 @@ async def sign_bundle_via_extsigner(
         )
 
         try:
-            # Direct request to public certpubws — no agent needed
-            async with _httpx.AsyncClient(timeout=30) as _poll_client:
-                signing_token = await _get_signing_token(_poll_client)
-                poll_response = await _poll_client.get(
-                    get_url,
-                    headers={"Accept": "application/json", "Authorization": f"Bearer {signing_token}"},
-                )
-            if poll_response.status_code >= 400:
-                error_text = poll_response.text[:500]
-                raise CezihSigningError(f"Extsigner retrieve: HTTP {poll_response.status_code} — {error_text}")
-            retrieve_result = poll_response.json()
+            retrieve_result = await _request_via_agent(
+                method="GET",
+                url=get_url,
+                headers={"Accept": "application/json"},
+                form_data=None,
+                json_body=None,
+                timeout=30,
+            )
         except CezihSigningError as e:
             err_str = str(e)
             # ERROR_CODE_0022 = "not ready yet" (phase=HASH_SENT, waiting for Certilia approval)
