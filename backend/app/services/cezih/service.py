@@ -814,15 +814,18 @@ async def register_foreigner(
 ) -> dict:
     """Register a foreigner in CEZIH (PMIR ITI-93).
 
-    Per HRRegisterPatient profile (cezih.hr.cezih-osnova v1.0.1):
-    - Outer Bundle (type=message) with MessageHeader + inner Bundle
-    - Inner Bundle (type=history, IHE.PMIR.Bundle.History) with Patient entry
-    - Patient has address.country, active=true, name.use=official
-    - Digital signature is REQUIRED on outer Bundle
+    Built to match official Simplifier example (Bundle-register-patient-example.json)
+    from cezih.hr.cezih-osnova v1.0.1 EXACTLY:
+    - Outer Bundle: meta.profile=HRRegisterPatient, type=message, plain UUID fullUrls
+    - MessageHeader: meta.profile=IHE.PMIR.MessageHeader, eventUri=patient-feed
+    - Inner Bundle: meta.profile=IHE.PMIR.Bundle.History, type=history
+    - Patient: urn:uuid: fullUrl, identifiers (putovnica+europska-kartica), address.country
+    - Digital signature is REQUIRED (min=1) — NO placeholder fallback
     """
     import uuid as _uuid
 
     fhir_client = CezihFhirClient(client)
+    # Plain UUIDs for outer entries (matching official example), urn:uuid: for inner Patient
     patient_uuid = str(_uuid.uuid4())
     inner_bundle_uuid = str(_uuid.uuid4())
     header_uuid = str(_uuid.uuid4())
@@ -841,7 +844,7 @@ async def register_foreigner(
         "identifier": [],
     }
 
-    # Identifiers: passport and/or EHIC (europska-kartica — correct system)
+    # Identifiers: passport and/or EHIC (closed slicing, max=2)
     if patient_data.get("broj_putovnice"):
         patient_resource["identifier"].append({
             "system": "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica",
@@ -853,14 +856,16 @@ async def register_foreigner(
             "value": patient_data["ehic_broj"],
         })
 
-    # address.country is required — ISO 3166-1 alpha-3
+    # address.country is required — ISO 3166-1 alpha-3 (ValueSet/drzave binding)
     country = patient_data.get("drzavljanstvo") or "HRV"
     patient_resource["address"] = [{"country": country}]
 
-    # Inner Bundle (type=history) wrapping the Patient per IHE PMIR spec
-    # NO meta.profile — CEZIH test env rejects external profiles with ERR_EHE_1099
+    # Inner Bundle (type=history) — IHE PMIR profile on meta
     inner_bundle = {
         "resourceType": "Bundle",
+        "meta": {
+            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.Bundle.History"],
+        },
         "type": "history",
         "entry": [{
             "fullUrl": f"urn:uuid:{patient_uuid}",
@@ -870,46 +875,41 @@ async def register_foreigner(
         }],
     }
 
-    # MessageHeader — minimal, same pattern as working visit/case messages
+    # MessageHeader — IHE PMIR profile, matching official example field order
     source_endpoint = f"urn:oid:{source_oid}" if source_oid else f"urn:oid:{org_code}" if org_code else "urn:oid:2.16.840.1.113883.2.7"
     message_header = {
         "resourceType": "MessageHeader",
+        "meta": {
+            "profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.MessageHeader"],
+        },
         "eventUri": "urn:ihe:iti:pmir:2019:patient-feed",
-        "destination": [{"endpoint": "http://cezih.hr"}],
+        "destination": [{"endpoint": "http://cezih.hr/pmir"}],
         "sender": org_ref(org_code) if org_code else {"type": "Organization"},
         "author": practitioner_ref(practitioner_id) if practitioner_id else {"type": "Practitioner"},
         "source": {"endpoint": source_endpoint},
-        "focus": [{"reference": f"urn:uuid:{inner_bundle_uuid}"}],
+        "focus": [{"reference": inner_bundle_uuid}],
     }
 
-    # Outer Bundle (type=message) — NO meta.profile to avoid ERR_EHE_1099
+    # Outer Bundle — HRRegisterPatient profile, plain UUID fullUrls (matching example)
     bundle: dict = {
         "resourceType": "Bundle",
+        "id": str(_uuid.uuid4()),
+        "meta": {
+            "profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRRegisterPatient"],
+        },
         "type": "message",
         "timestamp": _now_iso(),
         "entry": [
-            {"fullUrl": f"urn:uuid:{header_uuid}", "resource": message_header},
-            {"fullUrl": f"urn:uuid:{inner_bundle_uuid}", "resource": inner_bundle},
+            {"fullUrl": header_uuid, "resource": message_header},
+            {"fullUrl": inner_bundle_uuid, "resource": inner_bundle},
         ],
     }
 
-    # Digital signature — try real signing, fallback to placeholder
-    if practitioner_id:
-        try:
-            bundle = await add_signature(bundle, practitioner_id, http_client=client)
-        except Exception as e:
-            logger.warning("PMIR signing failed, adding placeholder: %s", e)
-            bundle["signature"] = {
-                "type": [{"system": SIGNATURE_TYPE_SYSTEM, "code": SIGNATURE_TYPE_CODE}],
-                "when": _now_iso(),
-                "who": practitioner_ref(practitioner_id),
-                "data": "placeholder",
-            }
+    # Digital signature — REQUIRED (min=1), no placeholder fallback
+    # If signing fails, let the error propagate (same pattern as visit/case signing)
+    bundle = await add_signature(bundle, practitioner_id, http_client=client)
 
     # Submit to PMIR ITI-93 endpoint (CEZIH URL list row 18)
-    # NOTE: CEZIH gateway returns 415 with path="/auth/realms/CEZIH/..." for ALL
-    # PMIR endpoints — the request never reaches the FHIR service. This means
-    # PMIR is not routed for institution 999001464. Needs HZZO activation.
     response = await fhir_client.request(
         "POST",
         "patient-registry-services/api/iti93",
