@@ -1233,14 +1233,17 @@ async def replace_document(
 ) -> dict:
     """Replace a clinical document (TC19, ITI-65 transaction bundle with relatesTo).
 
-    Uses HRExternalMinimalProvideDocumentBundle profile (for replace/update operations).
-    relatesTo.target uses logical identifier reference with the original document's OID
-    if available, otherwise falls back to literal server-assigned ID reference.
+    relatesTo.target uses logical identifier reference with the original document's OID.
+    CEZIH resolves relatesTo by OID (masterIdentifier), NOT by server-assigned numeric ID.
     """
     fhir_client = CezihFhirClient(client)
 
-    # Build relatesTo with logical OID reference if we have the original OID,
-    # otherwise use literal reference (server-assigned numeric ID)
+    # Look up document OID from CEZIH if not provided
+    if not original_document_oid and patient_data.get("mbo"):
+        original_document_oid = await _lookup_document_oid(
+            fhir_client, original_reference_id, patient_data["mbo"],
+        )
+
     if original_document_oid:
         oid_value = original_document_oid if original_document_oid.startswith("urn:oid:") else f"urn:oid:{original_document_oid}"
         relates_to = {
@@ -1292,6 +1295,59 @@ async def replace_document(
 # ============================================================
 
 
+async def _lookup_document_oid(
+    fhir_client: "CezihFhirClient",
+    reference_id: str,
+    patient_mbo: str,
+) -> str:
+    """Look up a document's OID from CEZIH via ITI-67 search.
+
+    CEZIH content_url contains base64-encoded data param with the OID:
+    documentUniqueId=urn:ietf:rfc:3986|urn:oid:2.16.840.1.113883.2.7.50.2.1.XXXXXX
+    """
+    import base64
+    from urllib.parse import parse_qs, urlparse
+
+    try:
+        params = {
+            "patient.identifier": f"{SYS_MBO}|{patient_mbo}",
+            "status": "current",
+        }
+        response = await fhir_client.get("doc-mhd-svc/api/v1/DocumentReference", params=params)
+        for entry in response.get("entry", []):
+            doc_ref = entry.get("resource", {})
+            if doc_ref.get("id") == reference_id:
+                # Extract OID from content_url base64 data param
+                for content in doc_ref.get("content", []):
+                    url = content.get("attachment", {}).get("url", "")
+                    if not url:
+                        continue
+                    parsed = urlparse(url)
+                    qs = parse_qs(parsed.query)
+                    data_val = qs.get("data", [""])[0]
+                    if data_val:
+                        decoded = base64.b64decode(data_val).decode("utf-8", errors="replace")
+                        # Format: documentUniqueId=urn:ietf:rfc:3986|urn:oid:X.X.X&position=0
+                        for part in decoded.split("&"):
+                            if part.startswith("documentUniqueId="):
+                                uid = part.split("=", 1)[1]
+                                # Extract the urn:oid: part after the pipe
+                                if "|" in uid:
+                                    oid = uid.split("|", 1)[1]
+                                    logger.info("TC20: Resolved OID for document %s: %s", reference_id, oid)
+                                    return oid
+                # Fallback: check masterIdentifier directly
+                master_id = doc_ref.get("masterIdentifier", {})
+                val = master_id.get("value", "")
+                if val.startswith("urn:oid:"):
+                    logger.info("TC20: Found OID from masterIdentifier for %s: %s", reference_id, val)
+                    return val
+    except Exception as e:
+        logger.warning("TC20: OID lookup failed for document %s: %s", reference_id, e)
+
+    return ""
+
+
 async def cancel_document(
     client: httpx.AsyncClient,
     reference_id: str,
@@ -1310,12 +1366,18 @@ async def cancel_document(
     status=entered-in-error. Posts a new DocumentReference that replaces the
     original with entered-in-error status — standard IHE MHD document deprecation.
 
-    Previous failed approaches used wrong relatesTo format (literal ref instead of
-    logical OID) or non-existent FHIR base REST endpoints (PATCH/DELETE → 404).
+    CEZIH resolves relatesTo.target by OID (masterIdentifier), NOT by server-assigned
+    numeric ID. We look up the OID via ITI-67 search if not provided.
     """
     fhir_client = CezihFhirClient(client)
 
-    # Build relatesTo with logical OID reference (same format as TC19 replace)
+    # Look up document OID from CEZIH if not provided — CEZIH needs OID for relatesTo
+    if not original_document_oid and patient_data.get("mbo"):
+        original_document_oid = await _lookup_document_oid(
+            fhir_client, reference_id, patient_data["mbo"],
+        )
+
+    # Build relatesTo with logical OID reference (CEZIH requires OID, not numeric ID)
     if original_document_oid:
         oid_value = original_document_oid if original_document_oid.startswith("urn:oid:") else f"urn:oid:{original_document_oid}"
         relates_to = {
@@ -1329,6 +1391,7 @@ async def cancel_document(
             },
         }
     else:
+        logger.warning("TC20: No OID found for document %s — falling back to literal reference", reference_id)
         relates_to = {
             "code": "replaces",
             "target": {
