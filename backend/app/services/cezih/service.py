@@ -1215,98 +1215,39 @@ async def cancel_document(
 ) -> dict:
     """Cancel/storno a clinical document (TC20).
 
-    Strategy: ITI-65 transaction bundle where the DocumentReference entry uses
-    request.method=PUT targeting DocumentReference/{id} with status=entered-in-error.
-    Direct RESTful PUT returns 405 (CEZIH does not support standalone PUT).
+    Strategy: ITI-65 transaction bundle (same structure as TC18/TC19) — POST a new
+    DocumentReference with status=entered-in-error and relatesTo.code=replaces pointing
+    to the original. CEZIH's iti-65-service rejects PUT entries (403); only POST entries
+    are accepted.
     """
-    import uuid as _uuid
-    import base64
-
     fhir_client = CezihFhirClient(client)
 
-    # Generate OID for the SubmissionSet
-    oid_response = await fhir_client.post(
-        "identifier-registry-services/api/v1/oid/generateOIDBatch",
-        json_body={"oidType": {"system": "http://ent.hr/fhir/CodeSystem/ehe-oid-types", "code": "1"}, "quantity": 1},
+    # Build the same ITI-65 bundle as TC18/TC19 using a minimal storno record
+    storno_record_data = {
+        "tip": "nalaz",
+        "sadrzaj": f"Storno dokumenta {reference_id}",
+    }
+    relates_to = {
+        "code": "replaces",
+        "target": {"reference": f"DocumentReference/{reference_id}"},
+    }
+
+    bundle_dict, _ = await _build_document_bundle(
+        fhir_client, patient_data or {}, storno_record_data,
+        practitioner_id=practitioner_id, org_code=org_code,
+        encounter_id=encounter_id, case_id=case_id,
+        practitioner_name=practitioner_name,
+        relates_to=relates_to,
     )
-    oid_list = oid_response.get("oid", []) if isinstance(oid_response, dict) else []
-    submission_oid = oid_list[0] if oid_list else f"2.16.840.1.113883.2.7.50.2.1.{_uuid.uuid4().int >> 64}"
 
-    submission_uuid = str(_uuid.uuid4())
-    submission_unique = str(_uuid.uuid4())
-    doc_entry_uuid = str(_uuid.uuid4())
-    now_ts = datetime.now(UTC).isoformat()
+    # Change the new DocumentReference status to entered-in-error (cancel semantics)
+    for entry in bundle_dict.get("entry", []):
+        resource = entry.get("resource", {})
+        if resource.get("resourceType") == "DocumentReference":
+            resource["status"] = "entered-in-error"
+            break
 
-    mbo = (patient_data or {}).get("mbo", "")
-    display_name = f"{(patient_data or {}).get('ime', '')} {(patient_data or {}).get('prezime', '')}".strip()
-
-    context: dict = {
-        "period": {"start": now_ts, "end": now_ts},
-        "practiceSetting": {
-            "coding": [{"system": "http://fhir.cezih.hr/specifikacije/CodeSystem/djelatnosti-zz",
-                         "code": "1010000", "display": "Opća/obiteljska medicina"}]
-        },
-    }
-    if encounter_id:
-        context["encounter"] = [{"type": "Encounter", "identifier": {
-            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-posjete",
-            "value": encounter_id}}]
-    if case_id:
-        context["related"] = [{"type": "Condition", "identifier": {
-            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-slucaja",
-            "value": case_id}}]
-
-    submission_set = {
-        "resourceType": "List",
-        "meta": {"profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalSubmissionSet"]},
-        "identifier": [
-            {"use": "official", "system": "urn:ietf:rfc:3986", "value": f"urn:uuid:{submission_unique}"},
-            {"use": "usual", "system": "urn:ietf:rfc:3986", "value": f"urn:uuid:{submission_uuid}"},
-        ],
-        "status": "current", "mode": "working",
-        "code": {"coding": [{"system": "https://profiles.ihe.net/ITI/MHD/CodeSystem/MHDlistTypes", "code": "submissionset"}]},
-        "date": now_ts,
-        "subject": {"type": "Patient", "identifier": {"system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO", "value": mbo}, "display": display_name},
-        "source": {"type": "Practitioner", "identifier": {"system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika", "value": practitioner_id or ""}},
-        "extension": [
-            {"url": "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-sourceId", "valueIdentifier": {"system": "urn:ietf:rfc:3986", "value": f"urn:oid:{org_code}"}},
-            {"url": "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-authorOrg", "valueReference": {"type": "Organization", "identifier": {"system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije", "value": org_code}}},
-        ],
-        "entry": [{"item": {"reference": f"urn:uuid:{doc_entry_uuid}"}}],
-    }
-
-    doc_ref: dict = {
-        "resourceType": "DocumentReference",
-        "id": reference_id,
-        "meta": {"profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HR.MinimalDocumentReference"]},
-        "masterIdentifier": {"use": "usual", "system": "urn:ietf:rfc:3986", "value": f"urn:oid:{submission_oid}"},
-        "identifier": [{"use": "official", "system": "urn:ietf:rfc:3986", "value": f"urn:uuid:{_uuid.uuid4()}"}],
-        "status": "entered-in-error",
-        "subject": {"type": "Patient", "identifier": {"system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO", "value": mbo}, "display": display_name},
-        "date": now_ts,
-        "author": [
-            {"type": "Practitioner", "identifier": {"system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika", "value": practitioner_id or ""}, "display": practitioner_name},
-            {"type": "Organization", "identifier": {"system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije", "value": org_code}},
-        ],
-        "authenticator": {"type": "Practitioner", "identifier": {"system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika", "value": practitioner_id or ""}, "display": practitioner_name},
-        "custodian": {"identifier": {"system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije", "value": org_code}, "display": f"Ustanova {org_code}"},
-        "context": context,
-        "content": [{"attachment": {"contentType": "text/plain", "language": "hr-HR", "url": f"urn:uuid:{_uuid.uuid4()}"}}],
-    }
-
-    bundle = {
-        "resourceType": "Bundle",
-        "id": str(_uuid.uuid4()),
-        "meta": {"profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalProvideDocumentBundle"]},
-        "type": "transaction",
-        "timestamp": now_ts,
-        "entry": [
-            {"fullUrl": f"urn:uuid:{submission_uuid}", "resource": submission_set, "request": {"method": "POST", "url": "List"}},
-            {"fullUrl": f"urn:uuid:{doc_entry_uuid}", "resource": doc_ref, "request": {"method": "PUT", "url": f"DocumentReference/{reference_id}"}},
-        ],
-    }
-
-    await fhir_client.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle)
+    await fhir_client.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle_dict)
     return {"success": True, "reference_id": reference_id, "status": "entered-in-error"}
 
 
