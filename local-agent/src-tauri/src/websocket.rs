@@ -675,12 +675,14 @@ pub fn spawn_connection_task(
 
                                                     let response = match result {
                                                         Ok(Ok(info)) => {
-                                                            info!("Cert info OK: kid={:.16}, alg={}", info.kid, info.algorithm);
+                                                            let cert_b64 = base64::engine::general_purpose::STANDARD.encode(&info.cert_der);
+                                                            info!("Cert info OK: kid={:.16}, alg={}, cert_der={} bytes", info.kid, info.algorithm, info.cert_der.len());
                                                             json!({
                                                                 "type": "get_cert_info_response",
                                                                 "request_id": &rid,
                                                                 "kid": info.kid,
                                                                 "algorithm": info.algorithm,
+                                                                "cert_der_base64": cert_b64,
                                                             })
                                                         }
                                                         Ok(Err(e)) => {

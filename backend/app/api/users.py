@@ -1,7 +1,8 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.plan_enforcement import check_user_limit
@@ -14,6 +15,56 @@ from app.utils.pagination import PaginatedResponse
 from app.utils.security import hash_password
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+_CARD_CONFLICT_DETAIL = (
+    "Ova kartica je već povezana s drugim korisnikom. "
+    "Prethodni korisnik mora odspojiti karticu prije povezivanja."
+)
+
+
+async def _assert_card_unique(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    card_holder_name: str | None,
+    card_certificate_serial: str | None,
+) -> None:
+    """Ensure no other active user holds this card (by serial OR normalized name)."""
+    conditions = []
+    if card_certificate_serial:
+        conditions.append(User.card_certificate_serial == card_certificate_serial)
+    if card_holder_name:
+        conditions.append(
+            func.upper(func.trim(User.card_holder_name))
+            == card_holder_name.strip().upper()
+        )
+    if not conditions:
+        return
+    result = await db.execute(
+        select(User.id).where(
+            or_(*conditions),
+            User.id != user_id,
+            User.is_active.is_(True),
+        ).limit(1)
+    )
+    if result.first():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_CARD_CONFLICT_DETAIL,
+        )
+
+
+async def _flush_or_conflict(db: AsyncSession) -> None:
+    """Commit card-binding changes, mapping unique-index violations to 409."""
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_CARD_CONFLICT_DETAIL,
+        )
 
 
 @router.get("/doctors", response_model=PaginatedResponse[UserRead])
@@ -101,22 +152,17 @@ async def self_bind_card(
     if not conn:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kartica nije umetnuta ni u jednom agentu")
 
-    # If card is bound to another user in this tenant, reassign it
-    existing = await db.execute(
-        select(User).where(
-            User.tenant_id == current_user.tenant_id,
-            User.card_holder_name == conn.card_holder,
-            User.id != current_user.id,
-            User.is_active.is_(True),
-        )
+    await _assert_card_unique(
+        db,
+        user_id=current_user.id,
+        card_holder_name=conn.card_holder,
+        card_certificate_serial=conn.card_serial,
     )
-    existing_user = existing.scalar_one_or_none()
-    if existing_user:
-        existing_user.card_holder_name = None
-        existing_user.card_certificate_oib = None
 
     current_user.card_holder_name = conn.card_holder
-    await db.flush()
+    current_user.card_certificate_serial = conn.card_serial
+    current_user.card_certificate_oib = conn.card_subject_oib
+    await _flush_or_conflict(db)
     await db.refresh(current_user)
     return current_user
 
@@ -129,6 +175,7 @@ async def self_unbind_card(
     """Remove card binding from the calling user's account."""
     current_user.card_holder_name = None
     current_user.card_certificate_oib = None
+    current_user.card_certificate_serial = None
     await db.flush()
 
 
@@ -177,6 +224,9 @@ async def delete_user(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ne mozete deaktivirati vlastiti racun")
 
     user.is_active = False
+    user.card_holder_name = None
+    user.card_certificate_oib = None
+    user.card_certificate_serial = None
     await db.flush()
 
 
@@ -192,21 +242,16 @@ async def bind_card(
     if not user or user.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Korisnik nije pronadjen")
 
-    # Check if card is already bound to another user in this tenant
-    existing = await db.execute(
-        select(User).where(
-            User.tenant_id == current_user.tenant_id,
-            User.card_holder_name == data.card_holder_name,
-            User.id != user.id,
-            User.is_active.is_(True),
-        )
+    await _assert_card_unique(
+        db,
+        user_id=user.id,
+        card_holder_name=data.card_holder_name,
+        card_certificate_serial=None,
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ova kartica je već povezana s drugim korisnikom")
 
     user.card_holder_name = data.card_holder_name
     user.card_certificate_oib = data.card_certificate_oib
-    await db.flush()
+    await _flush_or_conflict(db)
     return user
 
 
@@ -223,6 +268,7 @@ async def unbind_card(
 
     user.card_holder_name = None
     user.card_certificate_oib = None
+    user.card_certificate_serial = None
     await db.flush()
 
 
@@ -246,18 +292,15 @@ async def auto_bind_card(
     if not conn:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kartica nije umetnuta ni u jednom agentu")
 
-    # Check if card is already bound to another user in this tenant
-    existing = await db.execute(
-        select(User).where(
-            User.tenant_id == current_user.tenant_id,
-            User.card_holder_name == conn.card_holder,
-            User.id != user.id,
-            User.is_active.is_(True),
-        )
+    await _assert_card_unique(
+        db,
+        user_id=user.id,
+        card_holder_name=conn.card_holder,
+        card_certificate_serial=conn.card_serial,
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ova kartica je već povezana s drugim korisnikom")
 
     user.card_holder_name = conn.card_holder
-    await db.flush()
+    user.card_certificate_serial = conn.card_serial
+    user.card_certificate_oib = conn.card_subject_oib
+    await _flush_or_conflict(db)
     return user

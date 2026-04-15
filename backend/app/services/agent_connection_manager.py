@@ -23,6 +23,8 @@ class AgentConnection:
     card_inserted: bool = False
     vpn_connected: bool = False
     card_holder: str | None = None
+    card_serial: str | None = None
+    card_subject_oib: str | None = None
     card_removed_at: datetime | None = None
     readers: list[dict] = field(default_factory=list)
 
@@ -133,6 +135,8 @@ class AgentConnectionManager:
         card_inserted: bool | None = None,
         vpn_connected: bool | None = None,
         card_holder: str | None = None,
+        card_serial: str | None = None,
+        card_subject_oib: str | None = None,
         readers: list[dict] | None = None,
     ) -> None:
         conn = self.get_by_agent(tenant_id, agent_id)
@@ -141,6 +145,8 @@ class AgentConnectionManager:
         if card_inserted is not None:
             if conn.card_inserted and not card_inserted:
                 conn.card_removed_at = datetime.now(UTC)
+                conn.card_serial = None
+                conn.card_subject_oib = None
             elif card_inserted:
                 conn.card_removed_at = None
             conn.card_inserted = card_inserted
@@ -148,6 +154,10 @@ class AgentConnectionManager:
             conn.vpn_connected = vpn_connected
         if card_holder is not None:
             conn.card_holder = card_holder
+        if card_serial is not None:
+            conn.card_serial = card_serial
+        if card_subject_oib is not None:
+            conn.card_subject_oib = card_subject_oib
         if readers is not None:
             conn.readers = readers
 

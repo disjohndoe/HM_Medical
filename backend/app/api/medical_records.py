@@ -1,7 +1,10 @@
+import logging
 import uuid
 from datetime import date
 from io import BytesIO
 from urllib.parse import quote
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -165,10 +168,12 @@ async def download_record_pdf(
     try:
         pdf_bytes = await sign_pdf(
             pdf_bytes,
+            tenant_id=current_user.tenant_id,
             doctor_name=doctor_name,
             location=location,
         )
     except Exception:
+        logger.exception("PDF signing failed for record %s", record_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Greška pri potpisivanju PDF-a. Pokušajte ponovo.",

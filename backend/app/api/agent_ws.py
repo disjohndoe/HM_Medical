@@ -103,6 +103,8 @@ async def agent_websocket(websocket: WebSocket):
                     card_inserted=msg.get("card_inserted"),
                     vpn_connected=msg.get("vpn_connected"),
                     card_holder=msg.get("card_holder"),
+                    card_serial=msg.get("card_serial"),
+                    card_subject_oib=msg.get("card_subject_oib"),
                     readers=msg.get("readers"),
                 )
 

@@ -206,12 +206,16 @@ export function useCezihDashboardStats() {
   })
 }
 
-/** Sidebar badge — updates via mutation invalidation, no polling needed */
+/** Sidebar badge — mutation invalidation + 60s polling so cross-tab / multi-user
+ *  changes surface without navigation. Pauses when tab is hidden. */
 export function useCezihNalaziCount() {
   return useQuery({
     queryKey: ["cezih", "dashboard-stats"],
     queryFn: () => api.get<CezihDashboardStats>("/cezih/dashboard-stats"),
     select: (data) => data.neposlani_nalazi ?? 0,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    staleTime: 30_000,
   })
 }
 

@@ -26,6 +26,7 @@ class User(BaseTenantModel):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     card_holder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     card_certificate_oib: Mapped[str | None] = mapped_column(String(11), nullable=True)
+    card_certificate_serial: Mapped[str | None] = mapped_column(String(128), nullable=True)
     card_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     practitioner_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

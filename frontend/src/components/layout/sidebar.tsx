@@ -54,7 +54,13 @@ export function Sidebar() {
               <item.icon className="h-4 w-4 shrink-0" />
               <span className="flex-1">{item.label}</span>
               {item.href === "/cezih-nalazi" && (nalaziCount ?? 0) > 0 && (
-                <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+                <span
+                  title="Imate neposlane CEZIH nalaze"
+                  aria-label="Imate neposlane CEZIH nalaze"
+                  className="inline-flex"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+                </span>
               )}
             </Link>
           );

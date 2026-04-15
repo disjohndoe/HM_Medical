@@ -30,6 +30,8 @@ pub struct CertInfo {
     pub kid: String,
     /// JOSE algorithm name: "RS256", "ES256", "ES384", etc.
     pub algorithm: String,
+    /// DER-encoded X.509 certificate bytes (for PAdES embedding).
+    pub cert_der: Vec<u8>,
 }
 
 /// Result of raw signing — just the raw signature bytes + cert metadata.
@@ -370,6 +372,12 @@ unsafe fn get_cert_info_inner() -> Result<CertInfo, String> {
 
         info!("CertInfo: found cert kid={:.16}, alg={}", kid, algorithm);
 
+        // Extract DER-encoded certificate (same technique as sign_for_jws_inner)
+        let cert_der = std::slice::from_raw_parts(
+            (*(*cert_ctx)).pbCertEncoded,
+            (*(*cert_ctx)).cbCertEncoded as usize,
+        ).to_vec();
+
         // Cleanup
         for (ctx, _) in &certs {
             CertFreeCertificateContext(*ctx);
@@ -379,6 +387,7 @@ unsafe fn get_cert_info_inner() -> Result<CertInfo, String> {
         return Ok(CertInfo {
             kid,
             algorithm: algorithm.to_string(),
+            cert_der,
         });
     }
 
