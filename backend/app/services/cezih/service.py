@@ -962,7 +962,7 @@ async def register_foreigner(
     # Field order and content matches the official Simplifier example exactly.
     # Profile constraints: identifier min=1 max=2 (rules=closed: putovnica + europska-kartica only),
     # name min=1 max=1, address min=1 max=1, address.country min=1.
-    # birthDate and gender are NOT in the official example — omit them.
+    # birthDate and gender are standard FHIR Patient fields — include them when provided.
     identifiers = []
     if patient_data.get("broj_putovnice"):
         identifiers.append({
@@ -1004,6 +1004,13 @@ async def register_foreigner(
         }],
         "address": [{"country": country}],
     }
+    if patient_data.get("datum_rodjenja"):
+        patient_resource["birthDate"] = patient_data["datum_rodjenja"]
+    _gender_map = {"M": "male", "Z": "male", "Ž": "female", "F": "female", "male": "male", "female": "female", "unknown": "unknown"}
+    raw_spol = patient_data.get("spol") or ""
+    fhir_gender = _gender_map.get(raw_spol)
+    if fhir_gender:
+        patient_resource["gender"] = fhir_gender
 
     # Inner Bundle (type=history).
     # NOTE: working encounters use NO meta.profile on individual resources.
