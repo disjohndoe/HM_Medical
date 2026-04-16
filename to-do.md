@@ -61,28 +61,22 @@ See `docs/CEZIH/findings/smartcard-jws-format-fix.md` for full details.
 
 ---
 
-## 2. Foreigner search by passport or EHIC number
+## 2. Foreigner search by passport or EHIC number — ✅ DONE (2026-04-16)
 
 **Requirement (Croatian):**
 > "Dodaj pretraživanje stranca po broju putovnice ili EHIC"
 
-**Current state:**
-- PMIR flow registers foreigners (TC11 verified) — creates `Patient/{id}` with `jedinstveni-identifikator-pacijenta`
-- Patient search (PDQm / ITI-78) currently only by MBO
-- No UI to search existing foreigners by passport number or EHIC card number
+**Implementation complete and deployed:**
 
-**Resolved (2026-04-16 research):**
-- Passport system URI: `http://fhir.cezih.hr/specifikacije/identifikatori/putovnica`
-- EHIC system URI: `http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica`
-- No new endpoint needed — extend existing PDQm ITI-78 query with these
-  `identifier={system}|{value}` variants. Source: `HRRegisterPatient` slice
-  definitions in Simplifier `cezih.hr.cezih-osnova/1.0.1`.
-
-**Need:**
-- [ ] Backend: add the two identifier systems to the PDQm search path (same
-  transaction already used for MBO lookup)
-- [ ] Frontend: add passport / EHIC fields to foreigner search UI
-- [ ] Verify against real CEZIH with test-env foreigner record created via TC11
+- Backend (`service.py:32-38`): identifier system URIs mapped — `putovnica` →
+  `.../identifikatori/putovnica`, `ehic` → `.../identifikatori/europska-kartica`.
+  `search_patient_by_identifier()` sends `GET /patient-registry-services/api/v1/Patient?identifier={URI}|{value}`.
+- Backend endpoint (`cezih.py:505`): `GET /cezih/patients/search?system=putovnica|ehic&value=...`
+  returns `{cezih_id, ime, prezime, datum_rodjenja, spol}`.
+- Frontend (`foreigner-registration.tsx`): `ForeignerSearch` component with
+  dropdown (Putovnica / EHIC kartica), input, result card showing ime/prezime/dob/spol/cezih_id.
+- Fixes deployed today: tenant_id passed through agent (commit `5d4c175`),
+  proper HTTP errors (`f8ed30e`), `jedinstveni-identifikator-pacijenta` extracted as cezih_id (`9cd2bc0`).
 
 ---
 
