@@ -34,9 +34,10 @@ interface SendNalazDialogProps {
   onOpenChange: (open: boolean) => void
   patientId: string
   patientMbo?: string | null
+  onlyRecordId?: string
 }
 
-export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: SendNalazDialogProps) {
+export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo, onlyRecordId }: SendNalazDialogProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
   const [progress, setProgress] = useState({ current: 0, total: 0 })
@@ -80,7 +81,10 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
 
   const records = data?.items ?? []
   const eligibleRecords = records.filter(
-    (r) => isCezihMandatory.has(r.tip) && !r.cezih_sent
+    (r) =>
+      isCezihMandatory.has(r.tip) &&
+      !r.cezih_sent &&
+      (!onlyRecordId || r.id === onlyRecordId),
   )
 
   // Pre-select all eligible records when dialog opens or records change
@@ -166,10 +170,12 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <DialogTitle>Pošalji e-Nalaze (skupno)</DialogTitle>
+            <DialogTitle>{onlyRecordId ? "Pošalji e-Nalaz" : "Pošalji e-Nalaze (skupno)"}</DialogTitle>
           </div>
           <DialogDescription>
-            Odaberite nalaze koji postaju e-Nalazi na CEZIH-u.
+            {onlyRecordId
+              ? "Odaberite posjetu i slučaj za ovaj e-Nalaz."
+              : "Odaberite nalaze koji postaju e-Nalazi na CEZIH-u."}
           </DialogDescription>
         </DialogHeader>
 

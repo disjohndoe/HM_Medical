@@ -42,9 +42,10 @@ const PAGE_SIZE = 20
 
 interface RecordListProps {
   patientId: string
+  patientMbo?: string | null
 }
 
-export function RecordList({ patientId }: RecordListProps) {
+export function RecordList({ patientId, patientMbo }: RecordListProps) {
   const [tipFilter, setTipFilter] = useState<string>("")
   const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
@@ -227,6 +228,7 @@ export function RecordList({ patientId }: RecordListProps) {
           onOpenChange={(open) => !open && setViewRecordId(null)}
           record={viewRecord}
           patientId={patientId}
+          patientMbo={patientMbo ?? null}
           onEdit={() => handleEdit(viewRecord)}
         />
       )}

@@ -38,6 +38,7 @@ def _join_record_query(base):
             User.prezime.label("doktor_prezime"),
             Patient.ime.label("patient_ime"),
             Patient.prezime.label("patient_prezime"),
+            Patient.mbo.label("patient_mbo"),
         )
     )
 
@@ -65,6 +66,7 @@ def _record_row_to_dict(row) -> dict:
         "doktor_prezime": row.doktor_prezime,
         "patient_ime": row.patient_ime,
         "patient_prezime": row.patient_prezime,
+        "patient_mbo": row.patient_mbo,
         "created_at": rec.created_at,
         "updated_at": rec.updated_at,
     }

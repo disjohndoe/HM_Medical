@@ -315,6 +315,7 @@ export interface MedicalRecord {
   doktor_prezime: string | null;
   patient_ime: string | null;
   patient_prezime: string | null;
+  patient_mbo: string | null;
   tenant_id: string;
   created_at: string;
   updated_at: string;

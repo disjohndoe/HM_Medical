@@ -16,12 +16,13 @@ import {
 } from "@/components/ui/sheet"
 import { formatDateHR, formatDateTimeHR, formatCurrencyEUR } from "@/lib/utils"
 import { api } from "@/lib/api-client"
-import { useSendENalaz, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
+import { useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { usePerformedProcedures } from "@/lib/hooks/use-procedures"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import { SendNalazDialog } from "@/components/cezih/send-nalaz-dialog"
 import {
   CezihStatusBadge,
   deriveCezihState,
@@ -33,11 +34,11 @@ interface RecordDetailProps {
   onOpenChange: (open: boolean) => void
   record: MedicalRecord
   patientId: string
+  patientMbo?: string | null
   onEdit: () => void
 }
 
-export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: RecordDetailProps) {
-  const sendENalaz = useSendENalaz()
+export function RecordDetail({ open, onOpenChange, record, patientId, patientMbo, onEdit }: RecordDetailProps) {
   const cancelDocument = useCancelDocument()
   const replaceDocument = useReplaceDocument()
   const { canPerformCezihOps, canEditMedicalRecord, canUseHzzo } = usePermissions()
@@ -45,25 +46,11 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [confirmReplace, setConfirmReplace] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [sendNalazOpen, setSendNalazOpen] = useState(false)
 
   const { tipLabelMap, tipColorMap, isCezihMandatory, isCezihEligible } = useRecordTypeMaps()
   const cezihState = deriveCezihState(record, isCezihMandatory)
   const cezihEligible = isCezihEligible.has(record.tip)
-
-  const handleSendENalaz = () => {
-    sendENalaz.mutate(
-      {
-        patient_id: patientId,
-        record_id: record.id,
-      },
-      {
-        onSuccess: () => {
-          toast.success("e-Nalaz poslan na CEZIH")
-        },
-        onError: (err) => toast.error(err.message),
-      },
-    )
-  }
 
   const handleCancelDocument = () => {
     if (!record.cezih_reference_id) return
@@ -277,15 +264,12 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
           <div className="flex flex-wrap gap-2 pt-4">
             {canPerformCezihOps && cezihEligible && (cezihState === "lokalno" || cezihState === "ceka_slanje") && (
               <Button
-                onClick={handleSendENalaz}
-                disabled={sendENalaz.isPending}
+                onClick={() => setSendNalazOpen(true)}
+                disabled={!patientMbo}
+                title={!patientMbo ? "Pacijent nema MBO — potreban za CEZIH" : undefined}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                {sendENalaz.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="mr-2 h-4 w-4" />
-                )}
+                <Send className="mr-2 h-4 w-4" />
                 Pošalji e-Nalaz
               </Button>
             )}
@@ -366,6 +350,14 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
         confirmLabel="Zamijeni"
         onConfirm={handleReplaceDocument}
         loading={replaceDocument.isPending}
+      />
+
+      <SendNalazDialog
+        open={sendNalazOpen}
+        onOpenChange={setSendNalazOpen}
+        patientId={patientId}
+        patientMbo={patientMbo ?? null}
+        onlyRecordId={record.id}
       />
     </Sheet>
   )

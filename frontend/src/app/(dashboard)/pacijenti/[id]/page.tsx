@@ -279,7 +279,7 @@ export default function PacijentDetailPage() {
 
         {canViewMedicalRecords && (
           <TabsContent value="nalazi">
-            <RecordList patientId={id} />
+            <RecordList patientId={id} patientMbo={patient.mbo} />
           </TabsContent>
         )}
 

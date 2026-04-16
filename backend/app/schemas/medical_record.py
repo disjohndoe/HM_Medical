@@ -59,6 +59,7 @@ class MedicalRecordRead(BaseModel):
     doktor_prezime: str | None = None
     patient_ime: str | None = None
     patient_prezime: str | None = None
+    patient_mbo: str | None = None
     tenant_id: UUID
     created_at: datetime
     updated_at: datetime
