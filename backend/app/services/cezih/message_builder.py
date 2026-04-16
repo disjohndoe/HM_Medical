@@ -578,9 +578,28 @@ async def _add_signature_smartcard(
             tenant_id = current_tenant_id.get()
             data_b64 = _base64.b64encode(bundle_json_bytes).decode("ascii")
 
+            # Build x5c cert chain for the JOSE header (intermediate + root).
+            # Reads DER cert files from CEZIH_SMARTCARD_CERT_CHAIN_PATHS, base64-encodes each.
+            extra_certs: list[str] | None = None
+            chain_paths_str = getattr(_settings, "CEZIH_SMARTCARD_CERT_CHAIN_PATHS", "") or ""
+            if chain_paths_str:
+                import pathlib as _pathlib
+                chain_paths = [p.strip() for p in chain_paths_str.split(",") if p.strip()]
+                loaded: list[str] = []
+                for path in chain_paths:
+                    try:
+                        der = _pathlib.Path(path).read_bytes()
+                        loaded.append(_base64.b64encode(der).decode("ascii"))
+                    except Exception as _ce:
+                        logger.warning("Could not load chain cert %s: %s", path, _ce)
+                if loaded:
+                    extra_certs = loaded
+                    logger.info("SMARTCARD x5c chain: %d extra cert(s) loaded from paths", len(loaded))
+
             result = await agent_manager.sign_jws(
                 tenant_id,
                 data_base64=data_b64,
+                extra_certs=extra_certs,
                 timeout=30.0,
             )
 

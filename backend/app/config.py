@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     CEZIH_SMARTCARD_DUMMY_SIG: bool = False  # DEBUG: bypass real signing, inject dummy JWS to test if CEZIH verifies crypto
     CEZIH_SMARTCARD_DUMMY_ALG: str = "RS256"  # DEBUG: algorithm for dummy JWS — "RS256" or "ES384"
     CEZIH_SMARTCARD_INCLUDE_DATA: bool = True  # DEBUG: include data="" in JWS payload (True=match extsigner, False=per spec)
+    CEZIH_SMARTCARD_CERT_CHAIN_PATHS: str = ""  # Comma-separated DER cert file paths for x5c chain (intermediate,root). E.g. /opt/medical-mvp/docs/CEZIH/CertificateChain-TEST/TESTCERTILIACA.crt,TESTAKDCARoot.crt
     CEZIH_SIGNING_DEBUG: bool = False  # DEBUG: dump full JWS header + payload + sig for byte-diff between smartcard and extsigner
     RATE_LIMIT_ENABLED: bool = True
     CEZIH_ORG_CODE: str = ""  # HZZO sifra zdravstvene organizacije

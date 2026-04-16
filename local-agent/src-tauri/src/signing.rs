@@ -64,14 +64,15 @@ pub struct JwsSignResult {
 ///
 /// Takes JCS-canonicalized Bundle JSON bytes (with signature.data = "").
 /// JOSE header includes alg + kid + jwk (EC coords) + x5c (cert) per spec.
+/// extra_certs: additional DER certs (base64-std) to append to x5c after leaf (intermediate, root).
 ///
 /// Signing input (RFC 7515): base64url(header) + "." + base64url(payload)
 /// Output: base64(JWS_compact) — double base64 for HAPI base64Binary compatibility.
-pub fn sign_for_jws(bundle_json: &[u8]) -> Result<JwsSignResult, String> {
-    unsafe { sign_for_jws_inner(bundle_json) }
+pub fn sign_for_jws(bundle_json: &[u8], extra_certs: &[String]) -> Result<JwsSignResult, String> {
+    unsafe { sign_for_jws_inner(bundle_json, extra_certs) }
 }
 
-unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String> {
+unsafe fn sign_for_jws_inner(bundle_json: &[u8], extra_certs: &[String]) -> Result<JwsSignResult, String> {
     const ENCODING: u32 = X509_ASN_ENCODING | PKCS_7_ASN_ENCODING;
     let b64url = base64::engine::general_purpose::URL_SAFE_NO_PAD;
     let b64std = base64::engine::general_purpose::STANDARD;
@@ -185,15 +186,22 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             let pub_key_data = std::slice::from_raw_parts(pub_key_blob.pbData, pub_key_blob.cbData as usize);
             info!("JWS: CNG cert DER={} bytes, pub_key={} bytes", cert_der.len(), pub_key_data.len());
 
+            // Build x5c array: leaf cert first, then any extra chain certs (intermediate, root).
+            let x5c_parts: Vec<String> = std::iter::once(format!("\"{}\"", cert_b64))
+                .chain(extra_certs.iter().map(|c| format!("\"{}\"", c)))
+                .collect();
+            let x5c_json = x5c_parts.join(",");
+            info!("JWS: x5c chain length = {} cert(s)", x5c_parts.len());
+
             let jose_header = if pub_key_data.len() > 1 && pub_key_data[0] == 0x04 {
                 let coord_size = (pub_key_data.len() - 1) / 2;
                 let x_b64url = b64url.encode(&pub_key_data[1..1 + coord_size]);
                 let y_b64url = b64url.encode(&pub_key_data[1 + coord_size..]);
                 let crv = match coord_size { 32 => "P-256", 48 => "P-384", 66 => "P-521", _ => "P-384" };
-                format!(r#"{{"alg":"{}","kid":"{}","jwk":{{"crv":"{}","kty":"EC","x":"{}","y":"{}"}},"x5c":["{}"]}}"#,
-                    algorithm, kid, crv, x_b64url, y_b64url, cert_b64)
+                format!(r#"{{"alg":"{}","kid":"{}","jwk":{{"crv":"{}","kty":"EC","x":"{}","y":"{}"}},"x5c":[{}]}}"#,
+                    algorithm, kid, crv, x_b64url, y_b64url, x5c_json)
             } else {
-                format!(r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#, algorithm, kid, cert_b64)
+                format!(r#"{{"alg":"{}","kid":"{}","x5c":[{}]}}"#, algorithm, kid, x5c_json)
             };
             info!("JWS: CNG JOSE header {} bytes", jose_header.len());
 
