@@ -58,9 +58,6 @@ async def search_patient_by_identifier(
     params = {"identifier": f"{system_uri}|{value}"}
     response = await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
 
-    import json as _json
-    logger.info("CEZIH PDQm raw response: %s", _json.dumps(response, ensure_ascii=False)[:5000])
-
     if response.get("resourceType") != "Bundle":
         raise CezihError("Neočekivan format odgovora iz CEZIH-a")
 
@@ -72,11 +69,19 @@ async def search_patient_by_identifier(
     patient = FHIRPatient.model_validate(entries[0].get("resource", {}))
     family, given = _extract_name(patient)
 
+    # Prefer the internal CEZIH patient ID over the search identifier —
+    # jedinstveni-identifikator-pacijenta is what subsequent FHIR operations use.
+    SYS_JEDINSTVENI = "http://fhir.cezih.hr/specifikacije/identifikatori/jedinstveni-identifikator-pacijenta"
     cezih_id = ""
     for ident in patient.identifier:
-        if ident.value:
+        if ident.system == SYS_JEDINSTVENI and ident.value:
             cezih_id = ident.value
             break
+    if not cezih_id:
+        for ident in patient.identifier:
+            if ident.value:
+                cezih_id = ident.value
+                break
 
     spol_map = {"male": "M", "female": "Ž", "other": "Ostalo", "unknown": "Nepoznato"}
     spol = spol_map.get(patient.gender or "", "")
