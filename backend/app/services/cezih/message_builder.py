@@ -922,25 +922,28 @@ CASE_ACTION_MAP: dict[str, dict[str, str | None]] = {
 # profile requires. See docs/CEZIH/findings/case-lifecycle-profile-matrix.md
 # for live-testing evidence.
 #
+# CEZIH test env has SWAPPED the 2.4/2.5 profile routing (verified 2026-04-16):
+#   Event 2.4 (Relaps)  validates against hr-health-issue-resolve-message  → demands cs=resolved + abatement
+#   Event 2.5 (Resolve) validates against hr-health-issue-relapse-message  → forbids cs, forbids abatement
+# So the shipping table below sends a "resolve-shaped" payload for 2.4 and
+# MINIMAL payload for 2.5. Both verified working against live test env.
+#
 # Fields:
 #   cs        — include Condition.clinicalStatus
 #   cs_value  — code to send when cs=True (e.g. "resolved", "active")
 #   abatement — include Condition.abatementDateTime (set to now())
 CASE_EVENT_PROFILE: dict[str, dict[str, Any]] = {
-    "2.2": {"cs": False, "abatement": False, "cs_value": None},  # Ponavljajući — untested probe value
     "2.3": {"cs": False, "abatement": False, "cs_value": None},  # Remisija — VERIFIED 2026-04-16
-    "2.4": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Relaps — test-env workaround (see below)
-    "2.5": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Resolve — verified earlier
+    "2.4": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Relaps — VERIFIED 2026-04-16 (test-env swap)
+    "2.5": {"cs": False, "abatement": False, "cs_value": None},  # Resolve — MINIMAL per test-env swap
     "2.7": {"cs": False, "abatement": False, "cs_value": None},  # Reopen — untested probe value
+    # 2.2 Ponavljajući routes through build_condition_create (hr-create-health-issue-recurrence-message)
+    # — handled in service.py update_case, not via this table.
 }
 
-# CEZIH test env routes event 2.4 (Relaps) to hr-health-issue-resolve-message
-# profile, which demands clinicalStatus.code="resolved" + abatement[x] — the
-# OPPOSITE of what Relaps means semantically. 2.4 is not in the 22 cert TCs.
-# Workaround above sends the "wrong" payload that test-env accepts so the UI
-# button doesn't throw. When HZZO documents the true relapse profile, flip
-# this flag to True and the dispatcher will send the semantically correct
-# payload instead.
+# Flip once HZZO fixes the 2.4/2.5 test-env routing. When True, dispatcher
+# sends semantically-correct 2.4 payload: {cs: True, cs_value: "relapse",
+# abatement: False} and 2.5 payload per real resolve-message profile.
 CEZIH_RELAPSE_SEMANTIC_CORRECT = False
 
 

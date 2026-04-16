@@ -1201,6 +1201,14 @@ async def update_case(
 
     if action == "delete":
         condition = build_condition_delete(case_identifier=case_identifier, patient_mbo=patient_mbo)
+    elif action == "create_recurring":
+        # Event 2.2 uses hr-create-health-issue-recurrence-message profile:
+        # identifier FORBIDDEN (server assigns), ICD + verificationStatus + onset REQUIRED.
+        # Needs full build_condition_create routing — not yet implemented.
+        raise CezihError(
+            "Ponavljajući slučaj (2.2) zahtijeva implementaciju nove rute "
+            "(hr-create-health-issue-recurrence-message). Pratit će u sljedećoj iteraciji."
+        )
     else:
         # Per-event CEZIH profile rules live in CASE_EVENT_PROFILE (message_builder.py).
         # Each event code maps to a distinct FHIR StructureDefinition with its own
