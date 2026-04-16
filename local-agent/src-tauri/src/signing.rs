@@ -209,13 +209,41 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             info!("JWS: CNG signing_input={} chars, hash={} bytes ({})", signing_input.len(), hash_bytes.len(), algorithm);
 
             let sign_flags: u32 = if algorithm.starts_with("ES") { NCRYPT_ECDSA_P1363_FORMAT_FLAG } else { 0 };
-            let mut sig_buf = vec![0u8; sig_len as usize];
-            let mut actual_len = sig_len;
-            let status = NCryptSignHash(
+            // Buffer large enough for both P1363 (96 for ES384) and DER ECDSA (up to 106 for ES384).
+            let mut sig_buf = vec![0u8; (sig_len as usize).max(128)];
+            let mut actual_len = sig_buf.len() as u32;
+            let mut status = NCryptSignHash(
                 key_handle, ptr::null(),
                 hash_bytes.as_ptr(), hash_bytes.len() as u32,
-                sig_buf.as_mut_ptr(), sig_len, &mut actual_len, sign_flags,
+                sig_buf.as_mut_ptr(), sig_buf.len() as u32, &mut actual_len, sign_flags,
             );
+
+            // AKD card CSPs reject NCRYPT_ECDSA_P1363_FORMAT_FLAG (NTE_BAD_FLAGS 0x80090009).
+            // Retry without it: card returns DER-encoded ECDSA, which we convert to P1363.
+            const NTE_BAD_FLAGS_STATUS: u32 = 0x80090009;
+            if status as u32 == NTE_BAD_FLAGS_STATUS && sign_flags != 0 {
+                info!("JWS: P1363 flag rejected (0x80090009), retrying DER then converting to P1363");
+                actual_len = sig_buf.len() as u32;
+                status = NCryptSignHash(
+                    key_handle, ptr::null(),
+                    hash_bytes.as_ptr(), hash_bytes.len() as u32,
+                    sig_buf.as_mut_ptr(), sig_buf.len() as u32, &mut actual_len, 0,
+                );
+                if status == 0 {
+                    let coord_size: usize = match algorithm { "ES256" => 32, "ES384" => 48, _ => 66 };
+                    match der_ecdsa_to_p1363(&sig_buf[..actual_len as usize], coord_size) {
+                        Some(p1363) => {
+                            info!("JWS: DER→P1363 OK, sig={} bytes", p1363.len());
+                            actual_len = p1363.len() as u32;
+                            sig_buf = p1363;
+                        }
+                        None => {
+                            warn!("JWS: DER→P1363 conversion failed for {}", cert_label);
+                            status = 0x80090005u32 as i32; // NTE_BAD_DATA
+                        }
+                    }
+                }
+            }
 
             if must_free != 0 { NCryptFreeObject(key_handle); }
 
@@ -229,7 +257,7 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             }
 
             sig_buf.truncate(actual_len as usize);
-            info!("JWS: CNG sign OK {} raw_sig={} bytes (P1363={})", cert_label, sig_buf.len(), algorithm.starts_with("ES"));
+            info!("JWS: CNG sign OK {} raw_sig={} bytes (P1363)", cert_label, sig_buf.len());
 
             // Self-verify.
             {
@@ -806,4 +834,53 @@ unsafe fn get_cert_thumbprint(ctx: *const CERT_CONTEXT) -> Result<String, String
         .iter()
         .map(|b| format!("{:02x}", b))
         .collect())
+}
+
+/// Convert DER-encoded ECDSA signature (SEQUENCE { INTEGER r, INTEGER s }) to
+/// IEEE P1363 format (raw r || s, each zero-padded to coord_size bytes).
+/// Required when the smart card CSP rejects NCRYPT_ECDSA_P1363_FORMAT_FLAG.
+fn der_ecdsa_to_p1363(der: &[u8], coord_size: usize) -> Option<Vec<u8>> {
+    if der.len() < 6 || der[0] != 0x30 { return None; }
+    let mut pos = 1usize;
+    let _seq_len = parse_der_len(der, &mut pos)?;
+    if pos >= der.len() || der[pos] != 0x02 { return None; }
+    pos += 1;
+    let r_len = parse_der_len(der, &mut pos)?;
+    if pos + r_len > der.len() { return None; }
+    let r_bytes = &der[pos..pos + r_len];
+    pos += r_len;
+    if pos >= der.len() || der[pos] != 0x02 { return None; }
+    pos += 1;
+    let s_len = parse_der_len(der, &mut pos)?;
+    if pos + s_len > der.len() { return None; }
+    let s_bytes = &der[pos..pos + s_len];
+
+    let r = strip_leading_zeros(r_bytes);
+    let s = strip_leading_zeros(s_bytes);
+    if r.len() > coord_size || s.len() > coord_size { return None; }
+
+    let mut out = vec![0u8; coord_size * 2];
+    out[coord_size - r.len()..coord_size].copy_from_slice(r);
+    out[coord_size * 2 - s.len()..].copy_from_slice(s);
+    Some(out)
+}
+
+fn parse_der_len(data: &[u8], pos: &mut usize) -> Option<usize> {
+    if *pos >= data.len() { return None; }
+    let b = data[*pos];
+    *pos += 1;
+    if b & 0x80 == 0 {
+        Some(b as usize)
+    } else {
+        let n = (b & 0x7f) as usize;
+        if *pos + n > data.len() { return None; }
+        let mut len = 0usize;
+        for _ in 0..n { len = (len << 8) | (data[*pos] as usize); *pos += 1; }
+        Some(len)
+    }
+}
+
+fn strip_leading_zeros(b: &[u8]) -> &[u8] {
+    let i = b.iter().position(|&x| x != 0).unwrap_or(b.len().saturating_sub(1));
+    &b[i..]
 }
