@@ -59,9 +59,13 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
   const visits = ((visitsData as { visits?: VisitItem[] })?.visits ?? []) as VisitItem[]
   const cases = ((casesData as { cases?: CaseItem[] })?.cases ?? []) as CaseItem[]
 
-  // Filter to active/in-progress visits and active cases
-  const activeVisits = visits.filter((v) => v.status === "in-progress")
-  const activeCases = cases.filter((c) => c.clinical_status === "active")
+  // Exclude terminal states only — anything non-terminal is selectable.
+  // Fresh cases often come back with clinical_status ∈ {"", "recurrence", "remission", "relapse"}
+  // and a hard === "active" filter silently hid them, blocking e-Nalaz send.
+  const TERMINAL_VISIT_STATUSES = new Set(["finished", "cancelled", "entered-in-error"])
+  const TERMINAL_CASE_STATUSES = new Set(["resolved", "inactive", "entered-in-error"])
+  const activeVisits = visits.filter((v) => !TERMINAL_VISIT_STATUSES.has(v.status))
+  const activeCases = cases.filter((c) => !TERMINAL_CASE_STATUSES.has(c.clinical_status))
 
   // Auto-select first visit/case when data loads
   useEffect(() => {

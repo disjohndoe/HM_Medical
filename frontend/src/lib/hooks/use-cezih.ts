@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api-client"
 import type {
   CaseActionResponse,
+  CaseItem,
   CaseResponse,
   CasesListResponse,
   CezihActivityListResponse,
@@ -401,8 +402,27 @@ export function useCreateCase() {
   return useMutation({
     mutationFn: (data: CreateCaseRequest) =>
       api.post<CaseResponse>("/cezih/cases", data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "cases"], exact: false })
+    onSuccess: (resp, vars) => {
+      // CEZIH's /health-issue-services (write) and /ihe-qedm-services (read) are
+      // eventually consistent — a newly-created case is usually not yet visible
+      // via QEDm GET /Condition for several seconds. Insert optimistically so
+      // the table + e-Nalaz case dropdown see it immediately.
+      const queryKey = ["cezih", "cases", vars.patient_mbo]
+      const newCase: CaseItem = {
+        case_id: resp.cezih_case_id || resp.local_case_id,
+        icd_code: vars.icd_code,
+        icd_display: vars.icd_display,
+        clinical_status: "active",
+        verification_status: vars.verification_status ?? null,
+        onset_date: vars.onset_date,
+        abatement_date: null,
+        note: vars.note ?? null,
+      }
+      qc.setQueryData<CasesListResponse>(queryKey, (old) => {
+        if (!old) return { cases: [newCase] }
+        if (old.cases.some((c) => c.case_id === newCase.case_id)) return old
+        return { cases: [newCase, ...old.cases] }
+      })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
