@@ -892,12 +892,24 @@ def build_condition_delete(
     *,
     case_identifier: str,
     patient_mbo: str,
+    note_text: str,
 ) -> dict[str, Any]:
-    """Build minimal Condition for delete case (message code 2.8)."""
+    """Build Condition for delete case (message code 2.8).
+
+    Per `hr-delete-health-issue-message|0.1` profile, `note` is required (1..*)
+    with invariant `himgmt-1: Mora postojati razlog brisanja`.
+    """
     return {
         "resourceType": "Condition",
         "identifier": [{"system": ID_CASE_GLOBAL, "value": case_identifier}],
         "subject": patient_ref(patient_mbo),
+        "note": [{
+            "extension": [{
+                "url": EXT_ANNOTATION_TYPE,
+                "valueCoding": {"system": CS_ANNOTATION_TYPE, "code": "4"},
+            }],
+            "text": note_text,
+        }],
     }
 
 

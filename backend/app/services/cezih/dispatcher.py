@@ -683,6 +683,7 @@ async def dispatch_update_case(
     tenant_id: UUID | None = None,
     http_client=None,
     source_oid: str | None = None,
+    note_text: str | None = None,
 ) -> dict:
     _require_audit_params(db, user_id, tenant_id)
     try:
@@ -706,6 +707,7 @@ async def dispatch_update_case(
             result = await real_service.update_case(
                 http_client, case_id, patient_mbo, practitioner_id, org_code, action,
                 source_oid=source_oid,
+                note_text=note_text,
             )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e

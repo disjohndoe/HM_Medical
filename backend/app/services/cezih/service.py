@@ -1234,6 +1234,7 @@ async def update_case(
     org_code: str,
     action: str,
     source_oid: str | None = None,
+    note_text: str | None = None,
 ) -> dict:
     """Update a case via FHIR messaging (TC17, codes 2.2-2.8)."""
     from app.services.cezih.message_builder import (
@@ -1249,7 +1250,14 @@ async def update_case(
     event_code = action_info["code"] or ""
 
     if action == "delete":
-        condition = build_condition_delete(case_identifier=case_identifier, patient_mbo=patient_mbo)
+        razlog = (note_text or "").strip()
+        if not razlog:
+            raise CezihError("Za brisanje slučaja obavezno je navesti razlog (napomena).")
+        condition = build_condition_delete(
+            case_identifier=case_identifier,
+            patient_mbo=patient_mbo,
+            note_text=razlog,
+        )
     elif action == "create_recurring":
         # Event 2.2 uses hr-create-health-issue-recurrence-message profile:
         # identifier FORBIDDEN (server assigns), ICD + verificationStatus + onset REQUIRED.

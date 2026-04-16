@@ -102,6 +102,10 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   const [editOnsetDate, setEditOnsetDate] = useState("")
   const [editAbatementDate, setEditAbatementDate] = useState("")
 
+  // Delete-razlog state (CEZIH hr-delete-health-issue-message requires note)
+  const [deleteCaseId, setDeleteCaseId] = useState<string | null>(null)
+  const [deleteReason, setDeleteReason] = useState("")
+
   const casesQuery = useRetrieveCases(patientMbo)
   const createCase = useCreateCase()
   const updateStatus = useUpdateCaseStatus()
@@ -139,11 +143,36 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   }
 
   const handleAction = (caseId: string, action: string) => {
+    // 2.8 Delete requires razlog brisanja (CEZIH himgmt-1) — prompt before dispatch.
+    if (action === "delete") {
+      setDeleteCaseId(caseId)
+      setDeleteReason("")
+      return
+    }
     const actionLabel = CASE_ACTIONS.find((a) => a.value === action)?.label || action
     updateStatus.mutate(
       { caseId, mbo: patientMbo, action },
       {
         onSuccess: () => toast.success(`${actionLabel} — uspješno`),
+        onError: (err) => toast.error(err.message),
+      }
+    )
+  }
+
+  const handleDeleteConfirm = () => {
+    const razlog = deleteReason.trim()
+    if (!deleteCaseId || !razlog) {
+      toast.error("Unesite razlog brisanja.")
+      return
+    }
+    updateStatus.mutate(
+      { caseId: deleteCaseId, mbo: patientMbo, action: "delete", note: razlog },
+      {
+        onSuccess: () => {
+          toast.success("Obriši — uspješno")
+          setDeleteCaseId(null)
+          setDeleteReason("")
+        },
         onError: (err) => toast.error(err.message),
       }
     )
@@ -193,27 +222,27 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   }
 
   const getAvailableActions = (c: CaseItem) => {
-    // CEZIH's 2.5 Resolve (Zatvori) state-machine only accepts cases it
-    // observed as 'Potvrđen' from creation. A 2.6 flip from 'Nepotvrđen'
-    // to 'Potvrđen' does NOT change the state-machine view, so Zatvori
-    // rejects older cases with ERR_HEALTH_ISSUE_2004. We only expose
-    // Zatvori for cases locally created this session (optimistic cache
-    // marks them with `_local: true`), which are the only ones where
-    // the 2.5 path is verified to succeed.
-    const canResolve = c._local === true
+    // Zatvori (2.5 Resolve) and Obriši (2.8 Delete) go through CEZIH's case
+    // state machine which requires verificationStatus=confirmed. Older cases
+    // created as Nepotvrđen cannot be resolved even after a 2.6 flip — the
+    // state-machine view keeps the original value. We expose the actions on
+    // any confirmed case (locally created OR retrieved) and let CEZIH's
+    // Croatian error translation explain edge-case rejections.
+    const confirmed = c.verification_status === "confirmed" || c._local === true
     const filter = (actions: string[]) =>
       CASE_ACTIONS.filter((a) => actions.includes(a.value))
-        .filter((a) => a.value !== "resolve" || canResolve)
+        .filter((a) => (a.value !== "resolve" && a.value !== "delete") || confirmed)
 
     switch (c.clinical_status) {
       case "active":
       case "recurrence":
-        return filter(["create_recurring", "remission", "resolve"])
+        return filter(["create_recurring", "remission", "resolve", "delete"])
       case "remission":
-        return filter(["relapse", "resolve"])
+        return filter(["relapse", "resolve", "delete"])
       case "relapse":
-        return filter(["remission", "resolve"])
+        return filter(["remission", "resolve", "delete"])
       case "resolved":
+        return filter(["reopen"])
       case "inactive":
         return []
       default:
@@ -352,10 +381,13 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
               <strong>Novi slučaj</strong> — upišite MKB šifru, datum početka i status verifikacije. Za kasnije zatvaranje odaberite <em>Potvrđen</em>.
             </li>
             <li>
-              Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori ili Ponavljajući slučaj. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
+              Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori, Ponovno otvori, Obriši ili Ponavljajući slučaj. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
             </li>
             <li>
-              <strong>Zatvori</strong> (2.5) prikazuje se samo za slučajeve kreirane u ovoj sesiji kao <em>Potvrđen</em>. CEZIH state-machine odbija zatvaranje starijih slučajeva čak i nakon flipa 2.6.
+              <strong>Zatvori</strong> i <strong>Obriši</strong> dostupni su samo za slučajeve sa statusom verifikacije <em>Potvrđen</em> — CEZIH odbija iste akcije na nepotvrđenim slučajevima (ERR_HEALTH_ISSUE_2004).
+            </li>
+            <li>
+              <strong>Obriši</strong> otvara prozor u kojem je obavezno unijeti razlog brisanja.
             </li>
           </ul>
         </div>
@@ -542,6 +574,43 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
             })()}
           </div>
         )}
+
+        <Dialog open={!!deleteCaseId} onOpenChange={(o) => !o && setDeleteCaseId(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Brisanje slučaja</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 pt-1">
+              <p className="text-sm text-muted-foreground">
+                CEZIH zahtijeva razlog brisanja. Unos je obavezan.
+              </p>
+              <div>
+                <Label className="text-xs">Razlog brisanja</Label>
+                <Textarea
+                  autoFocus
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  placeholder="npr. Pogrešno unesen slučaj, duplikat, ..."
+                  rows={3}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button size="sm" variant="outline" onClick={() => setDeleteCaseId(null)}>
+                  Odustani
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={updateStatus.isPending || !deleteReason.trim()}
+                  onClick={handleDeleteConfirm}
+                >
+                  {updateStatus.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                  Obriši slučaj
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   )

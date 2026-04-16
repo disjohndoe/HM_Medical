@@ -86,27 +86,37 @@ Failed on-site exam at HZZO Zagreb. Examiner feedback → 4 blocking items below
 
 ---
 
-## 5. Case actions failing — Close / Remission / Recurring (investigation pending)
+## 5. Case actions — normal doctor flow (UI + spec-compliant payloads)
 
-**Known issues (from `project_cezih_case_state_machine.md` + live testing 2026-04-16):**
+**Fixes applied (2026-04-16, commit pending):**
 
-- **2.5 Resolve (Zatvori)** — CEZIH rejects with `ERR_HEALTH_ISSUE_2004` on `unconfirmed` cases. Only verified working path: `create-as-confirmed → active+confirmed → 2.5 Resolve → 200`.
-- **2.5 Resolve on a recurrence case** — fails even after 2.6 flip to `confirmed`. Open issue (H1: CEZIH blocks `recurrence→resolved` regardless; H2: state-machine view still sees original unconfirmed). Need controlled repro.
-- **2.7 Reopen** — requires `razlog brisanja` in payload (`himgmt-1` rule). Current minimal payload rejected. UI hides it pending backend fix (commit `e8edd9c`).
-- **2.8 Delete** — same ERR_HEALTH_ISSUE_2004 rule as 2.5; UI hidden pending backend fix.
-- **2.3 Remisija** — ? (need to re-verify; memory file notes "Remisija profile requires MINIMAL payload (no cs, no abatement)")
-- **2.2 Ponavljajući (create_recurring)** — ? (commit `ddad4b9` routed it via create-recurrence path; memory says profile `hr-create-health-issue-recurrence-message|0.1` forbids identifier)
+Authoritative spec source: `cezih.hr.condition-management/0.2.1` on Simplifier
+(separate package from `cezih.osnova`; contains all 8 message StructureDefinitions).
 
-**Need:**
-- [ ] Reproduce each action against real CEZIH (test env) with explicit state: active+confirmed, active+unconfirmed, recurrence+confirmed
-- [ ] Capture error payloads from backend logs per action
-- [ ] Fix the failing ones — prefer payload changes over hiding actions from UI
+- **2.8 Delete** — `build_condition_delete` now emits `Condition.note` with razlog
+  (annotation-type "4"); API schema + dispatcher thread `note` through; UI opens
+  a required-razlog Dialog when Obriši is picked. Re-enabled in `getAvailableActions`.
+- **2.7 Reopen** — current minimal payload already matches spec (no note required,
+  only globalni-id + subject). Re-enabled in `getAvailableActions` for `resolved` cases.
+- **2.5 Resolve / 2.8 Delete UI eligibility** — dropped the `_local`-only hack.
+  Now shown on any case where `verification_status === "confirmed"` (plus session
+  cases). CEZIH's Croatian error translation surfaces ERR_HEALTH_ISSUE_2004 rejections.
+
+**Still to verify live:**
+- [ ] E2E on real CEZIH: create active+confirmed → 2.8 Delete with razlog → 200
+- [ ] E2E on real CEZIH: 2.5 Resolve on imported confirmed case (disambiguates H2)
+- [ ] E2E on real CEZIH: 2.7 Reopen on resolved case
+- [ ] E2E on real CEZIH: 2.5 Resolve on recurrence+confirmed case (disambiguates H1)
+
+**Known test-env quirks (unchanged):**
+- 2.4 Relaps sends resolve-shaped payload (cs=resolved + abatement) per test-env
+  profile swap — flip `CEZIH_RELAPSE_SEMANTIC_CORRECT=True` once HZZO fixes routing.
 
 ---
 
 ## Priority order
 
-1. **#4** — regression blocking normal flow, likely quick fix
+1. **#5** — case actions re-enabled; live verify against real CEZIH (test env)
 2. **#1** — fix smart card JWS + user-selectable signing method
 3. **#2** — foreigner search by passport / EHIC (PDQm)
 4. **#3** — DEFERRED (AID on FHIR Organization.identifier — scope confirmed, not urgent)

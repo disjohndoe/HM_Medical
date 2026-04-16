@@ -337,6 +337,7 @@ class CaseResponse(BaseModel):
 
 class UpdateCaseStatusRequest(BaseModel):
     action: str  # remission, relapse, resolve, reopen, delete, create_recurring
+    note: str | None = None  # Required for `delete` (razlog brisanja, himgmt-1)
 
 
 class UpdateCaseDataRequest(BaseModel):
