@@ -266,6 +266,56 @@ def build_iti65_transaction_bundle(
     }
 
 
+def _debug_dump_jws(source: str, jws_b64: str) -> None:
+    """Dump decoded JWS (header JSON + full b64url payload + full b64url sig).
+
+    Emits at INFO level, only when ``settings.CEZIH_SIGNING_DEBUG`` is true.
+    One value per log line so grep can pull them out of docker logs cleanly.
+
+    ``jws_b64`` is the *outer* base64 wrapping the JWS compact form (our "double
+    base64"). Both smartcard and extsigner produce this shape.
+    """
+    import base64 as _base64
+
+    from app.config import settings
+
+    if not settings.CEZIH_SIGNING_DEBUG:
+        return
+    try:
+        jws_raw = _base64.b64decode(jws_b64).decode("ascii")
+        parts = jws_raw.split(".")
+        if len(parts) != 3:
+            logger.info(
+                "%s JWS DUMP: unexpected part count (%d), raw=%s",
+                source, len(parts), jws_raw[:500],
+            )
+            return
+        header_raw = _base64.urlsafe_b64decode(parts[0] + "==")
+        header_json = json.loads(header_raw)
+        payload_raw = _base64.urlsafe_b64decode(parts[1] + "==")
+        # Re-serialise header with sorted keys so order differences become
+        # visible even if the caller used different dict key ordering.
+        header_sorted = json.dumps(header_json, sort_keys=True, ensure_ascii=False)
+        logger.info("%s JWS DUMP header_json_sorted=%s", source, header_sorted)
+        logger.info("%s JWS DUMP header_b64url=%s", source, parts[0])
+        logger.info("%s JWS DUMP payload_b64url_len=%d", source, len(parts[1]))
+        logger.info("%s JWS DUMP payload_b64url=%s", source, parts[1])
+        logger.info("%s JWS DUMP payload_decoded_len=%d", source, len(payload_raw))
+        # Payload is (or should be) a FHIR Bundle JSON. Log the decoded form
+        # too so we can eyeball canonicalisation differences.
+        try:
+            payload_json = json.loads(payload_raw)
+            logger.info(
+                "%s JWS DUMP payload_json_sorted=%s",
+                source, json.dumps(payload_json, sort_keys=True, ensure_ascii=False),
+            )
+        except Exception:
+            logger.info("%s JWS DUMP payload_utf8=%s", source, payload_raw.decode("utf-8", errors="replace"))
+        logger.info("%s JWS DUMP sig_b64url=%s", source, parts[2])
+    except Exception as _err:
+        logger.warning("%s JWS DUMP failed to decode: %s", source, _err)
+
+
 async def _resolve_signing_method() -> str:
     """Resolve the active signing method for the current request.
 
@@ -395,6 +445,7 @@ async def _add_signature_extsigner(
                     else:
                         logger.info("EXTSIGNER JWS: unexpected format (dot_count=%d, total=%d chars)",
                                     _jws_raw.count("."), len(_jws_raw))
+                    _debug_dump_jws("EXTSIGNER", _sig_data)
             except Exception as _dbg_err:
                 logger.warning("Extsigner JWS decode debug failed: %s", _dbg_err)
 
@@ -468,6 +519,26 @@ async def _add_signature_smartcard(
     logger.info("JCS canonical payload: %d bytes (signature.data excluded)",
                 len(bundle_json_bytes))
 
+    # ── DEBUG: dump pre-sign payload so we can compare what we *sent* to the
+    #    agent vs what extsigner received as input. If payloads differ the JWS
+    #    will differ regardless of crypto.
+    from app.config import settings as _settings
+
+    if _settings.CEZIH_SIGNING_DEBUG:
+        try:
+            _pre_json = json.loads(bundle_json_bytes)
+            logger.info(
+                "SMARTCARD PRE-SIGN payload_json_sorted=%s",
+                json.dumps(_pre_json, sort_keys=True, ensure_ascii=False),
+            )
+        except Exception:
+            logger.info("SMARTCARD PRE-SIGN payload_bytes=%s",
+                        bundle_json_bytes.decode("utf-8", errors="replace"))
+        logger.info(
+            "SMARTCARD PRE-SIGN payload_b64url=%s",
+            _base64.urlsafe_b64encode(bundle_json_bytes).decode().rstrip("="),
+        )
+
     if sign_fn:
         # Test hook — custom sign function
         result = await sign_fn(bundle_json_bytes)
@@ -536,6 +607,7 @@ async def _add_signature_smartcard(
                         len(_header_json.get("x5c", [])),
                         len(_parts[0]), len(_parts[1]), len(_parts[2]),
                     )
+                _debug_dump_jws("SMARTCARD", jws_base64)
             except Exception as _dbg_err:
                 logger.warning("JWS decode debug failed: %s", _dbg_err)
 
