@@ -102,6 +102,7 @@ export function RecordDetail({ open, onOpenChange, record, patientId, patientMbo
   const linkedItems = linkedProcedures?.items ?? []
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="center">
         <SheetHeader>
@@ -324,41 +325,42 @@ export function RecordDetail({ open, onOpenChange, record, patientId, patientMbo
           </div>
         </div>
       </SheetContent>
-
-      <PrescriptionForm
-        open={eReceptOpen}
-        onOpenChange={setEReceptOpen}
-        patientId={patientId}
-      />
-
-      <ConfirmDialog
-        open={confirmCancel}
-        onOpenChange={setConfirmCancel}
-        title="Storno e-Nalaza"
-        description="Jeste li sigurni da želite stornirati ovaj nalaz na CEZIH? Ova radnja se ne može poništiti."
-        confirmLabel="Storniraj"
-        variant="destructive"
-        onConfirm={handleCancelDocument}
-        loading={cancelDocument.isPending}
-      />
-
-      <ConfirmDialog
-        open={confirmReplace}
-        onOpenChange={setConfirmReplace}
-        title="Zamjena dokumenta"
-        description="Jeste li sigurni da želite zamijeniti ovaj dokument na CEZIH? Stari dokument će biti označen kao zamijenjen."
-        confirmLabel="Zamijeni"
-        onConfirm={handleReplaceDocument}
-        loading={replaceDocument.isPending}
-      />
-
-      <SendNalazDialog
-        open={sendNalazOpen}
-        onOpenChange={setSendNalazOpen}
-        patientId={patientId}
-        patientMbo={patientMbo ?? null}
-        onlyRecordId={record.id}
-      />
     </Sheet>
+
+    <PrescriptionForm
+      open={eReceptOpen}
+      onOpenChange={setEReceptOpen}
+      patientId={patientId}
+    />
+
+    <ConfirmDialog
+      open={confirmCancel}
+      onOpenChange={setConfirmCancel}
+      title="Storno e-Nalaza"
+      description="Jeste li sigurni da želite stornirati ovaj nalaz na CEZIH? Ova radnja se ne može poništiti."
+      confirmLabel="Storniraj"
+      variant="destructive"
+      onConfirm={handleCancelDocument}
+      loading={cancelDocument.isPending}
+    />
+
+    <ConfirmDialog
+      open={confirmReplace}
+      onOpenChange={setConfirmReplace}
+      title="Zamjena dokumenta"
+      description="Jeste li sigurni da želite zamijeniti ovaj dokument na CEZIH? Stari dokument će biti označen kao zamijenjen."
+      confirmLabel="Zamijeni"
+      onConfirm={handleReplaceDocument}
+      loading={replaceDocument.isPending}
+    />
+
+    <SendNalazDialog
+      open={sendNalazOpen}
+      onOpenChange={setSendNalazOpen}
+      patientId={patientId}
+      patientMbo={patientMbo ?? null}
+      onlyRecordId={record.id}
+    />
+  </>
   )
 }

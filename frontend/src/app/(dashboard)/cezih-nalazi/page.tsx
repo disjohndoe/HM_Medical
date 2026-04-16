@@ -35,11 +35,11 @@ export default function CezihNalaziPage() {
   const { canPerformCezihOps } = usePermissions()
   const [page, setPage] = useState(0)
   const { data, isLoading, isError, error } = useCezihUnsentRecords(page * PAGE_SIZE, PAGE_SIZE)
-  const { tipLabelMap, tipColorMap, isCezihMandatory } = useRecordTypeMaps()
+  const { tipLabelMap, tipColorMap, isCezihEligible } = useRecordTypeMaps()
 
   const allRecords = data?.items ?? []
   const records = allRecords.filter(
-    (r) => isCezihMandatory.has(r.tip) && !r.cezih_sent,
+    (r) => isCezihEligible.has(r.tip) && !r.cezih_sent,
   )
 
   const [sendTarget, setSendTarget] = useState<{ patientId: string; patientMbo: string | null; recordId: string } | null>(null)

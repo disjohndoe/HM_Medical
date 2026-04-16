@@ -47,7 +47,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo, onl
 
   const { data } = useMedicalRecords(patientId)
   const sendENalaz = useSendENalaz()
-  const { tipLabelMap, tipColorMap, isCezihMandatory } = useRecordTypeMaps()
+  const { tipLabelMap, tipColorMap, isCezihEligible } = useRecordTypeMaps()
 
   // Load patient visits and cases for linking
   // API returns list of dicts: {visit_id, status, period_start, visit_type_display, ...}
@@ -82,7 +82,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo, onl
   const records = data?.items ?? []
   const eligibleRecords = records.filter(
     (r) =>
-      isCezihMandatory.has(r.tip) &&
+      isCezihEligible.has(r.tip) &&
       !r.cezih_sent &&
       (!onlyRecordId || r.id === onlyRecordId),
   )
