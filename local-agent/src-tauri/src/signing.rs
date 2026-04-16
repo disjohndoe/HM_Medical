@@ -88,25 +88,34 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         return Err("No certificates found. Is the AKD smart card inserted?".into());
     }
 
+    // Per-cert diagnostics — appended to final error so backend sees exact HRESULTs
+    // for every cert that failed. This tells us whether to add CAPI fallback, fix flags,
+    // or contact AKD about CSP capabilities.
+    let mut cert_diagnostics: Vec<String> = Vec::new();
+
     // Try signing cert first (SignatureTest has Non-Repudiation key usage,
     // which CEZIH requires). IdentificationTest is ECDH — wrong for signing.
 
     for (cert_ctx, cert_label) in &certs {
         let kid = match get_cert_thumbprint(*cert_ctx) {
             Ok(k) => k,
-            Err(_) => continue,
+            Err(_) => {
+                cert_diagnostics.push(format!("cert={}: thumbprint failed", cert_label));
+                continue;
+            }
         };
 
-        info!("JWS: Trying NCryptSignHash with {} ...", cert_label);
+        info!("JWS: [diag] Trying {} (kid={:.16})...", cert_label, kid);
 
-        // Get NCrypt key handle
+        // Step 1 — acquire private key.
+        // CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG = 0x00040000 forces CNG; fails if CSP is CAPI-only.
         let mut key_handle: usize = 0;
         let mut key_spec: u32 = 0;
         let mut must_free: i32 = 0;
 
         let ok = CryptAcquireCertificatePrivateKey(
             *cert_ctx,
-            0x00040000, // CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG
+            0x00040000,
             ptr::null(),
             &mut key_handle as *mut usize as *mut _,
             &mut key_spec,
@@ -115,12 +124,20 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
 
         if ok == 0 {
             let err = GetLastError();
-            warn!("JWS: CryptAcquireCertificatePrivateKey failed for {}: 0x{:08x}", cert_label, err);
+            warn!("JWS: [diag] acquire failed {} hresult=0x{:08x}", cert_label, err);
+            cert_diagnostics.push(format!(
+                "cert={} kid={:.16}: step1_acquire failed hresult=0x{:08x} (CNG-only flag; CSP likely CAPI-only if 0x80090016/0x8009001D)",
+                cert_label, kid, err
+            ));
             continue;
         }
+        info!(
+            "JWS: [diag] acquired {} key_spec=0x{:08x} must_free={}",
+            cert_label, key_spec, must_free
+        );
 
-        // Probe signature size to determine algorithm
-        let probe_hash = [0u8; 48]; // max hash size we use (SHA-384)
+        // Step 2 — probe signature size (tells us algorithm via sig length).
+        let probe_hash = [0u8; 48];
         let mut sig_len: u32 = 0;
         let status = NCryptSignHash(
             key_handle,
@@ -134,10 +151,18 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         );
 
         if status != 0 {
-            warn!("JWS: NCryptSignHash size query failed for {}: 0x{:08x}", cert_label, status as u32);
+            warn!(
+                "JWS: [diag] probe failed {} ntstatus=0x{:08x}",
+                cert_label, status as u32
+            );
+            cert_diagnostics.push(format!(
+                "cert={} kid={:.16}: step2_probe failed ntstatus=0x{:08x} key_spec=0x{:08x}",
+                cert_label, kid, status as u32, key_spec
+            ));
             if must_free != 0 { NCryptFreeObject(key_handle); }
             continue;
         }
+        info!("JWS: [diag] probe OK {} sig_len={}", cert_label, sig_len);
 
         // Determine algorithm from signature length
         let algorithm = match sig_len as usize {
@@ -239,12 +264,19 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         if must_free != 0 { NCryptFreeObject(key_handle); }
 
         if status != 0 {
-            warn!("JWS: NCryptSignHash failed for {}: 0x{:08x}", cert_label, status as u32);
+            warn!(
+                "JWS: [diag] sign failed {} ntstatus=0x{:08x} alg={}",
+                cert_label, status as u32, algorithm
+            );
+            cert_diagnostics.push(format!(
+                "cert={} kid={:.16}: step3_sign failed ntstatus=0x{:08x} alg={} key_spec=0x{:08x} p1363={}",
+                cert_label, kid, status as u32, algorithm, key_spec, algorithm.starts_with("ES")
+            ));
             continue;
         }
 
         sig_buf.truncate(actual_len as usize);
-        info!("JWS: raw signature {} bytes (P1363={})", sig_buf.len(), algorithm.starts_with("ES"));
+        info!("JWS: [diag] sign OK {} raw_sig={} bytes (P1363={})", cert_label, sig_buf.len(), algorithm.starts_with("ES"));
 
         // Self-verify against same signing input.
         // BCryptVerifySignature with ECDSA expects the same format (P1363) that was used for signing.
@@ -306,7 +338,28 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
     }
     CertCloseStore(store, 0);
 
-    Err("NCryptSignHash failed with all certificates. Smart card may not support CNG signing.".into())
+    // Build rich error: every cert's exact failure step + HRESULT.
+    // Common HRESULTs (so the reader doesn't have to cross-reference):
+    //   0x80090016 NTE_BAD_KEYSET       — key container not found (CSP/CNG mismatch)
+    //   0x8009001D NTE_PROV_TYPE_NOT_DEF — provider can't hand out a CNG key
+    //   0x80090015 NTE_BAD_PROV_TYPE    — wrong provider type
+    //   0x80090008 NTE_BAD_ALGID        — algorithm not supported
+    //   0x80090011 NTE_NO_KEY           — key does not exist
+    //   0x80090005 NTE_BAD_DATA
+    //   0x80090029 NTE_NOT_SUPPORTED    — operation not supported by CSP
+    //   0xC000A000 STATUS_INVALID_SIGNATURE
+    let diag_joined = if cert_diagnostics.is_empty() {
+        "no diagnostic captured".to_string()
+    } else {
+        cert_diagnostics.join(" || ")
+    };
+    Err(format!(
+        "NCryptSignHash failed for all certificates. Per-cert diagnostic: {}. \
+        Common meanings — 0x80090016/0x8009001D = CSP is CAPI-only (no CNG); \
+        0x80090008/0x80090029 = card refuses requested algorithm; \
+        0x80090011 = key missing; 0x80090005 = bad data.",
+        diag_joined
+    ))
 }
 
 /// Get certificate info (kid + algorithm) from the smart card.
