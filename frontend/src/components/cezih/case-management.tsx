@@ -196,16 +196,16 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
     switch (c.clinical_status) {
       case "active":
       case "recurrence":
-        return CASE_ACTIONS.filter((a) => ["create_recurring", "remission", "resolve", "delete"].includes(a.value))
+        return CASE_ACTIONS.filter((a) => ["create_recurring", "remission", "resolve"].includes(a.value))
       case "remission":
-        return CASE_ACTIONS.filter((a) => ["relapse", "resolve", "delete"].includes(a.value))
+        return CASE_ACTIONS.filter((a) => ["relapse", "resolve"].includes(a.value))
       case "relapse":
-        return CASE_ACTIONS.filter((a) => ["remission", "resolve", "delete"].includes(a.value))
+        return CASE_ACTIONS.filter((a) => ["remission", "resolve"].includes(a.value))
       case "resolved":
       case "inactive":
-        return CASE_ACTIONS.filter((a) => ["reopen", "delete"].includes(a.value))
+        return []
       default:
-        return CASE_ACTIONS.filter((a) => a.value === "delete")
+        return []
     }
   }
 

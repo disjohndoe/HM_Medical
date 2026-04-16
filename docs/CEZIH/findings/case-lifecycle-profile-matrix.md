@@ -100,6 +100,11 @@ Uses dedicated `build_condition_data_update`. Must echo current
 
 ### 2.7 Reopen (`hr-health-issue-reopen-message|0.1` — TENTATIVE)
 
+**⚠️ DISABLED IN UI (2026-04-16)** — hidden from `getAvailableActions` in
+`frontend/src/components/cezih/case-management.tsx:195` until the payload
+fix lands. Every live attempt hit the `himgmt-1` razlog rule, so the FE
+stops offering the action rather than guaranteeing a failed CEZIH call.
+
 Using **minimal payload** — `identifier + subject` only. In live testing a
 Reopen attempt produced an `hr-delete-health-issue-message` profile error,
 which we now believe was because the target case was already in a deleted
@@ -110,6 +115,11 @@ transitions are reachable.
 **⚠️ Not yet cleanly verified on a case in pure `resolved` state.** Re-verify.
 
 ### 2.8 Delete (`hr-delete-health-issue-message|0.1`)
+
+**⚠️ DISABLED IN UI (2026-04-16)** — hidden from `getAvailableActions` in
+`frontend/src/components/cezih/case-management.tsx:195` until
+`build_condition_delete` emits the required `note`. Re-enable after the
+backend fix + a verified live call.
 
 Uses `build_condition_delete`. Profile requires a `note` entry with a
 deletion reason — validation error text:
@@ -144,8 +154,8 @@ and `_CEZIH_DIAGNOSTIC_PATTERNS_HR` dicts.
 - [x] UI verification-status picker in create dialog (`55bfb43`)
 - [x] Croatian error translation layer (`727d195`)
 - [ ] Send HZZO email about 2.4 routing bug (draft at `hzzo-email.txt`)
-- [ ] Verify 2.7 Reopen on a case in pure `resolved` state (not deleted)
-- [ ] Add deletion-reason UI prompt for 2.8 (profile requires `note`)
+- [ ] **2.7 Reopen** — fix `build_condition_status_update` (`message_builder.py:777`) to include `note` with razlog for event code 2.7; re-verify on a case in pure `resolved` state (not deleted); re-enable in FE (`case-management.tsx:195`). Currently hidden from UI.
+- [ ] **2.8 Delete** — fix `build_condition_delete` (`message_builder.py:891`) to include required `note` field (either UI prompt or default "Obrisan od strane korisnika"); re-enable in FE (`case-management.tsx:195`). Currently hidden from UI.
 - [ ] When HZZO confirms real relapse profile, flip
       `CEZIH_RELAPSE_SEMANTIC_CORRECT = True` in `message_builder.py:951`
 
