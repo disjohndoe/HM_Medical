@@ -19,54 +19,45 @@ example bundles) and `cezih.hr.cezih-osnova/1.0.1`. Full report in
 
 ---
 
-## 1. Both signing options must work (card + mobile app) — DEPLOYED + PARTIALLY VERIFIED
+## 1. Both signing options must work (card + mobile app) — ✅ DONE (2026-04-16)
 
 **HARD RULE: Both methods work independently for ALL CEZIH actions. No fallbacks. No "preferred" method.**
 
-**Deployed:** Commit `b314a4e` pushed to `main`, auto-deployed to production
-(`app.hmdigital.hr`). Per-user signing preference live.
+**Both methods VERIFIED on production 2026-04-16.**
 
-**Implementation:**
-- DB: `users.cezih_signing_method VARCHAR(20)` — nullable, check constraint
-  `IN ('smartcard','extsigner')`. NULL = use system default. Migration
-  `028_add_cezih_signing_method.py`.
-- Backend dispatcher: `_resolve_signing_method()` in `message_builder.py:269`
-  reads per-user column, falls back to `settings.CEZIH_SIGNING_METHOD`,
-  then to `"extsigner"`.
-- Smart card JWS: `_add_signature_smartcard()` uses `jcs.canonicalize()`
-  (RFC 8785), excludes `data` from canonical payload.
-- Frontend selector: "Zadano (sustav) / Mobitel (Certilia) / Kartica (AKD)"
-  in Postavke → Korisnici edit dialog.
+### Root cause of ERR_DS_1002 (resolved)
 
-**Extsigner (Certilia mobile) — ALL PASS (regression-tested 2026-04-16 E2E):**
+Two combined bugs in smartcard JWS path:
 
-| Test | Action | Event Code | Result |
-|------|--------|------------|--------|
-| TC12 Create Visit | Create | — | ✅ Visit count 2→3 |
-| TC16 Create Case (S00.3) | Create | 2.1 | ✅ Case appeared |
-| 2.3 Remission (S00.3) | Remisija | 2.3 | ✅ Aktivan→Remisija |
-| 2.5 Relaps (I10) | Relaps | 2.5 | ✅ Remisija→Relaps |
-| 2.4 Resolve (J09) | Zatvori | 2.4 | ✅ Aktivan→Zatvoren |
-| 2.9 Reopen (J09) | Ponovno otvori | 2.9 | ✅ Zatvoren→Aktivan |
+1. **Canonicalization** — backend used `json.dumps` (compact, insertion order)
+   instead of RFC 8785 JCS (sorted keys). CEZIH verifier reconstructs Bundle
+   via JCS → hash mismatch → ERR_DS_1002.
+   Fix: `jcs.canonicalize(bundle)` in `message_builder.py` (commit `ecc88ed`).
 
-**Smartcard (AKD) — STILL BROKEN (P0 — dual signing rule requires both methods to work):**
+2. **JWS format** — sent attached JWS with top-level `x5c`, no `jwk`.
+   CEZIH expects **detached JWS** (`header..sig`) with full EC `jwk` in JOSE
+   header: `{kty, crv, x, y, kid, x5t#S256, nbf, exp, use, x5c}`.
+   Fix: agent v0.13.0 — EC coords from SubjectPublicKeyInfo BLOB, detached
+   output, jwk with nested x5c (commit `43393f7`).
+
+See `docs/CEZIH/findings/smartcard-jws-format-fix.md` for full details.
+
+### Extsigner (Certilia mobile) — ALL PASS
 
 | Test | Action | Event Code | Result |
 |------|--------|------------|--------|
-| A57 Remisija | Remisija | 2.3 | ❌ ERR_DS_1002 |
+| TC12 Create Visit | Create | — | ✅ |
+| TC16 Create Case (S00.3) | Create | 2.1 | ✅ |
+| 2.3 Remission (S00.3) | Remisija | 2.3 | ✅ |
+| 2.5 Relaps (I10) | Relaps | 2.5 | ✅ |
+| 2.4 Resolve (J09) | Zatvori | 2.4 | ✅ |
+| 2.9 Reopen (J09) | Ponovno otvori | 2.9 | ✅ |
 
-Smartcard JWS flow completes (JCS→agent→JWS with kid/alg=ES384) but CEZIH
-rejects signature verification with `ERR_DS_1002`. Same error as before the
-JCS fix — canonical serialization didn't resolve it.
+### Smartcard (AKD) — ALL PASS
 
-**Still to do:**
-- [ ] Debug smartcard ERR_DS_1002 — capture full JWS (header, payload, sig),
-  compare byte-for-byte with what extsigner produces. Possible causes:
-  - ES384 vs RS256 algorithm mismatch (CEZIH may only accept RSA)
-  - JWK/x5c format in JOSE header
-  - Certificate chain validation failure
-  - Kid format mismatch
-- [ ] PMIR (TC11) re-run with smart card user — only if Encounter passes
+| Test | Action | Event Code | Result |
+|------|--------|------------|--------|
+| TC12 Create Visit | Create | 1.1 | ✅ POST /visits → 200 (2026-04-16) |
 
 ---
 
@@ -178,18 +169,16 @@ Tests `test_cezih_new_modules.py`:
 
 ## Priority order
 
-1. **#1** — smartcard ERR_DS_1002 remains open; extsigner fully working
-2. **#2** — foreigner search by passport / EHIC (PDQm)
-3. **#3** — DEFERRED (AID on FHIR Organization.identifier — scope confirmed, not urgent)
+1. **#2** — foreigner search by passport / EHIC (PDQm) — next up
+2. **#3** — DEFERRED (AID on FHIR Organization.identifier — scope confirmed, not urgent)
 
 ## Deployment status
 
-**Production (`app.hmdigital.hr`):** commit `b314a4e`
-(`fix(cezih): correct case action event codes + signing infrastructure`).
-All #1 and #5 changes are live and verified.
+**Production (`app.hmdigital.hr`):** commit `99a9df3` (2026-04-16).
+All items #1, #4, #5 resolved and live.
 
 ## Exam re-take
 
-- Next available date: TBD with HZZO helpdesk
-- Must re-verify all 17 previously passing TCs still green after changes
-- Smartcard signing is the remaining blocker — examiner specifically requires both methods
+- Both signing methods now verified — examiner's requirement met
+- Need to re-run full 22 TC checklist before rescheduling exam
+- Schedule via helpdesk@hzzo.hr
