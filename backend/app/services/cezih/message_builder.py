@@ -941,10 +941,14 @@ CASE_EVENT_PROFILE: dict[str, dict[str, Any]] = {
     # — handled in service.py update_case, not via this table.
 }
 
-# Flip once HZZO fixes the 2.4/2.5 test-env routing. When True, dispatcher
-# sends semantically-correct 2.4 payload: {cs: True, cs_value: "relapse",
-# abatement: False} and 2.5 payload per real resolve-message profile.
-CEZIH_RELAPSE_SEMANTIC_CORRECT = False
+# 2026-04-16: enabled to STOP DATA CORRUPTION. The earlier "workaround"
+# (cs=resolved + abatement) passed CEZIH validation but CEZIH honored our
+# lie and stored the case as "resolved" — breaking every downstream action
+# (delete, reopen). Now we send semantically-correct cs=relapse + no
+# abatement. CEZIH test env will 400 because of the broken 2.4→resolve-
+# message routing, but that's an honest failure, not silent corruption.
+# Flip back to False only if HZZO fixes routing AND we verify no corruption.
+CEZIH_RELAPSE_SEMANTIC_CORRECT = True
 
 
 # --- Parse response ---
