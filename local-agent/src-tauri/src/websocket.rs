@@ -75,6 +75,8 @@ fn collect_status() -> StatusSnapshot {
         "type": "status",
         "card_inserted": card.card_inserted,
         "card_holder": card.card_holder,
+        "card_serial": card.card_serial,
+        "card_subject_oib": card.card_subject_oib,
         "reader_available": card.reader_available,
         "vpn_connected": vpn.connected,
         "vpn_name": vpn.connection_name,
