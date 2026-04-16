@@ -55,7 +55,7 @@ export function ForeignerSearch() {
         <div className="flex gap-3">
           <div className="w-48">
             <Label>Tip identifikatora</Label>
-            <Select value={system} onValueChange={(v) => { setSystem(v); setSubmitted(""); setValue("") }}>
+            <Select value={system} onValueChange={(v) => { if (v) { setSystem(v); setSubmitted(""); setValue("") } }}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
