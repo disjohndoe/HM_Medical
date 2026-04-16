@@ -11,7 +11,6 @@ from app.services.cezih.message_builder import (
     MESSAGE_TYPE_SYSTEM,
     build_condition_create,
     build_condition_data_update,
-    build_condition_delete,
     build_condition_status_update,
     build_message_bundle,
     parse_message_response,
@@ -107,11 +106,6 @@ def test_condition_data_update_preserves_clinical_status():
     assert cond["code"]["coding"][0]["code"] == "I10"
 
 
-def test_condition_delete_minimal_payload():
-    cond = build_condition_delete(case_identifier="global-case-123", patient_mbo="999990260")
-    assert cond["identifier"][0]["system"] == ID_CASE_GLOBAL
-    assert "clinicalStatus" not in cond
-    assert "code" not in cond
 
 
 # ============================================================
@@ -134,13 +128,17 @@ async def test_build_message_bundle_structure():
 
 
 def test_case_action_map_completeness():
-    assert len(CASE_ACTION_MAP) == 8
+    assert len(CASE_ACTION_MAP) == 7
+    assert "delete" not in CASE_ACTION_MAP  # Product rule: never ship CEZIH delete
     assert CASE_ACTION_MAP["create"]["code"] == "2.1"
     assert CASE_ACTION_MAP["remission"]["clinical_status"] == "remission"
+    assert CASE_ACTION_MAP["resolve"]["code"] == "2.4"
     assert CASE_ACTION_MAP["resolve"]["clinical_status"] == "resolved"
+    assert CASE_ACTION_MAP["relapse"]["code"] == "2.5"
+    assert CASE_ACTION_MAP["relapse"]["clinical_status"] == "relapse"
     assert CASE_ACTION_MAP["update_data"]["code"] == "2.6"
     assert CASE_ACTION_MAP["update_data"]["clinical_status"] is None
-    assert CASE_ACTION_MAP["delete"]["code"] == "2.8"
+    assert CASE_ACTION_MAP["reopen"]["code"] == "2.9"
 
 
 def test_parse_message_response_success():

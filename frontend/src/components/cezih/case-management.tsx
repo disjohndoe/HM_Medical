@@ -69,11 +69,12 @@ const VERIFICATION_STATUS_LABELS: Record<string, string> = {
   "entered-in-error": "Pogreška unosa",
 }
 
-// CEZIH NEVER allows 2.8 Delete — every case transition to "deleted" is
-// rejected with ERR_HEALTH_ISSUE_2004 regardless of state. Obriši is
-// intentionally omitted from the UI. Backend endpoint still exists but is
-// exercised only by tests. Use 2.6 Data update to mark a case as
-// `entered-in-error` if a mistaken entry needs to be neutralized.
+// CEZIH case actions — event codes per Simplifier cezih.hr.condition-management/0.2.1:
+//   2.1=Create, 2.2=Create recurrence, 2.3=Remission, 2.4=Resolve,
+//   2.5=Relapse, 2.6=Data update, 2.7=Delete (NOT shipped — product rule),
+//   2.9=Reopen after resolve.
+// Delete (2.7) is intentionally omitted from UI per product rule.
+// For mistaken entries: use 2.6 Data update + verificationStatus=entered-in-error.
 const CASE_ACTIONS = [
   { value: "create_recurring", label: "Ponavljajući slučaj" },
   { value: "remission", label: "Remisija" },
@@ -198,19 +199,19 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   }
 
   const getAvailableActions = (c: CaseItem) => {
-    // Zatvori (2.5 Resolve) goes through CEZIH's case state machine which
-    // requires verificationStatus=confirmed. Cases imported with a different
-    // original state will hit ERR_HEALTH_ISSUE_2004 — surfaced as a Croatian
-    // toast. (Delete is never supported by CEZIH and is omitted from actions.)
-    const confirmed = c.verification_status === "confirmed" || c._local === true
+    // State machine per Simplifier spec:
+    //   active → remission(2.3), resolve(2.4)
+    //   remission → relapse(2.5), resolve(2.4)
+    //   relapse → remission(2.3), resolve(2.4)
+    //   resolved → reopen(2.9)
+    //   Delete (2.7) never shipped — product rule.
     const filter = (actions: string[]) =>
       CASE_ACTIONS.filter((a) => actions.includes(a.value))
-        .filter((a) => a.value !== "resolve" || confirmed)
 
     switch (c.clinical_status) {
       case "active":
       case "recurrence":
-        return filter(["create_recurring", "remission", "resolve"])
+        return filter(["remission", "resolve"])
       case "remission":
         return filter(["relapse", "resolve"])
       case "relapse":

@@ -931,54 +931,41 @@ def build_condition_data_update(
 
 # --- Mapping: case action -> message code + clinical status ---
 
-# 2.8 Delete is deliberately NOT wired — CEZIH rejects every delete
-# transition with ERR_HEALTH_ISSUE_2004 regardless of case state. Use
-# 2.6 Data update + verificationStatus=entered-in-error to neutralize
-# a mistaken entry.
+# Delete (2.7) is deliberately NOT wired per product rule — see CLAUDE.md.
+# For "mistaken entry" UX: 2.6 Data update with verificationStatus=entered-in-error.
+#
+# Event codes per Simplifier cezih.hr.condition-management/0.2.1:
+#   2.1=Create, 2.2=Create recurrence, 2.3=Remission, 2.4=Resolve,
+#   2.5=Relapse, 2.6=Data update, 2.7=Delete (NOT shipped),
+#   2.8=Reopen after delete (unreachable), 2.9=Reopen after resolve
 CASE_ACTION_MAP: dict[str, dict[str, str | None]] = {
     "create": {"code": "2.1", "clinical_status": None},
     "create_recurring": {"code": "2.2", "clinical_status": None},
     "remission": {"code": "2.3", "clinical_status": "remission"},
-    "relapse": {"code": "2.4", "clinical_status": "relapse"},
-    "resolve": {"code": "2.5", "clinical_status": "resolved"},
+    "resolve": {"code": "2.4", "clinical_status": "resolved"},
+    "relapse": {"code": "2.5", "clinical_status": "relapse"},
     "update_data": {"code": "2.6", "clinical_status": None},  # Data-only update, no status change
-    "reopen": {"code": "2.7", "clinical_status": "active"},
+    "reopen": {"code": "2.9", "clinical_status": "active"},
 }
 
 
 # --- Per-event CEZIH profile rules for case status-update messages ---
 #
 # CEZIH validates each $process-message event code against a DIFFERENT
-# StructureDefinition profile. This table encodes the payload shape each
-# profile requires. See docs/CEZIH/findings/case-lifecycle-profile-matrix.md
-# for live-testing evidence.
-#
-# CEZIH test env has SWAPPED the 2.4/2.5 profile routing (verified 2026-04-16):
-#   Event 2.4 (Relaps)  validates against hr-health-issue-resolve-message  → demands cs=resolved + abatement
-#   Event 2.5 (Resolve) validates against hr-health-issue-relapse-message  → forbids cs, forbids abatement
-# So the shipping table below sends a "resolve-shaped" payload for 2.4 and
-# MINIMAL payload for 2.5. Both verified working against live test env.
+# StructureDefinition profile (Simplifier cezih.hr.condition-management/0.2.1).
 #
 # Fields:
 #   cs        — include Condition.clinicalStatus
-#   cs_value  — code to send when cs=True (e.g. "resolved", "active")
+#   cs_value  — code to send when cs=True (e.g. "resolved")
 #   abatement — include Condition.abatementDateTime (set to now())
 CASE_EVENT_PROFILE: dict[str, dict[str, Any]] = {
-    "2.3": {"cs": False, "abatement": False, "cs_value": None},  # Remisija — VERIFIED 2026-04-16
-    "2.4": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Relaps — VERIFIED 2026-04-16 (test-env swap)
-    "2.5": {"cs": False, "abatement": False, "cs_value": None},  # Resolve — MINIMAL per test-env swap
-    "2.7": {"cs": False, "abatement": False, "cs_value": None},  # Reopen — untested probe value
+    "2.3": {"cs": False, "abatement": False, "cs_value": None},  # Remisija — minimal
+    "2.4": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Resolve — cs=resolved + abatementDateTime REQUIRED
+    "2.5": {"cs": False, "abatement": False, "cs_value": None},  # Relapse — minimal
+    "2.9": {"cs": False, "abatement": False, "cs_value": None},  # Reopen after resolve — minimal
     # 2.2 Ponavljajući routes through build_condition_create (hr-create-health-issue-recurrence-message)
     # — handled in service.py update_case, not via this table.
 }
-
-# 2026-04-16: set to False per user decision — prefer working Relaps button
-# over honest failure. CEZIH test env routes 2.4 to the resolve-message
-# profile, so we send cs=resolved + abatementDateTime. CEZIH returns 200
-# and stores the case as resolved; FE surfaces it as "Zatvoren". Accept
-# this as the cost of shipping a working button until HZZO fixes routing.
-# Flip to True once HZZO documents the real relapse profile URL.
-CEZIH_RELAPSE_SEMANTIC_CORRECT = False
 
 
 # --- Parse response ---
@@ -988,11 +975,9 @@ CEZIH_RELAPSE_SEMANTIC_CORRECT = False
 # or substrings of the English diagnostics text for pattern matches.
 _CEZIH_ERROR_MESSAGES_HR: dict[str, str] = {
     "ERR_HEALTH_ISSUE_2004": (
-        "CEZIH ne dopušta ovu tranziciju stanja. Zatvaranje (2.5) radi samo "
-        "na slučajevima koji su kreirani kao 'Potvrđen' u istoj sesiji — "
-        "naknadno flipanje iz 'Nepotvrđen' u 'Potvrđen' preko 2.6 NE mijenja "
-        "pogled CEZIH state-machine-a. Rješenje: kreirajte novi slučaj s "
-        "'Potvrđen' statusom i odmah pokrenite željenu akciju."
+        "CEZIH ne dopušta ovu tranziciju stanja. Provjerite je li slučaj u "
+        "ispravnom stanju za ovu akciju (Zatvori — aktivni/potvrđeni, "
+        "Relaps — u remisiji, Ponovno otvori — zatvoreni slučaj)."
     ),
     "ERR_DS_1002": (
         "Digitalni potpis ili struktura poruke nije prošla validaciju. "

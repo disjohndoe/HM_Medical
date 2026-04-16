@@ -190,36 +190,30 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 - **Workflow:** `.github/workflows/release-agent.yml` — only runs when `local-agent/` files changed AND version bumped
 - **Required GitHub Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
-### Local Development
+### Local Development (available but NOT used for testing)
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 Exposes: backend :8000, frontend :3000, PostgreSQL :5433. No Caddy, hot reload enabled.
 
-### Mandatory Testing Workflow (After Any Code Change)
+### Mandatory Testing Workflow — PROD ONLY
 
-**Every backend/frontend change requires:**
+**All testing is done on prod (app.hmdigital.hr) via Chrome MCP + SSH. Do NOT test on localhost.**
 
-1. **Rebuild frontend** (Next.js hot reload misses some changes):
-   ```bash
-   docker compose restart frontend
-   # Or full rebuild if dependencies changed:
-   docker compose up --build frontend
-   ```
+Workflow for every code change:
 
-2. **Run database migrations** (if schema changed):
-   ```bash
-   docker compose exec backend alembic upgrade head
-   ```
-
-3. **E2E test in browser** via MCP Chrome DevTools:
+1. **Commit and push** to `main` — triggers auto-deploy via GitHub Actions (~45s)
+2. **Wait for deploy**: `gh run watch <run_id> --exit-status`
+3. **E2E test on prod** via Chrome DevTools MCP:
+   - Navigate to `https://app.hmdigital.hr`
    - Take snapshot: `take_snapshot`
-   - Navigate to affected pages
    - Test the modified feature end-to-end
    - Check console for errors: `list_console_messages`
    - Verify network requests: `list_network_requests`
-
-**Why:** Hot reload is unreliable for schema/type changes. Skipping E2E tests leads to "works on my machine" bugs that only appear in production.
+4. **Check server logs** via SSH if needed:
+   ```bash
+   ssh root@178.104.169.150 "cd /opt/medical-mvp && docker compose logs backend --tail 100"
+   ```
 
 ### Production
 
