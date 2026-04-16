@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Send, Loader2, AlertTriangle, Check, Paperclip, ChevronDown, ChevronRight } from "lucide-react"
+import { Send, Loader2, AlertTriangle, Check } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -43,15 +43,13 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
   const [failedRecords, setFailedRecords] = useState<{ id: string; error: string }[]>([])
   const [selectedEncounterId, setSelectedEncounterId] = useState("")
   const [selectedCaseId, setSelectedCaseId] = useState("")
-  const [recordEncounter, setRecordEncounter] = useState<Map<string, string>>(new Map())
-  const [recordCase, setRecordCase] = useState<Map<string, string>>(new Map())
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   const { data } = useMedicalRecords(patientId)
   const sendENalaz = useSendENalaz()
   const { tipLabelMap, tipColorMap, isCezihMandatory } = useRecordTypeMaps()
 
   // Load patient visits and cases for linking
+  // API returns list of dicts: {visit_id, status, period_start, visit_type_display, ...}
   const { data: visitsData } = useListVisits(patientMbo || "")
   const { data: casesData } = useRetrieveCases(patientMbo || "")
 
@@ -62,72 +60,46 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
   const cases = ((casesData as { cases?: CaseItem[] })?.cases ?? []) as CaseItem[]
 
   // Exclude terminal states only — anything non-terminal is selectable.
+  // Fresh cases often come back with clinical_status ∈ {"", "recurrence", "remission", "relapse"}
+  // and a hard === "active" filter silently hid them, blocking e-Nalaz send.
   const TERMINAL_VISIT_STATUSES = new Set(["finished", "cancelled", "entered-in-error"])
   const TERMINAL_CASE_STATUSES = new Set(["resolved", "inactive", "entered-in-error"])
   const activeVisits = visits.filter((v) => !TERMINAL_VISIT_STATUSES.has(v.status))
   const activeCases = cases.filter((c) => !TERMINAL_CASE_STATUSES.has(c.clinical_status))
+
+  // Auto-select first visit/case when data loads
+  useEffect(() => {
+    if (open && activeVisits.length > 0 && !selectedEncounterId) {
+      setSelectedEncounterId(activeVisits[0]?.visit_id || "")
+    }
+    if (open && activeCases.length > 0 && !selectedCaseId) {
+      setSelectedCaseId(activeCases[0]?.case_id || "")
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, activeVisits.length, activeCases.length])
 
   const records = data?.items ?? []
   const eligibleRecords = records.filter(
     (r) => isCezihMandatory.has(r.tip) && !r.cezih_sent
   )
 
-  // Seed state when dialog opens or record list arrives
+  // Pre-select all eligible records when dialog opens or records change
   useEffect(() => {
-    if (!open) return
-    setSelectedIds(new Set(eligibleRecords.map((r) => r.id)))
-    setProgress({ current: 0, total: 0 })
-    setFailedRecords([])
-    setExpandedIds(new Set())
-
-    // Global defaults = first active visit/case
-    const defaultEncounter = activeVisits[0]?.visit_id || ""
-    const defaultCase = activeCases[0]?.case_id || ""
-    setSelectedEncounterId(defaultEncounter)
-    setSelectedCaseId(defaultCase)
-
-    // Per-record maps: seed with stored encounter/case from the record itself
-    const nextEnc = new Map<string, string>()
-    const nextCase = new Map<string, string>()
-    for (const r of eligibleRecords) {
-      nextEnc.set(r.id, r.cezih_encounter_id ?? "")
-      nextCase.set(r.id, r.cezih_case_id ?? "")
+    if (open) {
+      setSelectedIds(new Set(eligibleRecords.map((r) => r.id)))
+      setProgress({ current: 0, total: 0 })
+      setFailedRecords([])
+      setSelectedEncounterId("")
+      setSelectedCaseId("")
     }
-    setRecordEncounter(nextEnc)
-    setRecordCase(nextCase)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, eligibleRecords.length, activeVisits.length, activeCases.length])
+  }, [open])
 
   const toggleRecord = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
-      return next
-    })
-  }
-
-  const toggleExpanded = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const setRecEnc = (id: string, value: string) => {
-    setRecordEncounter((prev) => {
-      const next = new Map(prev)
-      next.set(id, value)
-      return next
-    })
-  }
-
-  const setRecCase = (id: string, value: string) => {
-    setRecordCase((prev) => {
-      const next = new Map(prev)
-      next.set(id, value)
       return next
     })
   }
@@ -139,18 +111,6 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
       setSelectedIds(new Set(eligibleRecords.map((r) => r.id)))
     }
   }
-
-  const resolveEncounter = (id: string): string =>
-    recordEncounter.get(id) || selectedEncounterId
-  const resolveCase = (id: string): string =>
-    recordCase.get(id) || selectedCaseId
-
-  const selectedList = eligibleRecords.filter((r) => selectedIds.has(r.id))
-  const missingContextIds = selectedList
-    .filter((r) => !resolveEncounter(r.id) || !resolveCase(r.id))
-    .map((r) => r.id)
-  const canSend =
-    selectedList.length > 0 && !!patientMbo && missingContextIds.length === 0
 
   const handleSend = useCallback(async () => {
     const ids = Array.from(selectedIds)
@@ -164,14 +124,12 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
 
     for (let i = 0; i < ids.length; i++) {
       setProgress({ current: i + 1, total: ids.length })
-      const enc = resolveEncounter(ids[i])
-      const cs = resolveCase(ids[i])
       try {
         await sendENalaz.mutateAsync({
           patient_id: patientId,
           record_id: ids[i],
-          encounter_id: enc,
-          case_id: cs,
+          encounter_id: selectedEncounterId,
+          case_id: selectedCaseId,
         })
         successCount++
       } catch (err) {
@@ -198,28 +156,28 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
       setSelectedIds(new Set())
       onOpenChange(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds, patientId, sendENalaz, onOpenChange, recordEncounter, recordCase, selectedEncounterId, selectedCaseId])
+    // Keep dialog open on partial failure so user can see which records failed
+  }, [selectedIds, patientId, sendENalaz, onOpenChange, selectedEncounterId, selectedCaseId])
 
   const allSelected = eligibleRecords.length > 0 && selectedIds.size === eligibleRecords.length
 
   return (
     <Dialog open={open} onOpenChange={sending ? undefined : onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>Pošalji e-Nalaze (skupno)</DialogTitle>
           </div>
           <DialogDescription>
-            Odaberite nalaze koji postaju e-Nalazi na CEZIH-u. Svaki nalaz se šalje s vlastitom posjetom i slučajem.
+            Odaberite nalaze koji postaju e-Nalazi na CEZIH-u.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
-          {/* Default context (fallback for records without stored encounter/case) */}
+          {/* Visit and Case selection (required by CEZIH) */}
           {patientMbo && eligibleRecords.length > 0 && (
             <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
-              <p className="text-xs font-medium text-muted-foreground">Zadani kontekst (za nalaze bez spremljenog)</p>
+              <p className="text-xs font-medium text-muted-foreground">CEZIH kontekst (obavezno)</p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-xs text-muted-foreground">Posjeta</label>
@@ -254,6 +212,15 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
                   </select>
                 </div>
               </div>
+              {(!selectedEncounterId || !selectedCaseId) && (
+                <p className="text-xs text-amber-600">
+                  {!selectedEncounterId && !selectedCaseId
+                    ? "Potrebno je odabrati posjetu i slučaj"
+                    : !selectedEncounterId
+                      ? "Potrebno je odabrati posjetu"
+                      : "Potrebno je odabrati slučaj"}
+                </p>
+              )}
             </div>
           )}
 
@@ -266,6 +233,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
             </div>
           ) : (
             <>
+              {/* Select all toggle */}
               <button
                 type="button"
                 onClick={toggleAll}
@@ -275,192 +243,44 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
                 <span>{allSelected ? "Odznači sve" : "Označi sve"}</span>
               </button>
 
-              <div className="space-y-2 max-h-[420px] overflow-y-auto">
-                {eligibleRecords.map((r) => {
-                  const recEnc = recordEncounter.get(r.id) ?? ""
-                  const recCase = recordCase.get(r.id) ?? ""
-                  const encSource: "spremljeno" | "zadano" | "nema" =
-                    recEnc ? "spremljeno" : selectedEncounterId ? "zadano" : "nema"
-                  const caseSource: "spremljeno" | "zadano" | "nema" =
-                    recCase ? "spremljeno" : selectedCaseId ? "zadano" : "nema"
-                  const expanded = expandedIds.has(r.id)
-                  const isSelected = selectedIds.has(r.id)
-                  const hasAttachment = !!r.document_id
-                  const isMissing = missingContextIds.includes(r.id)
-
-                  return (
-                    <div
-                      key={r.id}
-                      className={`rounded-lg border transition-colors ${
-                        isSelected
-                          ? isMissing
-                            ? "border-destructive/70 bg-destructive/5"
-                            : "border-primary bg-primary/5"
-                          : "border-border"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleRecord(r.id)}
-                        disabled={sending}
-                        className="w-full text-left px-3 py-2.5 hover:bg-muted/30 rounded-t-lg"
+              <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                {eligibleRecords.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => toggleRecord(r.id)}
+                    disabled={sending}
+                    className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${
+                      selectedIds.has(r.id)
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:bg-muted/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckIcon checked={selectedIds.has(r.id)} />
+                      <Badge
+                        variant="secondary"
+                        className={`text-xs ${tipColorMap[r.tip] || ""}`}
                       >
-                        <div className="flex items-center gap-2">
-                          <CheckIcon checked={isSelected} />
-                          <Badge
-                            variant="secondary"
-                            className={`text-xs ${tipColorMap[r.tip] || ""}`}
-                          >
-                            {tipLabelMap[r.tip] || r.tip}
-                          </Badge>
-                          {hasAttachment && (
-                            <span
-                              className="flex items-center gap-1 text-xs text-muted-foreground"
-                              title="Prilog će biti poslan uz e-Nalaz"
-                            >
-                              <Paperclip className="h-3 w-3" />
-                              Prilog
-                            </span>
-                          )}
-                          <span className="ml-auto text-xs text-muted-foreground">
-                            {formatDateHR(r.datum)}
-                          </span>
-                        </div>
-                        {r.dijagnoza_tekst && (
-                          <p className="mt-1 ml-6 text-xs text-muted-foreground truncate">
-                            {r.dijagnoza_mkb && <span className="font-mono mr-1">{r.dijagnoza_mkb}</span>}
-                            {r.dijagnoza_tekst}
-                          </p>
-                        )}
-                      </button>
-
-                      {/* Per-record visit/case + expand — only for selected records */}
-                      {isSelected && (
-                        <div className="border-t px-3 py-2 space-y-2" onClick={(e) => e.stopPropagation()}>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                <span>Posjeta</span>
-                                {encSource === "spremljeno" && (
-                                  <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-500/40 text-emerald-700 dark:text-emerald-400">
-                                    Spremljeno
-                                  </Badge>
-                                )}
-                                {encSource === "zadano" && (
-                                  <Badge variant="outline" className="h-4 px-1 text-[9px] border-amber-500/40 text-amber-700 dark:text-amber-400">
-                                    Zadano
-                                  </Badge>
-                                )}
-                                {encSource === "nema" && (
-                                  <Badge variant="outline" className="h-4 px-1 text-[9px] border-destructive/40 text-destructive">
-                                    Nedostaje
-                                  </Badge>
-                                )}
-                              </div>
-                              <select
-                                value={recEnc}
-                                onChange={(e) => {
-                                  e.stopPropagation()
-                                  setRecEnc(r.id, e.target.value)
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-full rounded border bg-background px-2 py-1 text-xs"
-                                disabled={sending}
-                              >
-                                <option value="">— Koristi zadano —</option>
-                                {activeVisits.map((v) => (
-                                  <option key={v.visit_id} value={v.visit_id}>
-                                    {v.period_start ? formatDateHR(v.period_start) : v.visit_id.slice(0, 12)}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                <span>Slučaj</span>
-                                {caseSource === "spremljeno" && (
-                                  <Badge variant="outline" className="h-4 px-1 text-[9px] border-emerald-500/40 text-emerald-700 dark:text-emerald-400">
-                                    Spremljeno
-                                  </Badge>
-                                )}
-                                {caseSource === "zadano" && (
-                                  <Badge variant="outline" className="h-4 px-1 text-[9px] border-amber-500/40 text-amber-700 dark:text-amber-400">
-                                    Zadano
-                                  </Badge>
-                                )}
-                                {caseSource === "nema" && (
-                                  <Badge variant="outline" className="h-4 px-1 text-[9px] border-destructive/40 text-destructive">
-                                    Nedostaje
-                                  </Badge>
-                                )}
-                              </div>
-                              <select
-                                value={recCase}
-                                onChange={(e) => {
-                                  e.stopPropagation()
-                                  setRecCase(r.id, e.target.value)
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-full rounded border bg-background px-2 py-1 text-xs"
-                                disabled={sending}
-                              >
-                                <option value="">— Koristi zadano —</option>
-                                {activeCases.map((c) => (
-                                  <option key={c.case_id} value={c.case_id}>
-                                    {c.icd_code ? `${c.icd_code} ${c.icd_display || ""}`.trim() : c.case_id.slice(0, 12)}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              toggleExpanded(r.id)
-                            }}
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                          >
-                            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                            {expanded ? "Sakrij sadržaj" : "Prikaži sadržaj"}
-                          </button>
-
-                          {expanded && (
-                            <div className="rounded-md bg-muted/40 p-2 space-y-2">
-                              {r.sadrzaj && (
-                                <pre className="whitespace-pre-wrap text-xs leading-relaxed font-sans">
-                                  {r.sadrzaj.length > 500 ? r.sadrzaj.slice(0, 500) + "…" : r.sadrzaj}
-                                </pre>
-                              )}
-                              {r.preporucena_terapija && r.preporucena_terapija.length > 0 && (
-                                <div className="pt-1 border-t border-border/40">
-                                  <p className="text-[10px] font-medium text-muted-foreground mb-1">Preporučena terapija</p>
-                                  <ul className="text-xs space-y-0.5">
-                                    {r.preporucena_terapija.map((t, i) => (
-                                      <li key={i} className="text-muted-foreground">
-                                        <span className="text-foreground">{t.naziv}</span>
-                                        {t.jacina && <span> {t.jacina}</span>}
-                                        {t.doziranje && <span> · {t.doziranje}</span>}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              {!r.sadrzaj && !(r.preporucena_terapija && r.preporucena_terapija.length > 0) && (
-                                <p className="text-xs text-muted-foreground italic">Nema dodatnog sadržaja.</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                        {tipLabelMap[r.tip] || r.tip}
+                      </Badge>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {formatDateHR(r.datum)}
+                      </span>
                     </div>
-                  )
-                })}
+                    {r.dijagnoza_tekst && (
+                      <p className="mt-1 ml-6 text-xs text-muted-foreground truncate">
+                        {r.dijagnoza_mkb && <span className="font-mono mr-1">{r.dijagnoza_mkb}</span>}
+                        {r.dijagnoza_tekst}
+                      </p>
+                    )}
+                  </button>
+                ))}
               </div>
             </>
           )}
 
+          {/* Progress indicator */}
           {sending && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -468,6 +288,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
             </div>
           )}
 
+          {/* Failed records */}
           {failedRecords.length > 0 && !sending && (
             <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 space-y-1">
               <p className="text-sm font-medium text-destructive">
@@ -488,14 +309,8 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
         <DialogFooter>
           <Button
             onClick={handleSend}
-            disabled={!canSend || sending}
-            title={
-              !patientMbo
-                ? "Pacijent nema MBO — potreban za CEZIH"
-                : missingContextIds.length > 0
-                  ? `${missingContextIds.length} odabran${missingContextIds.length === 1 ? "" : "ih"} nalaz${missingContextIds.length === 1 ? "" : "a"} nema posjetu i/ili slučaj`
-                  : undefined
-            }
+            disabled={selectedIds.size === 0 || sending || !patientMbo || !selectedEncounterId || !selectedCaseId}
+            title={!patientMbo ? "Pacijent nema MBO — potreban za CEZIH" : (!selectedEncounterId || !selectedCaseId) ? "Odaberite posjetu i slučaj" : undefined}
           >
             {sending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

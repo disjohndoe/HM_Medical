@@ -335,35 +335,10 @@ async def _build_document_bundle(
         }
     }]
 
-    # Optional: doctor's uploaded attachment (PDF / JPEG / PNG) as additional content.
-    # Added as a second Binary + second content[] entry so the clinical summary
-    # remains the primary text and the file is the supplementary evidence.
-    prilog_binary: dict | None = None
-    prilog_uuid: str | None = None
-    prilog = record_data.get("prilog")
-    if prilog and prilog.get("data_b64"):
-        prilog_uuid = str(_uuid.uuid4())
-        prilog_content_type = prilog.get("content_type") or "application/octet-stream"
-        prilog_binary = {
-            "resourceType": "Binary",
-            "contentType": prilog_content_type,
-            "data": prilog["data_b64"],
-        }
-        attachment: dict = {
-            "contentType": prilog_content_type,
-            "url": f"urn:uuid:{prilog_uuid}",
-        }
-        if prilog.get("filename"):
-            attachment["title"] = prilog["filename"]
-        doc_ref_dict["content"].append({"attachment": attachment})
-
     # Build IHE MHD ITI-65 transaction bundle
     entries = [doc_ref_dict]
     binary_resource["_uuid"] = binary_uuid
     entries.append(binary_resource)
-    if prilog_binary is not None and prilog_uuid is not None:
-        prilog_binary["_uuid"] = prilog_uuid
-        entries.append(prilog_binary)
 
     _bundle_profile = None
     _ss_profile = None

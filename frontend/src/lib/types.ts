@@ -309,11 +309,8 @@ export interface MedicalRecord {
   cezih_sent_at: string | null;
   cezih_reference_id: string | null;
   cezih_storno: boolean;
-  cezih_encounter_id: string | null;
-  cezih_case_id: string | null;
   sensitivity: string;
   preporucena_terapija: PreporucenaTerapijaEntry[] | null;
-  document_id: string | null;
   doktor_ime: string | null;
   doktor_prezime: string | null;
   patient_ime: string | null;
@@ -333,7 +330,6 @@ export interface MedicalRecordCreate {
   sadrzaj: string;
   sensitivity?: string;
   preporucena_terapija?: PreporucenaTerapijaEntry[] | null;
-  document_id?: string | null;
 }
 
 export interface MedicalRecordUpdate {
@@ -345,7 +341,6 @@ export interface MedicalRecordUpdate {
   sadrzaj?: string | null;
   sensitivity?: string | null;
   preporucena_terapija?: PreporucenaTerapijaEntry[] | null;
-  document_id?: string | null;
 }
 
 export interface PreporucenaTerapijaEntry {

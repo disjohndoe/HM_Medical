@@ -23,7 +23,6 @@ class MedicalRecordCreate(BaseModel):
     sadrzaj: str
     sensitivity: str = "standard"
     preporucena_terapija: list[PreporucenaTerapijaEntry] | None = None
-    document_id: UUID | None = None
 
     @field_validator("sadrzaj")
     @classmethod
@@ -54,11 +53,8 @@ class MedicalRecordRead(BaseModel):
     cezih_sent_at: datetime | None
     cezih_reference_id: str | None
     cezih_storno: bool
-    cezih_encounter_id: str | None = None
-    cezih_case_id: str | None = None
     sensitivity: str
     preporucena_terapija: list[PreporucenaTerapijaEntry] | None = None
-    document_id: UUID | None = None
     doktor_ime: str | None = None
     doktor_prezime: str | None = None
     patient_ime: str | None = None
@@ -79,7 +75,6 @@ class MedicalRecordUpdate(BaseModel):
     sadrzaj: str | None = None
     sensitivity: str | None = None
     preporucena_terapija: list[PreporucenaTerapijaEntry] | None = None
-    document_id: UUID | None = None
 
     @field_validator("sadrzaj")
     @classmethod
