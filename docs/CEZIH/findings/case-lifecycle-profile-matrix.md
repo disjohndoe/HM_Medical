@@ -55,80 +55,39 @@ Profile rules (discovered from 400 errors):
 
 **✅ VERIFIED 2026-04-16** — 200 OK. This is the exam TC17 baseline oracle.
 
-### 2.4 Relaps — **TEST-ENV BUG**
+### 2.4 Resolve / Zatvori (`hr-health-issue-resolve-message|0.1`)
 
-CEZIH test env routes event code 2.4 to the **`hr-health-issue-resolve-message`**
-profile instead of a (presumably missing) relapse-specific profile:
+- `clinicalStatus`: **FIXED to `resolved`** (required, not optional)
+- `abatementDateTime`: **[1..1] REQUIRED**
+- `verificationStatus`: forbidden
+- `note`: forbidden
+- Payload: **cs+abatement shape** — `identifier + subject + clinicalStatus=resolved + abatementDateTime`
+- **Required case-state precondition**: `verificationStatus` must be `"confirmed"` —
+  `"unconfirmed"` triggers `ERR_HEALTH_ISSUE_2004` ("Not allowed to perform requested
+  transition with current roles"). This error is NOT about user roles — it's the state
+  machine rejecting a resolve on an unconfirmed diagnosis.
 
-```
-Bundle.entry:HealthIssue.resource.abatement[x]: minimum required = 1, but only found 0
-  (from http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-health-issue-resolve-message|0.1)
-Value is 'relapse' but must be 'resolved'
-```
+**✅ VERIFIED 2026-04-16** (extsigner, commit `b314a4e`) — 200 OK on active+confirmed S00.3 case.
 
-**Workaround active** (feature-flag `CEZIH_RELAPSE_SEMANTIC_CORRECT = False`
-at `message_builder.py:951`): we send `clinicalStatus=resolved +
-abatementDateTime`, which makes CEZIH return 200. **CEZIH then permanently
-stores the case as `resolved`** — the FE reflects this as "Zatvoren". Accepted
-as a cosmetic issue because 2.4 is **NOT in the 22 cert TCs**.
+> **Historical note:** Pre-fix, our `CASE_ACTION_MAP` had 2.4/2.5 swapped. We were
+> sending event code 2.4 labelled as "Relaps" with `clinicalStatus=relapse` payload.
+> CEZIH correctly routed 2.4 to the resolve-message profile, which rejected `relapse`
+> and required `abatementDateTime`. We misread this as a "test-env routing bug". It was
+> our code. Fixed in commit `b314a4e` (2026-04-16).
 
-**When HZZO fixes routing:** flip the flag to `True` — that sends
-semantically-correct `clinicalStatus=relapse` + no abatement.
+### 2.5 Relapse / Relaps (`hr-health-issue-relapse-message|0.1`)
 
-HZZO helpdesk email drafted at `hzzo-email.txt` — to be sent.
-
-### 2.5 Resolve (`hr-health-issue-resolve-message|0.1`)
-
+- `clinicalStatus`: max = 0 (must be ABSENT)
+- `abatement[x]`: max = 0 (must be ABSENT)
 - Payload: **minimal** — `identifier + subject` only.
-- **Required case-state precondition**: `verificationStatus` must be
-  `"confirmed"` — `"unconfirmed"` triggers `ERR_HEALTH_ISSUE_2004`
-  "Not allowed to perform requested transition with current roles."
+- **State precondition**: case must be in `remission` state.
 
-  Despite the misleading English text, this error is not about user
-  roles — it's CEZIH's case state machine rejecting a resolve on a
-  still-suspected diagnosis. Fix: default new cases to `confirmed`
-  (`service.py:1151`) + UI picker in the create dialog.
+**✅ VERIFIED 2026-04-16** (extsigner, commit `b314a4e`) — 200 OK on A57 case in Remisija state.
 
-**✅ VERIFIED 2026-04-16** — 200 OK on an **active + confirmed** case (direct
-create-as-confirmed path).
-
-#### ⚠️ OPEN ISSUE (2026-04-16) — recurrence cases cannot be closed
-
-Live test at 09:24–09:25 on case `cmo13tfex01l4hb85ptzjra29`
-(clinical_status=`recurrence`, ICD D11.9):
-
-1. **2.6 Data update** with `verificationStatus=confirmed` + echoed
-   `clinicalStatus=recurrence` → **200 OK** from CEZIH.
-2. **2.5 Resolve** (minimal payload) ~30s later on the same case →
-   **ERR_HEALTH_ISSUE_2004** (FHIR issue code `not-supported`).
-
-The 2.6-flip-verification-then-resolve path in the old findings was
-an **inferred workaround, never actually verified live**. This test
-is the first live attempt and it failed.
-
-Two hypotheses to disambiguate:
-
-- **H1 — clinical-status rule:** CEZIH's state machine doesn't allow
-  `recurrence → resolved` directly. From Ponavljajući, doctor must
-  first go through 2.3 Remisija, then 2.5 Resolve.
-- **H2 — verification-drift:** CEZIH stored our 2.6 update (200 OK) but
-  its state machine still reads the original `unconfirmed` value. 2.6
-  cannot actually unblock 2.5 for a case created as unconfirmed.
-
-**Distinguishing repro** (post-exam): create a fresh `active +
-unconfirmed` case → 2.6 flip to `confirmed` → 2.5 Resolve.
-- Succeeds → **H1** (only recurrence is blocked; FE should route
-  Zatvori on recurrence via Remisija first).
-- Fails → **H2** (2.6 cannot retroactively confirm; only create-as-
-  confirmed works; update memory + drop the "Path 1" claim).
-
-Until resolved: UI currently still offers Zatvori on recurrence cases
-and will fail. Possible short-term mitigations:
-- Hide Zatvori on `clinical_status=recurrence` until H1/H2 resolved.
-- Or surface a clearer Croatian toast: *"Slučaj nije moguće zatvoriti
-  dok je u statusu Ponavljajući — prvo prebacite u Remisiju."*
-
-**⚠️ TO FIX** — tracked in Action Items.
+> **Historical note:** Pre-fix, we were sending event code 2.5 labelled as "Resolve"
+> with minimal payload. CEZIH routed 2.5 to the relapse-message profile (minimal by
+> spec), so it passed — but CEZIH stored the transition as a relapse. The fact that
+> it "worked" masked the semantic error entirely. Fixed in `b314a4e`.
 
 ### 2.6 Data update (`hr-update-health-issue-data-message|0.1`)
 
@@ -137,36 +96,32 @@ Uses dedicated `build_condition_data_update`. Must echo current
 (that's what 2.3/2.4/2.5/2.7 are for). Can change `verificationStatus`,
 `code`, `onsetDateTime`, `abatementDateTime`, and notes.
 
-### 2.7 Reopen (`hr-health-issue-reopen-message|0.1` — TENTATIVE)
+### 2.7 Delete — NOT SHIPPING (hard product rule)
 
-**⚠️ DISABLED IN UI (2026-04-16)** — hidden from `getAvailableActions` in
-`frontend/src/components/cezih/case-management.tsx:195` until the payload
-fix lands. Every live attempt hit the `himgmt-1` razlog rule, so the FE
-stops offering the action rather than guaranteeing a failed CEZIH call.
+Spec profile: `hr-delete-health-issue-message|0.1`. Requires `note[annotation-type=1]`
+with "Razlog brisanja podatka". CEZIH validates `himgmt-1` rule.
 
-Using **minimal payload** — `identifier + subject` only. In live testing a
-Reopen attempt produced an `hr-delete-health-issue-message` profile error,
-which we now believe was because the target case was already in a deleted
-state (not a profile-routing bug). The `ERR_HEALTH_ISSUE_2004` rule likely
-gates this transition the same way as 2.5 — case state machine dictates which
-transitions are reachable.
+**HARD RULE (CLAUDE.md, `project_cezih_no_delete.md` memory): never ship this action.**
+No `delete` entry in `CASE_ACTION_MAP`, no "Obriši" button in frontend. For "mistaken
+entry" UX: use 2.6 data update with `verificationStatus=entered-in-error`.
 
-**⚠️ Not yet cleanly verified on a case in pure `resolved` state.** Re-verify.
+### 2.8 Reopen-after-delete — NOT REACHABLE
 
-### 2.8 Delete (`hr-delete-health-issue-message|0.1`)
+Spec profile: `hr-reopen-health-issue-message`. Event code 2.8 = reopen a deleted case.
+Since we never delete via CEZIH (hard rule above), 2.8 is never reachable. Not implemented.
 
-**⚠️ DISABLED IN UI (2026-04-16)** — hidden from `getAvailableActions` in
-`frontend/src/components/cezih/case-management.tsx:195` until
-`build_condition_delete` emits the required `note`. Re-enable after the
-backend fix + a verified live call.
+### 2.9 Reopen / Ponovno otvori (`hr-reopen-health-issue-message`)
 
-Uses `build_condition_delete`. Profile requires a `note` entry with a
-deletion reason — validation error text:
-`Rule himgmt-1: 'Mora postojati razlog brisanja' Failed`.
+- Payload: **minimal** — `identifier + subject` only.
+- **State precondition**: case must be in `resolved` state. FE shows "Ponovno otvori"
+  only on `clinicalStatus=resolved` cases.
 
-**⚠️ Current `build_condition_delete` likely omits the note.** Add a
-required reason/note field to the delete action (either UI prompt or a
-default "Obrisan od strane korisnika"). Not yet addressed.
+**✅ VERIFIED 2026-04-16** (extsigner, commit `b314a4e`) — 200 OK on S00.3 case
+previously Zatvoren via 2.4 Resolve.
+
+> **Historical note:** Pre-fix, we had `reopen` mapped to event code 2.7 (Delete by spec).
+> Every reopen attempt hit CEZIH's delete-message profile and the `himgmt-1` razlog rule.
+> Fixed in `b314a4e` to use 2.9 (Reopen-after-resolve).
 
 ## Impact
 
@@ -188,16 +143,13 @@ and `_CEZIH_DIAGNOSTIC_PATTERNS_HR` dicts.
 - [x] Refactor to `CASE_EVENT_PROFILE` config table (commit `d92c609`)
 - [x] 2.3 Remisija live-verified (daa8371, re-confirmed 2026-04-16)
 - [x] 2.2 Ponavljajući routing via create-recurrence (`ddad4b9`)
-- [x] 2.4 Relaps test-env workaround + feature-flag (`58ab910`)
-- [x] 2.5 Resolve live-verified with `verificationStatus=confirmed` default (`ef68fcc`)
+- [x] 2.4 Resolve (Zatvori) live-verified — **correct code** (commit `b314a4e` 2026-04-16)
+- [x] 2.5 Relapse (Relaps) live-verified — **correct code** (commit `b314a4e` 2026-04-16)
+- [x] 2.9 Reopen (Ponovno otvori) live-verified — **correct code** (commit `b314a4e` 2026-04-16)
 - [x] UI verification-status picker in create dialog (`55bfb43`)
 - [x] Croatian error translation layer (`727d195`)
-- [ ] Send HZZO email about 2.4 routing bug (draft at `hzzo-email.txt`)
-- [ ] **2.7 Reopen** — fix `build_condition_status_update` (`message_builder.py:777`) to include `note` with razlog for event code 2.7; re-verify on a case in pure `resolved` state (not deleted); re-enable in FE (`case-management.tsx:195`). Currently hidden from UI.
-- [ ] **2.8 Delete** — fix `build_condition_delete` (`message_builder.py:891`) to include required `note` field (either UI prompt or default "Obrisan od strane korisnika"); re-enable in FE (`case-management.tsx:195`). Currently hidden from UI.
-- [ ] **2.5 Resolve on recurrence / post-2.6 verification flip** — live test 2026-04-16 09:25 showed 2.6→2.5 on a `recurrence + confirmed` case still gets `ERR_HEALTH_ISSUE_2004`. Disambiguate H1 (recurrence→resolved not allowed) vs H2 (2.6 verification update doesn't reach state machine) with a controlled repro on a fresh `active + unconfirmed → 2.6→confirmed → 2.5` case. Depending on outcome: route recurrence Zatvori via Remisija chain, or drop the "2.6 unblocks 2.5" claim entirely. See §2.5 for the full hypothesis table.
-- [ ] When HZZO confirms real relapse profile, flip
-      `CEZIH_RELAPSE_SEMANTIC_CORRECT = True` in `message_builder.py:951`
+- [x] FE state machine gates: Zatvori on aktivan+potvrđen/nepotvrđen, Relaps on remisija, Reopen on resolved, Remisija on aktivan — all verified (commit `b314a4e`)
+- [x] Remove stale `CEZIH_RELAPSE_SEMANTIC_CORRECT` feature-flag — codes are correct, no workaround needed
 
 ## Code Reference
 

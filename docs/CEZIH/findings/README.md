@@ -77,7 +77,7 @@ What needs to be done next...
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
-| [TC11-PMIR-auth-blocker.md](TC11-PMIR-auth-blocker.md) | 2026-04-13 | active | TC11 PMIR ITI-93 returns HTML 401 — institution 999001464 likely lacks PMIR permission |
+| [TC11-PMIR-auth-blocker.md](TC11-PMIR-auth-blocker.md) | 2026-04-13 | resolved | TC11 PMIR VERIFIED (Patient/1348216) — 4 stacked fixes: session establishment, extsigner-only signing, urn:uuid: refs, cezih_id extraction |
 
 ### Terminology
 
@@ -89,7 +89,8 @@ What needs to be done next...
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
-| [case-lifecycle-profile-matrix.md](case-lifecycle-profile-matrix.md) | 2026-04-16 | active | Full per-event matrix; 2.2/2.3/2.5 verified; 2.4 test-env bug workaround; ERR_HEALTH_ISSUE_2004 ≠ role error (verificationStatus state machine) |
+| [case-lifecycle-profile-matrix.md](case-lifecycle-profile-matrix.md) | 2026-04-16 | active | Full per-event matrix; 2.3/2.4/2.5/2.9 ALL VERIFIED (commit b314a4e); event codes were swapped in old code — 2.4=Resolve, 2.5=Relapse, 2.9=Reopen; 2.7=Delete NOT SHIPPING |
+| [spec-research-2026-04-16.md](spec-research-2026-04-16.md) | 2026-04-16 | active | Simplifier cezih.hr.condition-management/0.2.1 ground truth — event code table, passport/EHIC identifier URIs, annotation-type CodeSystem |
 
 ### Specification Compliance
 
