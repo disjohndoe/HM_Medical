@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     CEZIH_TIMEOUT: int = 30
     CEZIH_RETRY_ATTEMPTS: int = 3
     CEZIH_SMARTCARD_DUMMY_SIG: bool = False  # DEBUG: bypass real signing, inject dummy JWS to test if CEZIH verifies crypto
+    CEZIH_SMARTCARD_DUMMY_ALG: str = "RS256"  # DEBUG: algorithm for dummy JWS — "RS256" or "ES384"
     CEZIH_SIGNING_DEBUG: bool = False  # DEBUG: dump full JWS header + payload + sig for byte-diff between smartcard and extsigner
     RATE_LIMIT_ENABLED: bool = True
     CEZIH_ORG_CODE: str = ""  # HZZO sifra zdravstvene organizacije

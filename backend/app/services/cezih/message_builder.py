@@ -548,24 +548,32 @@ async def _add_signature_smartcard(
 
         if settings.CEZIH_SMARTCARD_DUMMY_SIG:
             # ── DEBUG: inject structurally valid but crypto-meaningless JWS ──
-            # If CEZIH accepts this, we know JWS is structurally required but
-            # NOT cryptographically verified on $process-message. If it rejects
-            # with ERR_DS_1002, the issue is cert registration or payload format.
+            # Tests whether CEZIH verifies signature crypto or just checks structure.
+            # Uses proper base64url encoding to match real JWS format.
+            # CEZIH_SMARTCARD_DUMMY_ALG selects algorithm: "RS256" or "ES384"
             import hashlib as _hashlib
 
-            dummy_header = _base64.b64encode(
-                json.dumps({"alg": "ES384", "kid": "dummy-test"}).encode()
-            ).decode()
-            dummy_payload = _base64.b64encode(bundle_json_bytes).decode()
-            # Fake 96-byte signature (P-384: r||s, 48+48)
-            fake_sig = _hashlib.sha384(bundle_json_bytes).digest() * 2
-            dummy_sig = _base64.urlsafe_b64encode(fake_sig).decode().rstrip("=")
-            dummy_jws = f"{dummy_header}.{dummy_payload}.{dummy_sig}"
+            b64url = _base64.urlsafe_b64encode
+            dummy_alg = getattr(settings, "CEZIH_SMARTCARD_DUMMY_ALG", "RS256") or "RS256"
+
+            if dummy_alg == "ES384":
+                # P-384 signature: r||s, 48+48 = 96 bytes
+                fake_sig = _hashlib.sha384(bundle_json_bytes).digest() * 2
+                dummy_jose = {"alg": "ES384", "kid": "dummy-es384-test"}
+            else:
+                # RSA-2048 signature: 256 bytes
+                fake_sig = _hashlib.sha256(bundle_json_bytes).digest() * 8
+                dummy_jose = {"alg": "RS256", "kid": "dummy-rs256-test"}
+
+            header_b64url = b64url(json.dumps(dummy_jose, separators=(",", ":")).encode()).decode().rstrip("=")
+            payload_b64url = b64url(bundle_json_bytes).decode().rstrip("=")
+            sig_b64url = b64url(fake_sig).decode().rstrip("=")
+            dummy_jws = f"{header_b64url}.{payload_b64url}.{sig_b64url}"
             jws_base64 = _base64.b64encode(dummy_jws.encode()).decode()
             logger.warning(
-                "⚠️ DUMMY SIGNATURE INJECTED — CEZIH_SMARTCARD_DUMMY_SIG=true. "
-                "JWS is NOT cryptographically valid. Do NOT use in production! "
-                "jws_base64 length=%d", len(jws_base64),
+                "DUMMY SIGNATURE INJECTED alg=%s — CEZIH_SMARTCARD_DUMMY_SIG=true. "
+                "NOT crypto-valid. header_b64url=%d chars payload_b64url=%d chars sig_b64url=%d chars",
+                dummy_alg, len(header_b64url), len(payload_b64url), len(sig_b64url),
             )
         else:
             # Production: use agent's JWS signing (builds JOSE header with x5c + signs)
