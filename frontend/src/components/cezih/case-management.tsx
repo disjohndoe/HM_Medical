@@ -186,10 +186,18 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   }
 
   const getAvailableActions = (c: CaseItem) => {
-    if (c.clinical_status === "resolved") return CASE_ACTIONS.filter((a) => ["reopen", "delete"].includes(a.value))
-    if (c.clinical_status === "remission") return CASE_ACTIONS.filter((a) => ["relapse", "resolve", "delete"].includes(a.value))
-    // active or relapse
-    return CASE_ACTIONS.filter((a) => ["create_recurring", "remission", "relapse", "resolve", "delete"].includes(a.value))
+    switch (c.clinical_status) {
+      case "active":
+        return CASE_ACTIONS.filter((a) => ["create_recurring", "remission", "resolve", "delete"].includes(a.value))
+      case "remission":
+        return CASE_ACTIONS.filter((a) => ["relapse", "resolve", "delete"].includes(a.value))
+      case "relapse":
+        return CASE_ACTIONS.filter((a) => ["remission", "resolve", "delete"].includes(a.value))
+      case "resolved":
+        return CASE_ACTIONS.filter((a) => ["reopen", "delete"].includes(a.value))
+      default:
+        return CASE_ACTIONS.filter((a) => a.value === "delete")
+    }
   }
 
   const cases = casesQuery.data?.cases || []
