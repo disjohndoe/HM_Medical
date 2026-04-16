@@ -298,7 +298,7 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
 
             // Query signature size first (null output buffer).
             let mut sig_len: u32 = 0;
-            let ok_size = CryptSignHash(hhash, key_spec, ptr::null(), 0, ptr::null_mut(), &mut sig_len);
+            let ok_size = CryptSignHashA(hhash, key_spec, ptr::null(), 0, ptr::null_mut(), &mut sig_len);
             if ok_size == 0 {
                 let err = GetLastError();
                 warn!("JWS: CAPI CryptSignHash size query failed for {}: 0x{:08x}", cert_label, err);
@@ -309,7 +309,7 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             }
 
             let mut sig_buf = vec![0u8; sig_len as usize];
-            let ok_sign = CryptSignHash(hhash, key_spec, ptr::null(), 0, sig_buf.as_mut_ptr(), &mut sig_len);
+            let ok_sign = CryptSignHashA(hhash, key_spec, ptr::null(), 0, sig_buf.as_mut_ptr(), &mut sig_len);
             CryptDestroyHash(hhash);
             if must_free != 0 { CryptReleaseContext(hprov, 0); }
 
