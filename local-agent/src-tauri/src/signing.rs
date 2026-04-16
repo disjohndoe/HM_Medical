@@ -243,16 +243,9 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             let x5c_chain = build_x5c_chain(store, *cert_ctx, &b64std);
             let x5c_json = x5c_chain.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(",");
 
-            let jose_header = if pub_key_data.len() > 1 && pub_key_data[0] == 0x04 {
-                let coord_size = (pub_key_data.len() - 1) / 2;
-                let x_b64url = b64url.encode(&pub_key_data[1..1 + coord_size]);
-                let y_b64url = b64url.encode(&pub_key_data[1 + coord_size..]);
-                let crv = match coord_size { 32 => "P-256", 48 => "P-384", 66 => "P-521", _ => "P-384" };
-                format!(r#"{{"alg":"{}","kid":"{}","jwk":{{"crv":"{}","kty":"EC","x":"{}","y":"{}"}},"x5c":[{}]}}"#,
-                    algorithm, kid, crv, x_b64url, y_b64url, x5c_json)
-            } else {
-                format!(r#"{{"alg":"{}","kid":"{}","x5c":[{}]}}"#, algorithm, kid, x5c_json)
-            };
+            // Experiment D: no jwk field — spec examples (Section 3.4) only show alg/kid/x5c.
+            // CEZIH verifier may reject jwk for EC keys; x5c already carries the public key.
+            let jose_header = format!(r#"{{"alg":"{}","kid":"{}","x5c":[{}]}}"#, algorithm, kid, x5c_json);
             info!("JWS: CNG JOSE header {} bytes", jose_header.len());
 
             let header_b64url = b64url.encode(jose_header.as_bytes());
