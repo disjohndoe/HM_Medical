@@ -158,6 +158,24 @@ export const USER_ROLE_OPTIONS = Object.entries(USER_ROLE).map(
   ([value, label]) => ({ value, label })
 );
 
+// --- CEZIH signing method (per-user preference) ---
+
+export const CEZIH_SIGNING_METHOD: Record<string, string> = {
+  smartcard: "Kartica (AKD)",
+  extsigner: "Mobitel (Certilia)",
+};
+
+// Sentinel "default" = "use system default" (server stores NULL).
+// Radix Select disallows empty-string values, so we use a non-empty sentinel
+// and translate it to null on submit.
+export const CEZIH_SIGNING_METHOD_DEFAULT_SENTINEL = "default";
+
+export const CEZIH_SIGNING_METHOD_OPTIONS: { value: string; label: string }[] = [
+  { value: CEZIH_SIGNING_METHOD_DEFAULT_SENTINEL, label: "Zadano (sustav)" },
+  { value: "extsigner", label: "Mobitel (Certilia)" },
+  { value: "smartcard", label: "Kartica (AKD)" },
+];
+
 // --- Tenant ---
 
 export const TENANT_VRSTA: Record<string, string> = {

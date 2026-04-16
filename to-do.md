@@ -2,27 +2,69 @@
 
 Failed on-site exam at HZZO Zagreb. Examiner feedback → 4 blocking items below.
 
+**Afternoon research (2026-04-16):** Downloaded + parsed Simplifier
+`cezih.hr.condition-management/0.2.1` (all 10 StructureDefinitions + 11
+example bundles) and `cezih.hr.cezih-osnova/1.0.1`. Full report in
+`docs/CEZIH/findings/spec-research-2026-04-16.md`. Key findings:
+
+- Our case-lifecycle **event codes have been swapped the entire time** — 2.4
+  is Resolve (not Relapse), 2.5 is Relapse (not Resolve), 2.7 is Delete, 2.8/2.9
+  are Reopen variants. Reshapes #5 entirely.
+- Found exact identifier systems for passport (`.../putovnica`) and EHIC
+  (`.../europska-kartica`). Unblocks #2.
+- Confirmed annotation-type CodeSystem (code=1 "Razlog brisanja", etc.).
+- **Delete stays OUT** per user directive — even though spec technically
+  permits it. See `CLAUDE.md` "Case delete — HARD RULE" and memory
+  `project_cezih_no_delete.md`.
+
 ---
 
-## 1. Both signing options must work (card + mobile app)
+## 1. Both signing options must work (card + mobile app) — IMPLEMENTED LOCALLY (2026-04-16), not yet deployed
 
-**Current state:**
-- `backend/app/config.py:64` — `CEZIH_SIGNING_METHOD` is a global env var (`extsigner` | `smartcard`)
-- `extsigner` path (Certilia remote / mobile app) → **working**
-- `smartcard` path (NCrypt JWS via local agent) → **broken** (CEZIH rejects the JWS format)
-- No UI selector — user cannot choose per session/action
+**Implementation (uncommitted, local Docker only):**
+- DB: `users.cezih_signing_method VARCHAR(20)` — nullable, check constraint
+  `IN ('smartcard','extsigner')`. NULL = use system default. Migration
+  `028_add_cezih_signing_method.py`.
+- Backend dispatcher: new `current_user_id` + `current_db_session` ContextVars
+  in `cezih/client.py`, set by `_require_audit_params`. New helper
+  `_resolve_signing_method()` in `message_builder.py:269` reads the per-user
+  column, falls back to `settings.CEZIH_SIGNING_METHOD`, then to `"extsigner"`.
+- Smart card JWS root-cause fix in `_add_signature_smartcard()`
+  (`message_builder.py:400`):
+  - Built `signature` element WITHOUT `data` field (spec says it MUST be excluded
+    from the canonical payload).
+  - Switched payload serialization from plain `json.dumps(separators=(",",":"))`
+    to `jcs.canonicalize()` (RFC 8785: recursive key sort, canonical numbers,
+    spec-compliant string escapes). `jcs>=0.2.1` added to `pyproject.toml`.
+  - The Rust agent (`local-agent/src-tauri/src/signing.rs`) needed no change —
+    it already produces standard RFC 7515 compact JWS with `alg`, `kid`, `jwk`,
+    `x5c` and double-base64 wrapping.
+- Schemas: `UserRead` + `UserUpdate` expose `cezih_signing_method`.
+- Frontend selector in `Postavke → Korisnici` edit dialog
+  (`user-form-dialog.tsx`): "Zadano (sustav) / Mobitel (Certilia) / Kartica
+  (AKD)". Sentinel `"default"` only in UI; null on the wire. Constants in
+  `lib/constants.ts`. Type in `lib/types.ts`.
 
-**Confirmed scope (user answer: B1):**
-- Per-user default in Postavke — each doctor picks "kartica" or "mobitel" once
-- Move `CEZIH_SIGNING_METHOD` from env-wide config → per-user column on `users` table
-- Default for new users: `mobitel` (since that's what works today)
+**Verified locally:**
+- [x] Backend boots clean with new dependency, migration applied (column NULL for
+  all existing users → preserves current production behavior).
+- [x] `tsc --noEmit` clean for changed frontend files (one pre-existing error in
+  `cezih/page.tsx` unrelated to this work).
+- [x] DB column + check constraint inspected via `\d users`.
 
-**Need:**
-- [ ] DB: add `cezih_signing_method` on User (`smartcard` | `extsigner`, default `extsigner`)
-- [ ] Backend: read user preference in `message_builder._add_signature`, fall back to env default
-- [ ] Fix smart-card JWS so CEZIH accepts it (ES384 via AKD card) — root cause TBD
-- [ ] Frontend: selector in Postavke (Settings → CEZIH → Potpisivanje) with helper text
-- [ ] Verify both paths end-to-end against real CEZIH (Encounter + ITI-65 + PMIR)
+**Still to do (for this item):**
+- [ ] Manual UI smoke: open `/postavke/korisnici`, edit a doctor, see the new
+  selector, change to "Mobitel" → save → reopen → value persists.
+- [ ] Live extsigner E2E with per-user pref set to "Mobitel" — must still work
+  (regression check on the working path).
+- [ ] Live smartcard E2E with per-user pref set to "Kartica" — primary
+  pass/fail criterion for the JWS fix. Pass = CEZIH 200 OK / message
+  processed. Fail = `ERR_DS_1002` again → capture canonical payload, JOSE
+  header, JWS compact, OperationOutcome to memory and stop iterating
+  (per plan).
+- [ ] PMIR (TC11) re-run with smart card user — only if Encounter passes.
+- [ ] Commit + push to `main` to trigger auto-deploy. Production
+  (`app.hmdigital.hr`) currently has the OLD code — none of the above is live.
 
 ---
 
@@ -36,16 +78,18 @@ Failed on-site exam at HZZO Zagreb. Examiner feedback → 4 blocking items below
 - Patient search (PDQm / ITI-78) currently only by MBO
 - No UI to search existing foreigners by passport number or EHIC card number
 
-**Need:**
-- [ ] Backend: extend PDQm search (or add new endpoint) to query CEZIH by:
-  - Passport number (`identifier` type = passport, system per CEZIH spec)
-  - EHIC card number (identifier type = EHIC)
-- [ ] Frontend: add passport / EHIC fields to foreigner search UI
-- [ ] Verify against real CEZIH with test-env foreigner record
+**Resolved (2026-04-16 research):**
+- Passport system URI: `http://fhir.cezih.hr/specifikacije/identifikatori/putovnica`
+- EHIC system URI: `http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica`
+- No new endpoint needed — extend existing PDQm ITI-78 query with these
+  `identifier={system}|{value}` variants. Source: `HRRegisterPatient` slice
+  definitions in Simplifier `cezih.hr.cezih-osnova/1.0.1`.
 
-**Open questions:**
-- Exact FHIR `identifier.system` URIs for passport + EHIC in CEZIH
-- Is this a new PDQm identifier type, or a dedicated endpoint?
+**Need:**
+- [ ] Backend: add the two identifier systems to the PDQm search path (same
+  transaction already used for MBO lookup)
+- [ ] Frontend: add passport / EHIC fields to foreigner search UI
+- [ ] Verify against real CEZIH with test-env foreigner record created via TC11
 
 ---
 
@@ -86,49 +130,93 @@ Failed on-site exam at HZZO Zagreb. Examiner feedback → 4 blocking items below
 
 ---
 
-## 5. Case actions — normal doctor flow (UI + spec-compliant payloads)
+## 5. Case actions — ROOT CAUSE FOUND, fix pending
 
-**Fixes applied (2026-04-16):**
+**Status (2026-04-16 afternoon):** Our CASE_ACTION_MAP event codes are swapped
+vs spec. Two live tests today (B26 pre-existing and J00 fresh same-session)
+both returned `ERR_HEALTH_ISSUE_2004` on "Zatvori". Root cause is not state
+machine, not roles — wrong event codes going out.
 
-Authoritative spec source: `cezih.hr.condition-management/0.2.1` on Simplifier
-(separate package from `cezih.osnova`; contains all 8 message StructureDefinitions).
+### Ground truth per Simplifier `cezih.hr.condition-management/0.2.1`
 
-- **2.8 Delete — REMOVED from codebase.** Live test 2026-04-16 confirmed CEZIH
-  unconditionally rejects every delete with ERR_HEALTH_ISSUE_2004 regardless of
-  state, role, or payload. Replacement UX: 2.6 Data update with
-  `verificationStatus=entered-in-error` neutralizes mistaken cases while
-  preserving audit trail. FE, backend service, schema, and error-translation
-  strings all cleaned. See `project_cezih_no_delete.md` memory.
-- **2.7 Reopen** — minimal payload matches spec (no note, only globalni-id +
-  subject). Re-enabled in `getAvailableActions` for `resolved` cases.
-- **2.5 Resolve UI eligibility** — dropped the `_local`-only hack. Now shown
-  on any case where `verification_status === "confirmed"`. CEZIH's Croatian
-  error translation surfaces ERR_HEALTH_ISSUE_2004 rejections on pre-existing
-  unconfirmed cases.
+| Event code | Spec meaning | Our current code | Correct payload |
+|------------|--------------|-----------------|-----------------|
+| 2.1 | Create | 2.1 ✓ | vs + onset + code |
+| 2.2 | Create recurrence | 2.2 ✓ | vs + onset + code |
+| 2.3 | Remission | 2.3 ✓ | minimal (id + subject) |
+| **2.4** | **Resolve** | 2.5 ❌ | cs=resolved FIXED + abatementDateTime[1..1] |
+| **2.5** | **Relapse** | 2.4 ❌ | minimal (id + subject) |
+| 2.6 | Data update | 2.6 ✓ | optional fields |
+| 2.7 | Delete | (removed, was 2.8) | **DO NOT SHIP** — product rule |
+| 2.8 | Reopen after delete | — | unreachable (we don't delete) |
+| **2.9** | **Reopen after resolve** | reopen=2.7 ❌ | minimal (id + subject) |
 
-**Verified 2026-04-16:**
-- [x] 2.1 Create (fresh active+confirmed case J06.9) — 200 OK
-- [x] 2.8 Delete → CEZIH rejects with ERR_HEALTH_ISSUE_2004 (confirming the
-  hard rule; action now fully removed from codebase)
+Full differential + examples analyzed in
+`docs/CEZIH/findings/spec-research-2026-04-16.md`.
 
-**Still to verify live:**
-- [ ] 2.5 Resolve on imported confirmed case (H2 disambiguation)
-- [ ] 2.5 Resolve on session-created active+confirmed case
-- [ ] 2.7 Reopen on resolved case
-- [ ] 2.5 Resolve on recurrence+confirmed case (H1 disambiguation)
+### Why today's tests failed
 
-**Known test-env quirks (unchanged):**
-- 2.4 Relaps sends resolve-shaped payload (cs=resolved + abatement) per test-env
-  profile swap — flip `CEZIH_RELAPSE_SEMANTIC_CORRECT=True` once HZZO fixes routing.
+- Our "Zatvori" sent event code **2.5** → CEZIH routed to the Relapse profile
+  → state machine rejected "relapse on active case" → ERR_HEALTH_ISSUE_2004.
+  Not a state-machine quirk; wrong code.
+- Yesterday's "Relaps works" was our code **2.4** with resolve-shaped payload
+  (cs=resolved + abatement) → CEZIH routed to Resolve profile → 200. We had
+  been calling it Relaps in the UI but CEZIH accepted it as Resolve.
+- Previously blaming CEZIH for a "2.4/2.5 profile swap" — wrong; we swapped
+  them ourselves.
+
+### Fixes to ship (single PR)
+
+Backend `message_builder.py`:
+- [ ] `CASE_ACTION_MAP`: swap 2.4/2.5; change reopen from 2.7 to 2.9. Keep
+  delete OUT per hard rule.
+- [ ] `CASE_EVENT_PROFILE`: rewrite —
+  - 2.4: `cs_fixed="resolved"`, `abatement_required=True`
+  - 2.3 / 2.5 / 2.9: `minimal=True`
+  - 2.1 / 2.2: `vs_required=True`, `onset_required=True`
+- [ ] `build_condition_update_status`: branch on event code — 2.4 sets
+  `clinicalStatus.coding = {system: ".../condition-clinical", code: "resolved"}`
+  + `abatementDateTime = now` (or user-supplied end date).
+- [ ] `_CEZIH_ERROR_MESSAGES_HR` ERR_HEALTH_ISSUE_2004: stop blaming user for
+  "unconfirmed" — new text should say the action was invalid in current case
+  state.
+
+Frontend `case-management.tsx`:
+- [ ] `getAvailableActions` reopen rule: show only when
+  `clinical_status === "resolved"` (since 2.9 is reopen-after-resolve only).
+- [ ] Help text: drop the "only Potvrđen" gate — that was a symptom, not a
+  real constraint. Add "Zatvaranje je moguće za aktivan i potvrđen slučaj
+  kreiran kao Potvrđen" (pending live-verify).
+
+Memory cleanup:
+- [ ] Rewrite `project_cezih_case_state_machine.md` — no CEZIH 2.4/2.5 swap;
+  our codes were swapped.
+- [ ] Update `project_cezih_fhir_compliance.md` — "NO clinicalStatus in
+  message body" is true for 2.3/2.5/2.9, FALSE for 2.4 (cs=resolved + abatement).
+
+### Live-verify plan (post-deploy, each needs one mobile signing)
+
+- [ ] 2.4 Resolve on fresh active+confirmed case → expect 200
+- [ ] 2.5 Relapse on a `remission` case → expect 200
+- [ ] 2.9 Reopen on the just-resolved case → expect 200
+- [ ] 2.3 Remisija regression on active case → expect 200
 
 ---
 
 ## Priority order
 
-1. **#5** — case actions re-enabled; live verify against real CEZIH (test env)
-2. **#1** — fix smart card JWS + user-selectable signing method
+1. **#1** — local impl done; needs UI smoke + live CEZIH verify (both methods)
+   + commit/push to deploy
+2. **#5** — case actions re-enabled; live verify against real CEZIH (test env)
 3. **#2** — foreigner search by passport / EHIC (PDQm)
 4. **#3** — DEFERRED (AID on FHIR Organization.identifier — scope confirmed, not urgent)
+
+## Deployment status
+
+**Production (`app.hmdigital.hr`):** still on commit `4f949db`
+(`refactor(cezih): remove 2.8 Delete`). None of the #1 work above is live.
+Push to `main` will auto-deploy backend + frontend; agent is unchanged so no
+new agent release is triggered.
 
 ## Exam re-take
 

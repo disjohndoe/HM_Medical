@@ -1,9 +1,12 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
 
 from app.schemas.tenant import TenantRead
+
+CezihSigningMethod = Literal["smartcard", "extsigner"]
 
 
 class UserRead(BaseModel):
@@ -20,8 +23,10 @@ class UserRead(BaseModel):
     created_at: datetime
     card_holder_name: str | None = None
     card_certificate_oib: str | None = None
+    card_certificate_serial: str | None = None
     card_required: bool = False
     practitioner_id: str | None = None
+    cezih_signing_method: CezihSigningMethod | None = None
 
     model_config = {"from_attributes": True}
 
@@ -53,6 +58,7 @@ class UserUpdate(BaseModel):
     card_certificate_oib: str | None = None
     card_required: bool | None = None
     practitioner_id: str | None = None
+    cezih_signing_method: CezihSigningMethod | None = None
 
 
 class CardBindingRequest(BaseModel):

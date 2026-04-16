@@ -23,9 +23,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { USER_ROLE_OPTIONS } from "@/lib/constants"
+import {
+  CEZIH_SIGNING_METHOD_DEFAULT_SENTINEL,
+  CEZIH_SIGNING_METHOD_OPTIONS,
+  USER_ROLE_OPTIONS,
+} from "@/lib/constants"
 import { useAutoBindCard, useUnbindCard, useCardStatus } from "@/lib/hooks/use-users"
-import type { User } from "@/lib/types"
+import type { CezihSigningMethod, User } from "@/lib/types"
 import { toast } from "sonner"
 
 const userSchema = z.object({
@@ -59,6 +63,7 @@ const userSchema = z.object({
   telefon: z.string().nullable().optional(),
   role: z.string().min(1, "Uloga je obavezna"),
   practitioner_id: z.string().nullable().optional(),
+  cezih_signing_method: z.enum(["smartcard", "extsigner"]).nullable().optional(),
 })
 
 export type UserFormData = z.infer<typeof userSchema>
@@ -108,6 +113,7 @@ export function UserFormDialog({
     telefon: user?.telefon ?? null,
     role: user?.role ?? "doctor",
     practitioner_id: user?.practitioner_id ?? null,
+    cezih_signing_method: user?.cezih_signing_method ?? null,
   }), [user])
 
   const {
@@ -236,6 +242,47 @@ export function UserFormDialog({
               )}
             </div>
           </div>
+
+          {isEdit && user && (
+            <div className="space-y-2 rounded-lg border p-3">
+              <Label className="text-sm font-medium">
+                CEZIH potpisivanje
+              </Label>
+              <Controller
+                name="cezih_signing_method"
+                control={control}
+                render={({ field }) => {
+                  const value =
+                    (field.value as string | null | undefined) ?? CEZIH_SIGNING_METHOD_DEFAULT_SENTINEL
+                  return (
+                    <Select
+                      value={value}
+                      onValueChange={(v) =>
+                        field.onChange(v === CEZIH_SIGNING_METHOD_DEFAULT_SENTINEL ? null : (v as CezihSigningMethod))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue>
+                          {CEZIH_SIGNING_METHOD_OPTIONS.find((o) => o.value === value)?.label}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CEZIH_SIGNING_METHOD_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Mobitel = Certilia push potvrda. Kartica = AKD smart kartica preko
+                Local Agenta. Zadano = postavka sustava.
+              </p>
+            </div>
+          )}
 
           {isEdit && user && (
             <div className="space-y-2 rounded-lg border p-3">

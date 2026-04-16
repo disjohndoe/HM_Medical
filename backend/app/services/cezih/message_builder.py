@@ -266,6 +266,35 @@ def build_iti65_transaction_bundle(
     }
 
 
+async def _resolve_signing_method() -> str:
+    """Resolve the active signing method for the current request.
+
+    Order:
+      1. Per-user `User.cezih_signing_method` (if column is non-NULL)
+      2. System fallback `settings.CEZIH_SIGNING_METHOD`
+      3. Hard default "extsigner" (the working path)
+    """
+    from sqlalchemy import select
+
+    from app.config import settings
+    from app.models.user import User
+    from app.services.cezih.client import current_db_session, current_user_id
+
+    user_id = current_user_id.get()
+    db = current_db_session.get()
+    if user_id and db is not None:
+        try:
+            method = await db.scalar(
+                select(User.cezih_signing_method).where(User.id == user_id)
+            )
+            if method:
+                return method
+        except Exception as e:  # noqa: BLE001 — never let signing pref lookup break the request
+            logger.warning("Failed to resolve per-user signing method: %s", e)
+
+    return settings.CEZIH_SIGNING_METHOD or "extsigner"
+
+
 async def add_signature(
     bundle: dict[str, Any],
     practitioner_id: str,
@@ -274,7 +303,7 @@ async def add_signature(
 ) -> dict[str, Any]:
     """Add a digital signature to the Bundle per CEZIH JWS format.
 
-    Two signing methods (controlled by CEZIH_SIGNING_METHOD):
+    Two signing methods (per-user pref, falls back to CEZIH_SIGNING_METHOD env):
     - "smartcard": Agent signs locally via NCrypt + AKD smart card
     - "extsigner": CEZIH signs remotely via Certilia (user approves on phone)
 
@@ -285,10 +314,8 @@ async def add_signature(
       Send full bundle to extsigner API → CEZIH signs with Certilia cloud cert.
       Response contains the signed document (signature already embedded by CEZIH).
     """
-    import base64 as _base64
-    from app.config import settings
-
-    signing_method = settings.CEZIH_SIGNING_METHOD
+    signing_method = await _resolve_signing_method()
+    logger.info("CEZIH signing method resolved: %s", signing_method)
 
     if signing_method == "extsigner":
         return await _add_signature_extsigner(bundle, practitioner_id)
@@ -377,15 +404,27 @@ async def _add_signature_smartcard(
 ) -> dict[str, Any]:
     """Sign bundle via agent's smart card (NCrypt JWS signing).
 
-    Signing payload includes the signature element with data="" (empty).
-    This matches the pattern used for working encounter/case signatures.
+    Per CEZIH spec section 3.4 ("Digitalni potpis", normative — see
+    docs/CEZIH/findings/cezih-official-signature-format.md), the JWS payload
+    MUST be the JCS-canonicalized Bundle JSON (RFC 8785) with
+    `Bundle.signature.data` EXCLUDED.
+
+    Mistakes that previously caused ERR_DS_1002:
+    - Including `signature.data: ""` in the canonical payload (verifier strips
+      it → hash mismatch).
+    - Plain `json.dumps(separators=(",",":"))` is compact but NOT JCS — keys
+      are not sorted recursively per RFC 8785. CEZIH re-canonicalizes when
+      verifying, so any key order divergence breaks the signature.
     """
     import base64 as _base64
+
+    import jcs
+
     from app.services.agent_connection_manager import agent_manager
     from app.services.cezih.client import current_tenant_id
 
-    # Add signature structure with data="" placeholder before serializing.
-    # The JWS payload includes this placeholder (same as encounters).
+    # Build signature element WITHOUT `data` — spec says it must be excluded
+    # from the JWS payload. We'll inject `data` after the agent returns.
     bundle["signature"] = {
         "type": [
             {
@@ -395,11 +434,13 @@ async def _add_signature_smartcard(
         ],
         "when": _now_iso(),
         "who": practitioner_ref(practitioner_id),
-        "data": "",
     }
 
-    # Serialize bundle to compact JSON (includes signature with data="").
-    bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    # JCS canonicalize (RFC 8785): recursive key sort, no whitespace,
+    # canonical number form, JSON-spec string escaping.
+    bundle_json_bytes = jcs.canonicalize(bundle)
+    logger.info("JCS canonical payload: %d bytes (signature.data excluded)",
+                len(bundle_json_bytes))
 
     if sign_fn:
         # Test hook — custom sign function
@@ -428,9 +469,9 @@ async def _add_signature_smartcard(
         logger.info("JWS signature: kid=%s, alg=%s, data=%d chars",
                      result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
 
-    # Replace the empty data placeholder with the actual JWS signature.
+    # Inject the JWS into signature.data AFTER signing. The bundle sent to
+    # CEZIH carries signature.data; the verifier strips it before re-canonicalizing.
     # Agent returns base64(JWS_compact) — "double base64" for FHIR base64Binary.
-    logger.info("JWS double-b64: %d chars", len(jws_base64))
     bundle["signature"]["data"] = jws_base64
 
     return bundle

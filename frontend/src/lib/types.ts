@@ -19,6 +19,8 @@ export interface Tenant {
   has_hzzo_contract: boolean;
 }
 
+export type CezihSigningMethod = "smartcard" | "extsigner";
+
 export interface User {
   id: string;
   email: string;
@@ -34,6 +36,7 @@ export interface User {
   card_holder_name: string | null;
   card_certificate_oib: string | null;
   practitioner_id: string | null;
+  cezih_signing_method: CezihSigningMethod | null;
   tenant?: Tenant;
 }
 

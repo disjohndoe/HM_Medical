@@ -19,9 +19,14 @@ from app.services.cezih.oauth import get_oauth_token, invalidate_token
 
 logger = logging.getLogger(__name__)
 
-# Context variable set by the dispatcher before calling service functions.
-# Allows CezihFhirClient to route 8443 calls through the agent.
+# Context variables set by the dispatcher before calling service functions.
+# - current_tenant_id: lets CezihFhirClient route 8443 calls through the agent.
+# - current_user_id: lets message_builder resolve per-user signing preference.
+# - current_db_session: lets message_builder look up the user without threading
+#   db through every helper signature.
 current_tenant_id: contextvars.ContextVar = contextvars.ContextVar("current_tenant_id", default=None)
+current_user_id: contextvars.ContextVar = contextvars.ContextVar("current_user_id", default=None)
+current_db_session: contextvars.ContextVar = contextvars.ContextVar("current_db_session", default=None)
 
 _FHIR_CONTENT_TYPE = "application/fhir+json"
 _GATEWAY_PREFIX = "/services-router/gateway/"
