@@ -292,25 +292,27 @@ def _debug_dump_jws(source: str, jws_b64: str) -> None:
             return
         header_raw = _base64.urlsafe_b64decode(parts[0] + "==")
         header_json = json.loads(header_raw)
-        payload_raw = _base64.urlsafe_b64decode(parts[1] + "==")
+        # Detached JWS has empty middle segment — don't attempt to decode it.
+        payload_raw = _base64.urlsafe_b64decode(parts[1] + "==") if parts[1] else b""
         # Re-serialise header with sorted keys so order differences become
         # visible even if the caller used different dict key ordering.
         header_sorted = json.dumps(header_json, sort_keys=True, ensure_ascii=False)
         logger.info("%s JWS DUMP header_json_sorted=%s", source, header_sorted)
         logger.info("%s JWS DUMP header_b64url=%s", source, parts[0])
         logger.info("%s JWS DUMP payload_b64url_len=%d", source, len(parts[1]))
-        logger.info("%s JWS DUMP payload_b64url=%s", source, parts[1])
-        logger.info("%s JWS DUMP payload_decoded_len=%d", source, len(payload_raw))
-        # Payload is (or should be) a FHIR Bundle JSON. Log the decoded form
-        # too so we can eyeball canonicalisation differences.
-        try:
-            payload_json = json.loads(payload_raw)
-            logger.info(
-                "%s JWS DUMP payload_json_sorted=%s",
-                source, json.dumps(payload_json, sort_keys=True, ensure_ascii=False),
-            )
-        except Exception:
-            logger.info("%s JWS DUMP payload_utf8=%s", source, payload_raw.decode("utf-8", errors="replace"))
+        if parts[1]:
+            logger.info("%s JWS DUMP payload_b64url=%s", source, parts[1])
+            logger.info("%s JWS DUMP payload_decoded_len=%d", source, len(payload_raw))
+            try:
+                payload_json = json.loads(payload_raw)
+                logger.info(
+                    "%s JWS DUMP payload_json_sorted=%s",
+                    source, json.dumps(payload_json, sort_keys=True, ensure_ascii=False),
+                )
+            except Exception:
+                logger.info("%s JWS DUMP payload_utf8=%s", source, payload_raw.decode("utf-8", errors="replace"))
+        else:
+            logger.info("%s JWS DUMP payload=<detached/empty>", source)
         logger.info("%s JWS DUMP sig_b64url=%s", source, parts[2])
     except Exception as _err:
         logger.warning("%s JWS DUMP failed to decode: %s", source, _err)
@@ -514,12 +516,11 @@ async def _add_signature_smartcard(
     }
     bundle["signature"] = sig_elem
 
-    # Use compact JSON (same as extsigner path) instead of JCS.
-    # Extsigner uses json.dumps(ensure_ascii=False, separators=(",",":"))
-    # and CEZIH's extsigner API signs those exact bytes. CEZIH verification
-    # expects the same serialization form.
-    bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    logger.info("Compact JSON payload: %d bytes", len(bundle_json_bytes))
+    # JCS-canonicalize per RFC 8785. CEZIH verifier strips signature.data
+    # then re-canonicalizes the Bundle — our signing input must match.
+    import jcs as _jcs
+    bundle_json_bytes = _jcs.canonicalize(bundle)
+    logger.info("JCS canonical payload: %d bytes (signature.data excluded)", len(bundle_json_bytes))
 
     # ── DEBUG: dump pre-sign payload so we can compare what we *sent* to the
     #    agent vs what extsigner received as input. If payloads differ the JWS
