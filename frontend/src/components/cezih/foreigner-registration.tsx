@@ -98,7 +98,7 @@ export function ForeignerSearch() {
               <span className="text-muted-foreground">Datum rođenja</span>
               <span>{search.data.datum_rodjenja || "—"}</span>
               <span className="text-muted-foreground">Spol</span>
-              <span>{SPOL_LABELS[search.data.spol] ?? search.data.spol || "—"}</span>
+              <span>{SPOL_LABELS[search.data.spol] ?? (search.data.spol || "—")}</span>
               <span className="text-muted-foreground">CEZIH ID</span>
               <span className="font-mono text-xs">{search.data.cezih_id}</span>
             </div>
