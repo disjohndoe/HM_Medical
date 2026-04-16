@@ -511,15 +511,22 @@ async def search_patient_by_identifier(
     db: AsyncSession = Depends(get_db),
 ):
     """Search CEZIH patient registry by MBO, passport, or EHIC number."""
+    from fastapi import HTTPException, status as http_status
     from app.services.cezih.service import search_patient_by_identifier as _search
+    from app.services.cezih.exceptions import CezihError, CezihAuthError
 
     await check_cezih_access(db, current_user.tenant_id)
-    result = await _search(
-        _http_client(request),
-        identifier_system=system,
-        value=value,
-        tenant_id=current_user.tenant_id,
-    )
+    try:
+        result = await _search(
+            _http_client(request),
+            identifier_system=system,
+            value=value,
+            tenant_id=current_user.tenant_id,
+        )
+    except CezihAuthError as e:
+        raise HTTPException(status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)) from e
+    except CezihError as e:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
     return result
 
 
