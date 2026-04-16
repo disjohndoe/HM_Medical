@@ -138,6 +138,12 @@ Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
 - `ID_CASE_REF` = `.../identifikatori/slucaj` (Encounter.diagnosis reference)
 - Case status transitions: NO clinicalStatus in message body (event code is sufficient)
 
+**Case delete — HARD RULE: never ship a CEZIH delete action.**
+- User policy, not a spec interpretation. Even if Simplifier ships an `hr-delete-health-issue-message` profile, we do NOT expose it to doctors. In live HZZO test env CEZIH has never accepted delete from privatnici providers, and the audit-trail implications are not worth the risk.
+- `CASE_ACTION_MAP` must not contain a `delete` entry. Frontend `CASE_ACTIONS` must not contain an "Obriši" option that hits CEZIH.
+- Local-only delete (remove from our DB with audit log, never touch CEZIH) is fine as a separate feature.
+- For "mistaken entry" UX on CEZIH side: 2.6 Data update with `verificationStatus=entered-in-error`. That's the only CEZIH-compatible neutralization.
+
 **Binary retrieval (ITI-68):**
 - Agent returns `body_bytes` (base64) for binary, `body` (text) for JSON
 - `Accept: */*` required (406 with `application/fhir+json`)

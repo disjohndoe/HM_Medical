@@ -89,7 +89,46 @@ HZZO helpdesk email drafted at `hzzo-email.txt` — to be sent.
   still-suspected diagnosis. Fix: default new cases to `confirmed`
   (`service.py:1151`) + UI picker in the create dialog.
 
-**✅ VERIFIED 2026-04-16** — 200 OK on a confirmed case.
+**✅ VERIFIED 2026-04-16** — 200 OK on an **active + confirmed** case (direct
+create-as-confirmed path).
+
+#### ⚠️ OPEN ISSUE (2026-04-16) — recurrence cases cannot be closed
+
+Live test at 09:24–09:25 on case `cmo13tfex01l4hb85ptzjra29`
+(clinical_status=`recurrence`, ICD D11.9):
+
+1. **2.6 Data update** with `verificationStatus=confirmed` + echoed
+   `clinicalStatus=recurrence` → **200 OK** from CEZIH.
+2. **2.5 Resolve** (minimal payload) ~30s later on the same case →
+   **ERR_HEALTH_ISSUE_2004** (FHIR issue code `not-supported`).
+
+The 2.6-flip-verification-then-resolve path in the old findings was
+an **inferred workaround, never actually verified live**. This test
+is the first live attempt and it failed.
+
+Two hypotheses to disambiguate:
+
+- **H1 — clinical-status rule:** CEZIH's state machine doesn't allow
+  `recurrence → resolved` directly. From Ponavljajući, doctor must
+  first go through 2.3 Remisija, then 2.5 Resolve.
+- **H2 — verification-drift:** CEZIH stored our 2.6 update (200 OK) but
+  its state machine still reads the original `unconfirmed` value. 2.6
+  cannot actually unblock 2.5 for a case created as unconfirmed.
+
+**Distinguishing repro** (post-exam): create a fresh `active +
+unconfirmed` case → 2.6 flip to `confirmed` → 2.5 Resolve.
+- Succeeds → **H1** (only recurrence is blocked; FE should route
+  Zatvori on recurrence via Remisija first).
+- Fails → **H2** (2.6 cannot retroactively confirm; only create-as-
+  confirmed works; update memory + drop the "Path 1" claim).
+
+Until resolved: UI currently still offers Zatvori on recurrence cases
+and will fail. Possible short-term mitigations:
+- Hide Zatvori on `clinical_status=recurrence` until H1/H2 resolved.
+- Or surface a clearer Croatian toast: *"Slučaj nije moguće zatvoriti
+  dok je u statusu Ponavljajući — prvo prebacite u Remisiju."*
+
+**⚠️ TO FIX** — tracked in Action Items.
 
 ### 2.6 Data update (`hr-update-health-issue-data-message|0.1`)
 
@@ -156,6 +195,7 @@ and `_CEZIH_DIAGNOSTIC_PATTERNS_HR` dicts.
 - [ ] Send HZZO email about 2.4 routing bug (draft at `hzzo-email.txt`)
 - [ ] **2.7 Reopen** — fix `build_condition_status_update` (`message_builder.py:777`) to include `note` with razlog for event code 2.7; re-verify on a case in pure `resolved` state (not deleted); re-enable in FE (`case-management.tsx:195`). Currently hidden from UI.
 - [ ] **2.8 Delete** — fix `build_condition_delete` (`message_builder.py:891`) to include required `note` field (either UI prompt or default "Obrisan od strane korisnika"); re-enable in FE (`case-management.tsx:195`). Currently hidden from UI.
+- [ ] **2.5 Resolve on recurrence / post-2.6 verification flip** — live test 2026-04-16 09:25 showed 2.6→2.5 on a `recurrence + confirmed` case still gets `ERR_HEALTH_ISSUE_2004`. Disambiguate H1 (recurrence→resolved not allowed) vs H2 (2.6 verification update doesn't reach state machine) with a controlled repro on a fresh `active + unconfirmed → 2.6→confirmed → 2.5` case. Depending on outcome: route recurrence Zatvori via Remisija chain, or drop the "2.6 unblocks 2.5" claim entirely. See §2.5 for the full hypothesis table.
 - [ ] When HZZO confirms real relapse profile, flip
       `CEZIH_RELAPSE_SEMANTIC_CORRECT = True` in `message_builder.py:951`
 
