@@ -237,19 +237,73 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
 
             let pub_key_blob = &(*cert_info_ptr).SubjectPublicKeyInfo.PublicKey;
             let pub_key_data = std::slice::from_raw_parts(pub_key_blob.pbData, pub_key_blob.cbData as usize);
-            info!("JWS: CNG cert DER={} bytes, pub_key={} bytes", cert_der.len(), pub_key_data.len());
+            info!("JWS: CNG cert DER={} bytes, pub_key={} bytes, alg={}", cert_der.len(), pub_key_data.len(), algorithm);
 
             // Build x5c chain by walking Windows cert store (My → CA → Root).
             let x5c_chain = build_x5c_chain(store, *cert_ctx, &b64std);
             let x5c_json = x5c_chain.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(",");
 
-            // Experiment D: no jwk field — spec examples (Section 3.4) only show alg/kid/x5c.
-            // CEZIH verifier may reject jwk for EC keys; x5c already carries the public key.
-            let jose_header = format!(r#"{{"alg":"{}","kid":"{}","x5c":[{}]}}"#, algorithm, kid, x5c_json);
+            // Build JOSE header matching extsigner format (Certilia remote — accepted by CEZIH):
+            //   alg=ES384, jwk with nested x5c, EC coords x/y, kid, x5t#S256, nbf/exp
+            //   No top-level x5c — it lives inside jwk only.
+            let jose_header = if algorithm.starts_with("ES") {
+                let coord_size: usize = match algorithm { "ES256" => 32, "ES384" => 48, _ => 66 };
+                let expected_len = 1 + coord_size * 2;
+
+                // SubjectPublicKeyInfo.PublicKey (CRYPT_BIT_BLOB) contains the EC uncompressed
+                // point: 0x04 || X || Y. Some CSPs add a leading 0x00 (unused-bits from DER
+                // BIT STRING) so handle both 97- and 98-byte blobs.
+                let ec_point: &[u8] = if pub_key_data.len() == expected_len && pub_key_data[0] == 0x04 {
+                    pub_key_data
+                } else if pub_key_data.len() == expected_len + 1 && pub_key_data[0] == 0x00 && pub_key_data[1] == 0x04 {
+                    &pub_key_data[1..]
+                } else {
+                    &[]
+                };
+
+                if !ec_point.is_empty() {
+                    let x_b64u = b64url.encode(&ec_point[1..1 + coord_size]);
+                    let y_b64u = b64url.encode(&ec_point[1 + coord_size..]);
+                    info!("JWS: EC coords extracted x={:.8}... y={:.8}...", x_b64u, y_b64u);
+
+                    // x5t#S256 = base64url(SHA-256(leaf DER))
+                    let mut sha256 = Sha256::new();
+                    sha256.update(cert_der);
+                    let x5t_hash = sha256.finalize();
+                    let x5t_s256 = b64url.encode(x5t_hash.as_ref() as &[u8]);
+
+                    // nbf / exp from cert NotBefore / NotAfter (FILETIME → Unix epoch seconds).
+                    // FILETIME is 100ns intervals since 1601-01-01; subtract Windows epoch offset.
+                    let filetime_to_unix = |lo: u32, hi: u32| -> i64 {
+                        let ft: u64 = (hi as u64) << 32 | lo as u64;
+                        (ft.saturating_sub(116_444_736_000_000_000_u64) / 10_000_000) as i64
+                    };
+                    let nb = &(*cert_info_ptr).NotBefore;
+                    let na = &(*cert_info_ptr).NotAfter;
+                    let nbf = filetime_to_unix(nb.dwLowDateTime, nb.dwHighDateTime);
+                    let exp = filetime_to_unix(na.dwLowDateTime, na.dwHighDateTime);
+
+                    let crv = match algorithm { "ES256" => "P-256", "ES384" => "P-384", _ => "P-521" };
+                    let jwk = format!(
+                        r#"{{"kty":"EC","x5t#S256":"{}","nbf":{},"use":"sig","crv":"{}","kid":"{}","x5c":[{}],"x":"{}","y":"{}","exp":{}}}"#,
+                        x5t_s256, nbf, crv, kid, x5c_json, x_b64u, y_b64u, exp
+                    );
+                    format!(r#"{{"alg":"{}","jwk":{},"kid":"{}"}}"#, algorithm, jwk, kid)
+                } else {
+                    warn!("JWS: EC pub_key unexpected len={} prefix=0x{:02x} — bare header fallback",
+                          pub_key_data.len(), pub_key_data.first().copied().unwrap_or(0));
+                    format!(r#"{{"alg":"{}","kid":"{}","x5c":[{}]}}"#, algorithm, kid, x5c_json)
+                }
+            } else {
+                // RSA path (rare for AKD CNG) — keep simple header
+                format!(r#"{{"alg":"{}","kid":"{}","x5c":[{}]}}"#, algorithm, kid, x5c_json)
+            };
             info!("JWS: CNG JOSE header {} bytes", jose_header.len());
 
             let header_b64url = b64url.encode(jose_header.as_bytes());
             let payload_b64url = b64url.encode(bundle_json);
+            // RFC 7515 signing input is always header.payload (attached form),
+            // even when emitting a detached JWS (empty middle segment).
             let signing_input = format!("{}.{}", header_b64url, payload_b64url);
 
             let hash_bytes: Vec<u8> = match algorithm {
@@ -320,9 +374,12 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             }
 
             let sig_b64url = b64url.encode(&sig_buf);
-            let jws_compact = format!("{}.{}.{}", header_b64url, payload_b64url, sig_b64url);
+            // Detached JWS (RFC 7515 §7.2): empty middle segment → "header..sig".
+            // Matches extsigner output (payload_b64url=0 chars in CEZIH logs).
+            // CEZIH reconstructs signing input from Bundle bytes on its side.
+            let jws_compact = format!("{}..{}", header_b64url, sig_b64url);
             let jws_base64 = b64std.encode(jws_compact.as_bytes());
-            info!("JWS: CNG complete! alg={}, jws_compact={} chars, double_b64={} chars",
+            info!("JWS: CNG complete! alg={}, detached jws_compact={} chars, double_b64={} chars",
                   algorithm, jws_compact.len(), jws_base64.len());
 
             for (ctx, _) in &certs { CertFreeCertificateContext(*ctx); }
