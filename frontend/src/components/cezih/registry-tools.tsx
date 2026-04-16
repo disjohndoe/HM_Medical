@@ -204,7 +204,7 @@ function PractitionerSearchCard() {
 function ValueSetExpandCard() {
   const [url, setUrl] = useState("http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema")
   const [filter, setFilter] = useState("")
-  const { data, isLoading } = useValueSetExpand(url, filter)
+  const { data, isLoading, isFetching, refetch } = useValueSetExpand(url, filter)
 
   return (
     <Card>
@@ -234,6 +234,10 @@ function ValueSetExpandCard() {
             />
           </div>
         </div>
+        <Button onClick={() => refetch()} disabled={!url || isFetching}>
+          {isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+          Proširi
+        </Button>
         {isLoading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Učitavanje...</div>}
         {data && (
           <div className="space-y-1">
@@ -244,6 +248,9 @@ function ValueSetExpandCard() {
                 <span>{c.display}</span>
               </div>
             ))}
+            {data.total === 0 && (
+              <p className="text-sm text-muted-foreground">Prazan skup (testna okolina)</p>
+            )}
           </div>
         )}
       </CardContent>
