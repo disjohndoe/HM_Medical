@@ -58,6 +58,9 @@ async def search_patient_by_identifier(
     params = {"identifier": f"{system_uri}|{value}"}
     response = await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
 
+    import json as _json
+    logger.info("CEZIH PDQm raw response: %s", _json.dumps(response, ensure_ascii=False)[:5000])
+
     if response.get("resourceType") != "Bundle":
         raise CezihError("Neočekivan format odgovora iz CEZIH-a")
 
