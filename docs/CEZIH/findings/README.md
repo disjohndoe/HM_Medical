@@ -84,6 +84,12 @@ What needs to be done next...
 |------|------|--------|---------|
 | [icd10-search-limitation.md](icd10-search-limitation.md) | 2026-04-13 | active | ICD-10 ValueSet/$expand returns empty in test env — manual fallback works, ValueSet URL confirmed correct |
 
+### Case Lifecycle (health-issue-services)
+
+| File | Date | Status | Summary |
+|------|------|--------|---------|
+| [case-lifecycle-profile-matrix.md](case-lifecycle-profile-matrix.md) | 2026-04-16 | active | Full per-event matrix; 2.2/2.3/2.5 verified; 2.4 test-env bug workaround; ERR_HEALTH_ISSUE_2004 ≠ role error (verificationStatus state machine) |
+
 ### Specification Compliance
 
 | File | Date | Status | Summary |
