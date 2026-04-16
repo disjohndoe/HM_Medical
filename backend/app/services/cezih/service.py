@@ -1199,20 +1199,24 @@ async def update_case(
     if action == "delete":
         condition = build_condition_delete(case_identifier=case_identifier, patient_mbo=patient_mbo)
     else:
-        # CEZIH profile requires abatement[x] for remission/resolve, and
-        # FHIR con-4 then requires clinicalStatus ∈ {inactive,resolved,remission}.
-        # Relaps and Reopen must NOT have abatement (relapse/active violates con-4).
-        abatement_date = (
-            datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-            if action in ("remission", "resolve")
-            else None
-        )
-        # Reopen stays minimal (no clinicalStatus); others send the new status.
-        cs = None if action == "reopen" else clinical_status
+        # Per-event CEZIH profile rules (verified against test env 2026-04-16):
+        #
+        # 2.3 Remisija → hr-health-issue-remission-message:
+        #     clinicalStatus max=0, abatement[x] max=0  → MINIMAL payload only
+        # 2.5 Resolve  → hr-health-issue-resolve-message:
+        #     abatement[x] min=1, clinicalStatus.code fixed = "resolved"
+        # 2.4 Relaps   → CEZIH test env misroutes to resolve-message (known issue,
+        #     not in cert TCs) → send minimal and accept the 400 for now
+        # 2.7 Reopen   → minimal (untested in this session but original behavior)
+        add_abatement = action == "resolve"
+        add_cs = action == "resolve"
         condition = build_condition_status_update(
             case_identifier=case_identifier, patient_mbo=patient_mbo,
-            clinical_status=cs,
-            abatement_date=abatement_date,
+            clinical_status=clinical_status if add_cs else None,
+            abatement_date=(
+                datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                if add_abatement else None
+            ),
         )
 
     fhir_client = CezihFhirClient(client)
