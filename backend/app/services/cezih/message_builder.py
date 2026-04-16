@@ -500,9 +500,11 @@ async def _add_signature_smartcard(
     from app.services.agent_connection_manager import agent_manager
     from app.services.cezih.client import current_tenant_id
 
-    # Build signature element WITHOUT `data` — spec says it must be excluded
-    # from the JWS payload. We'll inject `data` after the agent returns.
-    bundle["signature"] = {
+    # Build signature element. Testing two canonicalization approaches:
+    # - include_data=True: set data="" (matching extsigner input format)
+    # - include_data=False: omit data key entirely (per spec section 3.4)
+    _include_data = getattr(settings, "CEZIH_SMARTCARD_INCLUDE_DATA", True)
+    sig_elem = {
         "type": [
             {
                 "system": SIGNATURE_TYPE_SYSTEM,
@@ -512,12 +514,15 @@ async def _add_signature_smartcard(
         "when": _now_iso(),
         "who": practitioner_ref(practitioner_id),
     }
+    if _include_data:
+        sig_elem["data"] = ""
+    bundle["signature"] = sig_elem
 
     # JCS canonicalize (RFC 8785): recursive key sort, no whitespace,
     # canonical number form, JSON-spec string escaping.
     bundle_json_bytes = jcs.canonicalize(bundle)
-    logger.info("JCS canonical payload: %d bytes (signature.data excluded)",
-                len(bundle_json_bytes))
+    logger.info("JCS canonical payload: %d bytes (include_data=%s)",
+                len(bundle_json_bytes), _include_data)
 
     # ── DEBUG: dump pre-sign payload so we can compare what we *sent* to the
     #    agent vs what extsigner received as input. If payloads differ the JWS
