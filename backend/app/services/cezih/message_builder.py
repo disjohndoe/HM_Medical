@@ -495,16 +495,12 @@ async def _add_signature_smartcard(
     """
     import base64 as _base64
 
-    import jcs
-
     from app.config import settings as _settings
     from app.services.agent_connection_manager import agent_manager
     from app.services.cezih.client import current_tenant_id
 
-    # Build signature element. Testing two canonicalization approaches:
-    # - include_data=True: set data="" (matching extsigner input format)
-    # - include_data=False: omit data key entirely (per spec section 3.4)
-    _include_data = getattr(_settings, "CEZIH_SMARTCARD_INCLUDE_DATA", True)
+    # Build signature element — match extsigner format exactly:
+    # compact JSON with data="" (same bytes that extsigner sends to CEZIH).
     sig_elem = {
         "type": [
             {
@@ -514,16 +510,16 @@ async def _add_signature_smartcard(
         ],
         "when": _now_iso(),
         "who": practitioner_ref(practitioner_id),
+        "data": "",
     }
-    if _include_data:
-        sig_elem["data"] = ""
     bundle["signature"] = sig_elem
 
-    # JCS canonicalize (RFC 8785): recursive key sort, no whitespace,
-    # canonical number form, JSON-spec string escaping.
-    bundle_json_bytes = jcs.canonicalize(bundle)
-    logger.info("JCS canonical payload: %d bytes (include_data=%s)",
-                len(bundle_json_bytes), _include_data)
+    # Use compact JSON (same as extsigner path) instead of JCS.
+    # Extsigner uses json.dumps(ensure_ascii=False, separators=(",",":"))
+    # and CEZIH's extsigner API signs those exact bytes. CEZIH verification
+    # expects the same serialization form.
+    bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    logger.info("Compact JSON payload: %d bytes", len(bundle_json_bytes))
 
     # ── DEBUG: dump pre-sign payload so we can compare what we *sent* to the
     #    agent vs what extsigner received as input. If payloads differ the JWS
