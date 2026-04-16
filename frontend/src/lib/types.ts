@@ -721,6 +721,12 @@ export interface CaseItem {
   onset_date: string;
   abatement_date: string | null;
   note: string | null;
+  // Frontend-only marker: true for cases created (or spawned via 2.2)
+  // in the current session. CEZIH's 2.5 Resolve only works reliably
+  // on cases it observed as 'Potvrđen' from creation, so we gate the
+  // Zatvori action on this flag. Lost on reload (intentional — after
+  // reload we can't be sure CEZIH will accept Resolve).
+  _local?: boolean;
 }
 
 export interface CasesListResponse {

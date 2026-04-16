@@ -957,10 +957,12 @@ CEZIH_RELAPSE_SEMANTIC_CORRECT = False
 # or substrings of the English diagnostics text for pattern matches.
 _CEZIH_ERROR_MESSAGES_HR: dict[str, str] = {
     "ERR_HEALTH_ISSUE_2004": (
-        "Ova akcija nije dopuštena za trenutno stanje slučaja. "
-        "Provjerite da je slučaj potvrđen (Potvrđen status verifikacije) "
-        "i u pravilnom kliničkom statusu (npr. zatvoren slučaj treba prvo "
-        "Ponovno otvoriti, obrisani slučaj ne može se izmijeniti)."
+        "CEZIH state-machine odbija ovu tranziciju. "
+        "Zatvaranje (2.5) i brisanje (2.8) rade pouzdano samo na slučajevima "
+        "koji su kreirani kao 'Potvrđen' u istoj sesiji — naknadno flipanje "
+        "iz 'Nepotvrđen' u 'Potvrđen' preko 2.6 NE mijenja pogled CEZIH "
+        "state-machine-a. Rješenje: kreirajte novi slučaj s 'Potvrđen' "
+        "statusom i odmah pokrenite željenu akciju."
     ),
     "ERR_DS_1002": (
         "Digitalni potpis ili struktura poruke nije prošla validaciju. "

@@ -417,6 +417,7 @@ export function useCreateCase() {
         onset_date: vars.onset_date,
         abatement_date: null,
         note: vars.note ?? null,
+        _local: true,
       }
       qc.setQueryData<CasesListResponse>(queryKey, (old) => {
         if (!old) return { cases: [newCase] }
@@ -466,6 +467,7 @@ export function useUpdateCaseStatus() {
             onset_date: today,
             abatement_date: null,
             note: null,
+            _local: true,
           }
           return { cases: [newCase, ...old.cases] }
         }

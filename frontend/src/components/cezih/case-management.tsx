@@ -193,14 +193,26 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   }
 
   const getAvailableActions = (c: CaseItem) => {
+    // CEZIH's 2.5 Resolve (Zatvori) state-machine only accepts cases it
+    // observed as 'Potvrđen' from creation. A 2.6 flip from 'Nepotvrđen'
+    // to 'Potvrđen' does NOT change the state-machine view, so Zatvori
+    // rejects older cases with ERR_HEALTH_ISSUE_2004. We only expose
+    // Zatvori for cases locally created this session (optimistic cache
+    // marks them with `_local: true`), which are the only ones where
+    // the 2.5 path is verified to succeed.
+    const canResolve = c._local === true
+    const filter = (actions: string[]) =>
+      CASE_ACTIONS.filter((a) => actions.includes(a.value))
+        .filter((a) => a.value !== "resolve" || canResolve)
+
     switch (c.clinical_status) {
       case "active":
       case "recurrence":
-        return CASE_ACTIONS.filter((a) => ["create_recurring", "remission", "resolve"].includes(a.value))
+        return filter(["create_recurring", "remission", "resolve"])
       case "remission":
-        return CASE_ACTIONS.filter((a) => ["relapse", "resolve"].includes(a.value))
+        return filter(["relapse", "resolve"])
       case "relapse":
-        return CASE_ACTIONS.filter((a) => ["remission", "resolve"].includes(a.value))
+        return filter(["remission", "resolve"])
       case "resolved":
       case "inactive":
         return []
@@ -333,6 +345,20 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
         </Dialog>
       </CardHeader>
       <CardContent>
+        <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
+          <p className="font-medium">Kako koristiti:</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li>
+              <strong>Novi slučaj</strong> — upišite MKB šifru, datum početka i status verifikacije. Za kasnije zatvaranje odaberite <em>Potvrđen</em>.
+            </li>
+            <li>
+              Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori ili Ponavljajući slučaj. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
+            </li>
+            <li>
+              <strong>Zatvori</strong> (2.5) prikazuje se samo za slučajeve kreirane u ovoj sesiji kao <em>Potvrđen</em>. CEZIH state-machine odbija zatvaranje starijih slučajeva čak i nakon flipa 2.6.
+            </li>
+          </ul>
+        </div>
         {casesQuery.isLoading ? (
           <div className="flex justify-center py-4">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
