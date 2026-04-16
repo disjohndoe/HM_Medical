@@ -31,11 +31,20 @@ SYS_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
 SYS_OIB = "http://fhir.cezih.hr/specifikacije/identifikatori/oib"
 SYS_PUTOVNICA = "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica"
 SYS_EUROPSKA = "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica"
+SYS_JEDINSTVENI = "http://fhir.cezih.hr/specifikacije/identifikatori/jedinstveni-identifikator-pacijenta"
 
 _IDENTIFIER_SYSTEM_MAP = {
     "mbo": SYS_MBO,
     "putovnica": SYS_PUTOVNICA,
     "ehic": SYS_EUROPSKA,
+}
+
+_IDENTIFIER_LABEL_MAP = {
+    SYS_MBO: "MBO",
+    SYS_PUTOVNICA: "Putovnica",
+    SYS_EUROPSKA: "EHIC",
+    SYS_JEDINSTVENI: "CEZIH ID",
+    SYS_OIB: "OIB",
 }
 
 
@@ -66,12 +75,17 @@ async def search_patient_by_identifier(
         id_label = {"mbo": "MBO", "putovnica": "putovnica", "ehic": "EHIC broj"}.get(identifier_system, identifier_system)
         raise CezihError(f"Pacijent s {id_label} '{value}' nije pronađen u CEZIH registru")
 
-    patient = FHIRPatient.model_validate(entries[0].get("resource", {}))
+    if len(entries) > 1:
+        logger.warning("PDQm patient search returned %d entries for %s|%s — using first", len(entries), identifier_system, value)
+
+    raw_resource = entries[0].get("resource", {})
+    logger.info("PDQm raw Patient resource (%s|%s): %.2000s", identifier_system, value, str(raw_resource))
+
+    patient = FHIRPatient.model_validate(raw_resource)
     family, given = _extract_name(patient)
 
     # Prefer the internal CEZIH patient ID over the search identifier —
     # jedinstveni-identifikator-pacijenta is what subsequent FHIR operations use.
-    SYS_JEDINSTVENI = "http://fhir.cezih.hr/specifikacije/identifikatori/jedinstveni-identifikator-pacijenta"
     cezih_id = ""
     for ident in patient.identifier:
         if ident.system == SYS_JEDINSTVENI and ident.value:
@@ -82,6 +96,44 @@ async def search_patient_by_identifier(
             if ident.value:
                 cezih_id = ident.value
                 break
+
+    # Collect all identifiers with friendly labels
+    identifikatori = []
+    for ident in patient.identifier:
+        if not ident.value:
+            continue
+        sys = ident.system or ""
+        label = _IDENTIFIER_LABEL_MAP.get(sys) or (sys.rstrip("/").rsplit("/", 1)[-1] if sys else "ID")
+        identifikatori.append({"system": sys, "value": ident.value, "label": label})
+
+    # Address
+    adresa = None
+    if patient.address:
+        addr = patient.address[0]
+        lines = addr.get("line") or []
+        adresa = {
+            "ulica": lines[0] if lines else "",
+            "grad": addr.get("city", ""),
+            "postanski_broj": addr.get("postalCode", ""),
+            "drzava": addr.get("country", ""),
+        }
+
+    # Telecom
+    telefon = ""
+    email = ""
+    for tc in patient.telecom:
+        if not telefon and tc.get("system") == "phone" and tc.get("value"):
+            telefon = tc["value"]
+        if not email and tc.get("system") == "email" and tc.get("value"):
+            email = tc["value"]
+
+    # hr-patient-last-contact extension
+    zadnji_kontakt = ""
+    HR_LAST_CONTACT = "http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-patient-last-contact"
+    for ext in patient.extension:
+        if ext.get("url") == HR_LAST_CONTACT:
+            zadnji_kontakt = ext.get("valueDate") or ext.get("valueDateTime") or ""
+            break
 
     spol_map = {"male": "M", "female": "Ž", "other": "Ostalo", "unknown": "Nepoznato"}
     spol = spol_map.get(patient.gender or "", "")
@@ -94,6 +146,13 @@ async def search_patient_by_identifier(
         "spol": spol,
         "identifier_system": identifier_system,
         "identifier_value": value,
+        "active": patient.active,
+        "datum_smrti": patient.deceasedDateTime or "",
+        "zadnji_kontakt": zadnji_kontakt,
+        "adresa": adresa,
+        "telefon": telefon,
+        "email": email,
+        "identifikatori": identifikatori,
     }
 
 

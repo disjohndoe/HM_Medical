@@ -694,6 +694,19 @@ export interface PractitionerItem {
 // TC11: Foreigner Registration & Search
 // ============================================================
 
+export interface PatientIdentifierItem {
+  system: string;
+  value: string;
+  label: string;
+}
+
+export interface PatientAddressResult {
+  ulica: string;
+  grad: string;
+  postanski_broj: string;
+  drzava: string;
+}
+
 export interface PatientIdentifierSearchResponse {
   cezih_id: string;
   ime: string;
@@ -702,6 +715,13 @@ export interface PatientIdentifierSearchResponse {
   spol: string;
   identifier_system: string;
   identifier_value: string;
+  active?: boolean | null;
+  datum_smrti?: string;
+  zadnji_kontakt?: string;
+  adresa?: PatientAddressResult | null;
+  telefon?: string;
+  email?: string;
+  identifikatori?: PatientIdentifierItem[];
 }
 
 export interface ForeignerRegistrationRequest {

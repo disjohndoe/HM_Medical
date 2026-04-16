@@ -51,11 +51,14 @@ class FHIRPeriod(BaseModel):
 class FHIRPatient(BaseModel):
     resourceType: Literal["Patient"] = "Patient"
     id: str | None = None
+    meta: dict[str, Any] | None = None
+    extension: list[dict[str, Any]] = Field(default_factory=list)
     identifier: list[FHIRIdentifier] = Field(default_factory=list)
     name: list[FHIRHumanName] = Field(default_factory=list)
     birthDate: str | None = None
     gender: str | None = None
     active: bool | None = None
+    deceasedDateTime: str | None = None
     address: list[dict[str, Any]] = Field(default_factory=list)
     telecom: list[dict[str, Any]] = Field(default_factory=list)
 

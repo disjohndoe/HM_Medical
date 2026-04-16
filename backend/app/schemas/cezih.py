@@ -12,6 +12,19 @@ class InsuranceCheckRequest(BaseModel):
     mbo: str
 
 
+class PatientIdentifier(BaseModel):
+    system: str
+    value: str
+    label: str
+
+
+class PatientAddress(BaseModel):
+    ulica: str = ""
+    grad: str = ""
+    postanski_broj: str = ""
+    drzava: str = ""
+
+
 class PatientIdentifierSearchResponse(BaseModel):
     cezih_id: str
     ime: str
@@ -20,6 +33,13 @@ class PatientIdentifierSearchResponse(BaseModel):
     spol: str
     identifier_system: str
     identifier_value: str
+    active: bool | None = None
+    datum_smrti: str = ""
+    zadnji_kontakt: str = ""
+    adresa: PatientAddress | None = None
+    telefon: str = ""
+    email: str = ""
+    identifikatori: list[PatientIdentifier] = []
 
 
 class InsuranceCheckResponse(BaseModel):

@@ -91,6 +91,12 @@ export function ForeignerSearch() {
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-blue-600 shrink-0" />
               <span className="font-medium text-sm">Pronađen u CEZIH</span>
+              {search.data.active === false && (
+                <span className="text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Neaktivan</span>
+              )}
+              {search.data.datum_smrti && (
+                <span className="text-xs text-red-700 bg-red-100 px-1.5 py-0.5 rounded">Preminuo</span>
+              )}
             </div>
             <div className="text-sm grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
               <span className="text-muted-foreground">Ime i prezime</span>
@@ -99,8 +105,49 @@ export function ForeignerSearch() {
               <span>{search.data.datum_rodjenja || "—"}</span>
               <span className="text-muted-foreground">Spol</span>
               <span>{SPOL_LABELS[search.data.spol] ?? (search.data.spol || "—")}</span>
-              <span className="text-muted-foreground">CEZIH ID</span>
-              <span className="font-mono text-xs">{search.data.cezih_id}</span>
+              {search.data.datum_smrti && (
+                <>
+                  <span className="text-muted-foreground">Datum smrti</span>
+                  <span>{search.data.datum_smrti}</span>
+                </>
+              )}
+              {search.data.zadnji_kontakt && (
+                <>
+                  <span className="text-muted-foreground">Zadnji kontakt</span>
+                  <span>{search.data.zadnji_kontakt}</span>
+                </>
+              )}
+              {search.data.adresa && (search.data.adresa.ulica || search.data.adresa.grad || search.data.adresa.drzava) && (
+                <>
+                  <span className="text-muted-foreground">Adresa</span>
+                  <span>
+                    {[
+                      search.data.adresa.ulica,
+                      [search.data.adresa.postanski_broj, search.data.adresa.grad].filter(Boolean).join(" "),
+                      search.data.adresa.drzava,
+                    ].filter(Boolean).join(", ")}
+                  </span>
+                </>
+              )}
+              {(search.data.telefon || search.data.email) && (
+                <>
+                  <span className="text-muted-foreground">Kontakt</span>
+                  <span>{[search.data.telefon, search.data.email].filter(Boolean).join(" · ")}</span>
+                </>
+              )}
+              {search.data.identifikatori && search.data.identifikatori.length > 0 ? (
+                search.data.identifikatori.map((id) => (
+                  <>
+                    <span key={`lbl-${id.system}`} className="text-muted-foreground">{id.label}</span>
+                    <span key={`val-${id.system}`} className="font-mono text-xs break-all">{id.value}</span>
+                  </>
+                ))
+              ) : (
+                <>
+                  <span className="text-muted-foreground">CEZIH ID</span>
+                  <span className="font-mono text-xs">{search.data.cezih_id}</span>
+                </>
+              )}
             </div>
           </div>
         )}
