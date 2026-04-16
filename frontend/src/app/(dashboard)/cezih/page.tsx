@@ -83,15 +83,12 @@ export default function CezihPage() {
     }
   }
 
-  // Suppress auto-rebind after manual unbind (until card is physically removed)
-  const [suppressAutoBind, setSuppressAutoBind] = useState(false)
-
-  // Clear suppress flag when card is physically removed
-  useEffect(() => {
-    if (!cezihStatus?.card_inserted) {
-      setSuppressAutoBind(false)
-    }
-  }, [cezihStatus?.card_inserted])
+  // Suppression is keyed by the card holder that last failed to auto-bind.
+  // A different card (holder changed) or the same card after the user clicks
+  // "Pokušaj ponovno" clears suppression and attempts auto-bind again.
+  const [suppressedHolder, setSuppressedHolder] = useState<string | null>(null)
+  const suppressAutoBind =
+    suppressedHolder !== null && suppressedHolder === (cezihStatus?.card_holder ?? null)
 
   // Guard against double-fire of auto-bind mutation
   const bindingInFlight = useRef(false)
@@ -116,7 +113,7 @@ export default function CezihPage() {
         },
         onError: (err) => {
           bindingInFlight.current = false
-          setSuppressAutoBind(true)
+          setSuppressedHolder(cezihStatus?.card_holder ?? "")
           toast.error(err instanceof Error ? err.message : "Automatsko povezivanje kartice nije uspjelo")
         },
       })
@@ -125,7 +122,7 @@ export default function CezihPage() {
 
   const handleManualBind = () => {
     bindingInFlight.current = true
-    setSuppressAutoBind(false)
+    setSuppressedHolder(null)
     selfBind.mutate(undefined, {
       onSuccess: () => {
         bindingInFlight.current = false
@@ -134,21 +131,21 @@ export default function CezihPage() {
       },
       onError: (err) => {
         bindingInFlight.current = false
-        setSuppressAutoBind(true)
+        setSuppressedHolder(cezihStatus?.card_holder ?? "")
         toast.error(err instanceof Error ? err.message : "Povezivanje kartice nije uspjelo")
       },
     })
   }
 
   const handleSelfUnbind = () => {
-    setSuppressAutoBind(true)
+    setSuppressedHolder(cezihStatus?.card_holder ?? "")
     selfUnbind.mutate(undefined, {
       onSuccess: () => {
         toast.success("Kartica odpojena")
         refreshUser()
       },
       onError: (err) => {
-        setSuppressAutoBind(false)
+        setSuppressedHolder(null)
         toast.error(err instanceof Error ? err.message : "Greška pri odpajanju kartice")
       },
     })
@@ -232,8 +229,8 @@ export default function CezihPage() {
                       </>
                     ) : suppressAutoBind ? (
                       <div className="flex items-center gap-2">
-                        <p className="text-sm text-muted-foreground">
-                          Kartica nije povezana.
+                        <p className="text-sm text-red-600">
+                          Automatsko povezivanje nije uspjelo.
                         </p>
                         {cezihStatus?.agent_connected && cezihStatus?.card_inserted && (
                           <Button
@@ -245,7 +242,7 @@ export default function CezihPage() {
                             {selfBind.isPending ? (
                               <Loader2 className="h-4 w-4 animate-spin mr-1" />
                             ) : null}
-                            Poveži
+                            Pokušaj ponovno
                           </Button>
                         )}
                       </div>
