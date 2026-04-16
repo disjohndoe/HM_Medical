@@ -1187,35 +1187,29 @@ async def update_case(
     source_oid: str | None = None,
 ) -> dict:
     """Update a case via FHIR messaging (TC17, codes 2.2-2.8)."""
-    from app.services.cezih.message_builder import CASE_ACTION_MAP
+    from app.services.cezih.message_builder import CASE_ACTION_MAP, CASE_EVENT_PROFILE
 
     action_info = CASE_ACTION_MAP.get(action)
     if action_info is None:
         raise CezihError(f"Unknown case action: {action}")
 
     event_code = action_info["code"] or ""
-    clinical_status = action_info["clinical_status"]
 
     if action == "delete":
         condition = build_condition_delete(case_identifier=case_identifier, patient_mbo=patient_mbo)
     else:
-        # Per-event CEZIH profile rules (verified against test env 2026-04-16):
-        #
-        # 2.3 Remisija → hr-health-issue-remission-message:
-        #     clinicalStatus max=0, abatement[x] max=0  → MINIMAL payload only
-        # 2.5 Resolve  → hr-health-issue-resolve-message:
-        #     abatement[x] min=1, clinicalStatus.code fixed = "resolved"
-        # 2.4 Relaps   → CEZIH test env misroutes to resolve-message (known issue,
-        #     not in cert TCs) → send minimal and accept the 400 for now
-        # 2.7 Reopen   → minimal (untested in this session but original behavior)
-        add_abatement = action == "resolve"
-        add_cs = action == "resolve"
+        # Per-event CEZIH profile rules live in CASE_EVENT_PROFILE (message_builder.py).
+        # Each event code maps to a distinct FHIR StructureDefinition with its own
+        # cardinality + slice rules — see docs/CEZIH/findings/case-lifecycle-profile-matrix.md.
+        rules = CASE_EVENT_PROFILE.get(event_code)
+        if rules is None:
+            raise CezihError(f"No CASE_EVENT_PROFILE rules for event code {event_code}")
         condition = build_condition_status_update(
             case_identifier=case_identifier, patient_mbo=patient_mbo,
-            clinical_status=clinical_status if add_cs else None,
+            clinical_status=rules["cs_value"] if rules["cs"] else None,
             abatement_date=(
                 datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-                if add_abatement else None
+                if rules["abatement"] else None
             ),
         )
 

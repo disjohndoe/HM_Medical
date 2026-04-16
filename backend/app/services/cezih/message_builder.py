@@ -915,6 +915,26 @@ CASE_ACTION_MAP: dict[str, dict[str, str | None]] = {
 }
 
 
+# --- Per-event CEZIH profile rules for case status-update messages ---
+#
+# CEZIH validates each $process-message event code against a DIFFERENT
+# StructureDefinition profile. This table encodes the payload shape each
+# profile requires. See docs/CEZIH/findings/case-lifecycle-profile-matrix.md
+# for live-testing evidence.
+#
+# Fields:
+#   cs        — include Condition.clinicalStatus
+#   cs_value  — code to send when cs=True (e.g. "resolved", "active")
+#   abatement — include Condition.abatementDateTime (set to now())
+CASE_EVENT_PROFILE: dict[str, dict[str, Any]] = {
+    "2.2": {"cs": False, "abatement": False, "cs_value": None},  # Ponavljajući — untested probe value
+    "2.3": {"cs": False, "abatement": False, "cs_value": None},  # Remisija — VERIFIED 2026-04-16
+    "2.4": {"cs": False, "abatement": False, "cs_value": None},  # Relaps — Phase 3 workaround pending
+    "2.5": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Resolve — verified earlier
+    "2.7": {"cs": False, "abatement": False, "cs_value": None},  # Reopen — untested probe value
+}
+
+
 # --- Parse response ---
 
 
