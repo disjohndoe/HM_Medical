@@ -1187,7 +1187,11 @@ async def update_case(
     source_oid: str | None = None,
 ) -> dict:
     """Update a case via FHIR messaging (TC17, codes 2.2-2.8)."""
-    from app.services.cezih.message_builder import CASE_ACTION_MAP, CASE_EVENT_PROFILE
+    from app.services.cezih.message_builder import (
+        CASE_ACTION_MAP,
+        CASE_EVENT_PROFILE,
+        CEZIH_RELAPSE_SEMANTIC_CORRECT,
+    )
 
     action_info = CASE_ACTION_MAP.get(action)
     if action_info is None:
@@ -1204,6 +1208,9 @@ async def update_case(
         rules = CASE_EVENT_PROFILE.get(event_code)
         if rules is None:
             raise CezihError(f"No CASE_EVENT_PROFILE rules for event code {event_code}")
+        if event_code == "2.4" and CEZIH_RELAPSE_SEMANTIC_CORRECT:
+            # Override workaround once HZZO documents the real relapse profile
+            rules = {"cs": True, "abatement": False, "cs_value": "relapse"}
         condition = build_condition_status_update(
             case_identifier=case_identifier, patient_mbo=patient_mbo,
             clinical_status=rules["cs_value"] if rules["cs"] else None,

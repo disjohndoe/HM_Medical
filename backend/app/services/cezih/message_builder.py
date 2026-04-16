@@ -929,10 +929,19 @@ CASE_ACTION_MAP: dict[str, dict[str, str | None]] = {
 CASE_EVENT_PROFILE: dict[str, dict[str, Any]] = {
     "2.2": {"cs": False, "abatement": False, "cs_value": None},  # Ponavljajući — untested probe value
     "2.3": {"cs": False, "abatement": False, "cs_value": None},  # Remisija — VERIFIED 2026-04-16
-    "2.4": {"cs": False, "abatement": False, "cs_value": None},  # Relaps — Phase 3 workaround pending
+    "2.4": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Relaps — test-env workaround (see below)
     "2.5": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Resolve — verified earlier
     "2.7": {"cs": False, "abatement": False, "cs_value": None},  # Reopen — untested probe value
 }
+
+# CEZIH test env routes event 2.4 (Relaps) to hr-health-issue-resolve-message
+# profile, which demands clinicalStatus.code="resolved" + abatement[x] — the
+# OPPOSITE of what Relaps means semantically. 2.4 is not in the 22 cert TCs.
+# Workaround above sends the "wrong" payload that test-env accepts so the UI
+# button doesn't throw. When HZZO documents the true relapse profile, flip
+# this flag to True and the dispatcher will send the semantically correct
+# payload instead.
+CEZIH_RELAPSE_SEMANTIC_CORRECT = False
 
 
 # --- Parse response ---
