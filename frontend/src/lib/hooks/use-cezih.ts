@@ -429,13 +429,61 @@ export function useCreateCase() {
   })
 }
 
+// Status-transition actions → target clinical_status in our local view.
+// (Invariant: a case NEVER disappears from the Slučajevi table — we always
+// keep it visible, just with the new status. CEZIH QEDm's eventual
+// consistency would otherwise hide the case for several seconds after any
+// action, which the user experiences as "my case vanished".)
+const CASE_ACTION_TO_STATUS: Record<string, string> = {
+  resolve: "resolved",
+  remission: "remission",
+  relapse: "relapse",
+  reopen: "active",
+}
+
 export function useUpdateCaseStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ caseId, mbo, action }: { caseId: string; mbo: string; action: string }) =>
       api.put<CaseActionResponse>(`/cezih/cases/${caseId}/status?mbo=${encodeURIComponent(mbo)}`, { action }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "cases"], exact: false })
+    onSuccess: (resp, vars) => {
+      const queryKey = ["cezih", "cases", vars.mbo]
+      qc.setQueryData<CasesListResponse>(queryKey, (old) => {
+        if (!old) return old
+        if (vars.action === "create_recurring") {
+          // 2.2 Ponavljajući spawns a new case inheriting the parent's ICD.
+          const parent = old.cases.find((c) => c.case_id === vars.caseId)
+          if (!parent) return old
+          const newCaseId = resp.case_id || `pending-${vars.caseId}-rec`
+          if (old.cases.some((c) => c.case_id === newCaseId)) return old
+          const today = new Date().toISOString().split("T")[0]
+          const newCase: CaseItem = {
+            case_id: newCaseId,
+            icd_code: parent.icd_code,
+            icd_display: parent.icd_display,
+            clinical_status: "recurrence",
+            verification_status: parent.verification_status,
+            onset_date: today,
+            abatement_date: null,
+            note: null,
+          }
+          return { cases: [newCase, ...old.cases] }
+        }
+        const newStatus = CASE_ACTION_TO_STATUS[vars.action]
+        if (!newStatus) return old
+        const today = new Date().toISOString().split("T")[0]
+        return {
+          cases: old.cases.map((c) =>
+            c.case_id !== vars.caseId
+              ? c
+              : {
+                  ...c,
+                  clinical_status: newStatus,
+                  abatement_date: newStatus === "resolved" ? today : c.abatement_date,
+                },
+          ),
+        }
+      })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
@@ -451,8 +499,26 @@ export function useUpdateCaseData() {
       onset_date?: string; abatement_date?: string; note?: string;
     }) =>
       api.put<CaseActionResponse>(`/cezih/cases/${caseId}/data?mbo=${encodeURIComponent(mbo)}`, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "cases"], exact: false })
+    onSuccess: (_resp, vars) => {
+      const queryKey = ["cezih", "cases", vars.mbo]
+      qc.setQueryData<CasesListResponse>(queryKey, (old) => {
+        if (!old) return old
+        return {
+          cases: old.cases.map((c) =>
+            c.case_id !== vars.caseId
+              ? c
+              : {
+                  ...c,
+                  ...(vars.verification_status !== undefined && { verification_status: vars.verification_status }),
+                  ...(vars.icd_code !== undefined && { icd_code: vars.icd_code }),
+                  ...(vars.icd_display !== undefined && { icd_display: vars.icd_display }),
+                  ...(vars.onset_date !== undefined && { onset_date: vars.onset_date }),
+                  ...(vars.abatement_date !== undefined && { abatement_date: vars.abatement_date || null }),
+                  ...(vars.note !== undefined && { note: vars.note || null }),
+                },
+          ),
+        }
+      })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
