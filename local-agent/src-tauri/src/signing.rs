@@ -16,6 +16,10 @@ use std::ptr;
 use windows_sys::Win32::Security::Cryptography::*;
 use windows_sys::Win32::Foundation::GetLastError;
 
+/// NCrypt flag to produce IEEE P1363 format (raw r||s) instead of DER-encoded ECDSA signatures.
+/// JWS (RFC 7515) requires P1363 format. Without this flag, Windows NCryptSignHash defaults to DER.
+const NCRYPT_ECDSA_P1363_FORMAT_FLAG: u32 = 0x00000001;
+
 /// Result of a successful CMS signing operation.
 pub struct SignResult {
     /// Detached CMS/PKCS#7 signature (DER-encoded).
@@ -197,6 +201,11 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
                 h.update(signing_input.as_bytes());
                 h.finalize().to_vec()
             }
+            "ES512" => {
+                let mut h = sha2::Sha512::new();
+                h.update(signing_input.as_bytes());
+                h.finalize().to_vec()
+            }
             _ => {
                 let mut h = Sha256::new();
                 h.update(signing_input.as_bytes());
@@ -207,7 +216,13 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         info!("JWS: signing_input={} chars, hash={} bytes ({})",
               signing_input.len(), hash_bytes.len(), algorithm);
 
-        // Sign the hash
+        // Sign the hash with P1363 format for ECDSA (raw r||s, not DER).
+        // JWS (RFC 7515) requires P1363 format. RSA keys use flags=0.
+        let sign_flags: u32 = if algorithm.starts_with("ES") {
+            NCRYPT_ECDSA_P1363_FORMAT_FLAG
+        } else {
+            0
+        };
         let mut sig_buf = vec![0u8; sig_len as usize];
         let mut actual_len = sig_len;
         let status = NCryptSignHash(
@@ -218,7 +233,7 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             sig_buf.as_mut_ptr(),
             sig_len,
             &mut actual_len,
-            0,
+            sign_flags,
         );
 
         if must_free != 0 { NCryptFreeObject(key_handle); }
@@ -229,9 +244,10 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         }
 
         sig_buf.truncate(actual_len as usize);
-        info!("JWS: raw signature {} bytes", sig_buf.len());
+        info!("JWS: raw signature {} bytes (P1363={})", sig_buf.len(), algorithm.starts_with("ES"));
 
-        // Self-verify against same signing input
+        // Self-verify against same signing input.
+        // BCryptVerifySignature with ECDSA expects the same format (P1363) that was used for signing.
         {
             let mut pub_key_handle: *mut core::ffi::c_void = ptr::null_mut();
             let import_ok = CryptImportPublicKeyInfoEx2(
@@ -252,9 +268,9 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
                     0,
                 );
                 if verify_status == 0 {
-                    info!("JWS: SELF-VERIFICATION PASSED");
+                    info!("JWS: SELF-VERIFICATION PASSED (P1363 format)");
                 } else {
-                    warn!("JWS: SELF-VERIFICATION FAILED: 0x{:08x}", verify_status as u32);
+                    warn!("JWS: SELF-VERIFICATION FAILED: 0x{:08x} — P1363 format may not match BCrypt expectation", verify_status as u32);
                 }
                 BCryptDestroyKey(pub_key_handle);
             } else {
@@ -483,7 +499,13 @@ unsafe fn sign_raw_inner(data: &[u8], algorithm: &str) -> Result<RawSignResult, 
 
         info!("RawSign: signing {} bytes with {} (hash={} bytes)", data.len(), algorithm, hash_bytes.len());
 
-        // Sign the hash
+        // Sign the hash with P1363 format for ECDSA (raw r||s, not DER).
+        // JWS (RFC 7515) requires P1363 format. RSA keys use flags=0.
+        let sign_flags: u32 = if algorithm.starts_with("ES") {
+            NCRYPT_ECDSA_P1363_FORMAT_FLAG
+        } else {
+            0
+        };
         let mut sig_buf = vec![0u8; sig_len as usize];
         let mut actual_len = sig_len;
         let status = NCryptSignHash(
@@ -494,7 +516,7 @@ unsafe fn sign_raw_inner(data: &[u8], algorithm: &str) -> Result<RawSignResult, 
             sig_buf.as_mut_ptr(),
             sig_len,
             &mut actual_len,
-            0,
+            sign_flags,
         );
 
         if must_free != 0 { NCryptFreeObject(key_handle); }

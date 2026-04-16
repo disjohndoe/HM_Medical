@@ -392,8 +392,8 @@ async def _add_signature_extsigner(
     )
     from app.services.cezih.exceptions import CezihSigningError
     raise CezihSigningError(
-        f"Extsigner returned unexpected response format. "
-        f"Keys: {list(response.keys())}. Check backend logs."
+        "Certilia potpisivanje nije vratilo očekivani odgovor. "
+        "Provjerite da je Certilia aplikacija aktivna na mobitelu i pokušajte ponovno."
     )
 
 
@@ -447,27 +447,53 @@ async def _add_signature_smartcard(
         result = await sign_fn(bundle_json_bytes)
         jws_base64 = result.get("jws_base64", "")
     else:
-        # Production: use agent's JWS signing (builds JOSE header with x5c + signs)
-        tenant_id = current_tenant_id.get()
-        data_b64 = _base64.b64encode(bundle_json_bytes).decode("ascii")
+        from app.config import settings
 
-        result = await agent_manager.sign_jws(
-            tenant_id,
-            data_base64=data_b64,
-            timeout=30.0,
-        )
+        if settings.CEZIH_SMARTCARD_DUMMY_SIG:
+            # ── DEBUG: inject structurally valid but crypto-meaningless JWS ──
+            # If CEZIH accepts this, we know JWS is structurally required but
+            # NOT cryptographically verified on $process-message. If it rejects
+            # with ERR_DS_1002, the issue is cert registration or payload format.
+            import hashlib as _hashlib
 
-        if "error" in result:
-            from app.services.cezih.exceptions import CezihSigningError
-            raise CezihSigningError(f"Agent JWS signing failed: {result['error']}")
+            dummy_header = _base64.b64encode(
+                json.dumps({"alg": "ES384", "kid": "dummy-test"}).encode()
+            ).decode()
+            dummy_payload = _base64.b64encode(bundle_json_bytes).decode()
+            # Fake 96-byte signature (P-384: r||s, 48+48)
+            fake_sig = _hashlib.sha384(bundle_json_bytes).digest() * 2
+            dummy_sig = _base64.urlsafe_b64encode(fake_sig).decode().rstrip("=")
+            dummy_jws = f"{dummy_header}.{dummy_payload}.{dummy_sig}"
+            jws_base64 = _base64.b64encode(dummy_jws.encode()).decode()
+            logger.warning(
+                "⚠️ DUMMY SIGNATURE INJECTED — CEZIH_SMARTCARD_DUMMY_SIG=true. "
+                "JWS is NOT cryptographically valid. Do NOT use in production! "
+                "jws_base64 length=%d", len(jws_base64),
+            )
+        else:
+            # Production: use agent's JWS signing (builds JOSE header with x5c + signs)
+            tenant_id = current_tenant_id.get()
+            data_b64 = _base64.b64encode(bundle_json_bytes).decode("ascii")
 
-        jws_base64 = result.get("jws_base64", "")
-        if not jws_base64:
-            from app.services.cezih.exceptions import CezihSigningError
-            raise CezihSigningError("Agent returned empty JWS signature")
+            result = await agent_manager.sign_jws(
+                tenant_id,
+                data_base64=data_b64,
+                timeout=30.0,
+            )
 
-        logger.info("JWS signature: kid=%s, alg=%s, data=%d chars",
-                     result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
+            if "error" in result:
+                from app.services.cezih.exceptions import CezihSigningError
+                raise CezihSigningError(
+                    f"Potpisivanje pametnom karticom nije uspjelo: {result['error']}"
+                )
+
+            jws_base64 = result.get("jws_base64", "")
+            if not jws_base64:
+                from app.services.cezih.exceptions import CezihSigningError
+                raise CezihSigningError("Kartica nije vratila potpis. Umetnite karticu i pokušajte ponovno.")
+
+            logger.info("JWS signature: kid=%s, alg=%s, data=%d chars",
+                         result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
 
     # Inject the JWS into signature.data AFTER signing. The bundle sent to
     # CEZIH carries signature.data; the verifier strips it before re-canonicalizing.

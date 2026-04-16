@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     CEZIH_SIGNER_OIB: str = ""  # OIB of the signer (required for extsigner)
     CEZIH_TIMEOUT: int = 30
     CEZIH_RETRY_ATTEMPTS: int = 3
+    CEZIH_SMARTCARD_DUMMY_SIG: bool = False  # DEBUG: bypass real signing, inject dummy JWS to test if CEZIH verifies crypto
     RATE_LIMIT_ENABLED: bool = True
     CEZIH_ORG_CODE: str = ""  # HZZO sifra zdravstvene organizacije
     CEZIH_OID: str = ""  # OID informacijskog sustava (urn:oid:...)

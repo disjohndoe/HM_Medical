@@ -142,7 +142,7 @@ def _compute_hash(data: bytes | str, *, algorithm: str = _DEFAULT_ALGORITHM) -> 
     elif algorithm == "SHA-512":
         digest = hashlib.sha512(data).digest()
     else:
-        raise CezihSigningError(f"Unsupported hash algorithm: {algorithm}")
+        raise CezihSigningError(f"Nepodržani hash algoritam: {algorithm}")
     return base64.b64encode(digest).decode("ascii")
 
 
@@ -171,7 +171,7 @@ async def _request_via_agent(
 
     tenant_id = current_tenant_id.get()
     if not tenant_id:
-        raise CezihSigningError("No tenant context - cannot route through agent")
+        raise CezihSigningError("Nije moguće usmjeriti zahtjev — nedostaje kontekst korisnika.")
 
     # Prepare body
     if raw_body is not None:
@@ -198,12 +198,12 @@ async def _request_via_agent(
             body=body, timeout=float(timeout),
         )
     except RuntimeError as e:
-        raise CezihSigningError(f"Agent proxy error: {e}") from e
+        raise CezihSigningError(f"Greška agenta: {e}") from e
 
     duration_ms = (time.perf_counter() - start) * 1000
 
     if "error" in result:
-        raise CezihSigningError(f"Agent proxy error: {result['error']}")
+        raise CezihSigningError(f"Greška agenta: {result['error']}")
 
     status_code = result.get("status_code", 0)
     logger.info("CEZIH signing response via agent: %s %s -> %d (%.1fms)", method, url, status_code, duration_ms)
@@ -221,7 +221,7 @@ async def _request_via_agent(
             error_msg = f"HTTP {status_code}"
 
         raise CezihSigningError(
-            f"Agent request failed: {error_msg}",
+            f"CEZIH greška pri potpisivanju: {error_msg}",
             signing_service_error=body_text[:500],
         )
 
@@ -235,7 +235,7 @@ async def _request_via_agent(
         return parsed
     except Exception as parse_err:
         logger.error("Failed to parse signing response as JSON: %s. Raw body (first 500 chars): %s", parse_err, body_text[:500])
-        raise CezihSigningError(f"Failed to parse response: {parse_err}") from parse_err
+        raise CezihSigningError(f"Neispravan odgovor od CEZIH servisa za potpisivanje.") from parse_err
 
 
 async def _get_signing_token(client: httpx.AsyncClient) -> str:
@@ -273,8 +273,8 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
                 )
         if not oauth_url or not settings.CEZIH_CLIENT_ID:
             raise CezihSigningError(
-                "Signing OAuth2 URL and Client ID must be configured. "
-                "Set CEZIH_SIGNING_OAUTH2_URL (or CEZIH_OAUTH2_URL) and CEZIH_CLIENT_ID.",
+                "OAuth2 postavke za potpisivanje nisu konfigurirane. "
+                "Postavite CEZIH_SIGNING_OAUTH2_URL i CEZIH_CLIENT_ID.",
             )
 
         token_data = {
@@ -299,7 +299,7 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
                 # _request_via_agent raises CezihSigningError for 4xx/5xx
                 if "error" in body:
                     raise CezihSigningError(
-                        f"Signing OAuth2 token request failed: {body.get('error_description', body.get('error', 'Unknown error'))}",
+                        f"OAuth2 prijava za potpisivanje nije uspjela: {body.get('error_description', body.get('error', 'Nepoznata greška'))}",
                     )
             else:
                 # Direct request (only works from local machine with VPN)
@@ -315,19 +315,20 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
             raise
         except httpx.ConnectError as e:
             raise CezihSigningError(
-                f"Cannot connect to signing OAuth2 server at {oauth_url}",
+                f"Veza sa CEZIH servisom za potpisivanje nije uspjela ({oauth_url}). "
+                "Provjerite internet vezu i VPN.",
             ) from e
         except httpx.TimeoutException as e:
             raise CezihSigningError(
-                f"Signing OAuth2 token request timed out after {settings.CEZIH_TIMEOUT}s",
+                f"Potpis istekao — CEZIH servis ne odgovara u {settings.CEZIH_TIMEOUT}s.",
             ) from e
         except httpx.HTTPStatusError as e:
             raise CezihSigningError(
-                f"Signing OAuth2 token request failed: HTTP {e.response.status_code} - {e.response.text[:200]}",
+                f"OAuth2 prijava za potpisivanje odbijena: HTTP {e.response.status_code} - {e.response.text[:200]}",
             ) from e
         except Exception as e:
             raise CezihSigningError(
-                f"Signing OAuth2 token request failed: {e}",
+                f"OAuth2 prijava za potpisivanje nije uspjela: {e}",
             ) from e
         _signing_token_cache = body["access_token"]
         _signing_token_expires_in = body.get("expires_in", 300)
@@ -374,10 +375,10 @@ async def sign_bundle_for_cezih(
     try:
         cert_info = await agent_manager.get_cert_info(tenant_id, timeout=15.0)
     except RuntimeError as e:
-        raise CezihSigningError(f"Failed to get cert info: {e}") from e
+        raise CezihSigningError(f"Greška pri čitanju podataka kartice: {e}") from e
 
     if "error" in cert_info:
-        raise CezihSigningError(f"Failed to get cert info: {cert_info['error']}")
+        raise CezihSigningError(f"Kartica nije dostupna: {cert_info['error']}")
 
     kid = cert_info.get("kid", "")
     algorithm = cert_info.get("algorithm", "RS256")
@@ -403,10 +404,10 @@ async def sign_bundle_for_cezih(
             timeout=30.0,
         )
     except RuntimeError as e:
-        raise CezihSigningError(f"Agent raw signing failed: {e}") from e
+        raise CezihSigningError(f"Greška pri potpisivanju putem agenta: {e}") from e
 
     if "error" in result:
-        raise CezihSigningError(f"Agent raw signing failed: {result['error']}")
+        raise CezihSigningError(f"Potpisivanje putem agenta nije uspjelo: {result['error']}")
 
     sig_b64 = result.get("signature", "")
     signature_bytes = base64.b64decode(sig_b64)
@@ -444,11 +445,11 @@ async def _sign_bundle_cms_fallback(bundle_json_bytes: bytes) -> dict:
             timeout=30.0,
         )
     except RuntimeError as e:
-        raise CezihSigningError(f"Agent CMS signing failed: {e}") from e
+        raise CezihSigningError(f"Greška pri CMS potpisivanju putem agenta: {e}") from e
 
     if "error" in result:
         raise CezihSigningError(
-            f"Smart card signing failed: {result['error']}",
+            f"Potpisivanje pametnom karticom nije uspjelo: {result['error']}",
             signing_service_error=result["error"],
         )
 
