@@ -88,6 +88,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   const [icdQuery, setIcdQuery] = useState("")
   const [selectedIcd, setSelectedIcd] = useState<{ code: string; display: string } | null>(null)
   const [onsetDate, setOnsetDate] = useState(new Date().toISOString().split("T")[0])
+  const [verification, setVerification] = useState("confirmed")
   const [note, setNote] = useState("")
   const [manualCode, setManualCode] = useState("")
   const [manualDisplay, setManualDisplay] = useState("")
@@ -120,6 +121,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
         icd_code: selectedIcd.code,
         icd_display: selectedIcd.display,
         onset_date: onsetDate,
+        verification_status: verification,
         note: note || undefined,
       },
       {
@@ -128,6 +130,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
           setCreateOpen(false)
           setSelectedIcd(null)
           setIcdQuery("")
+          setVerification("confirmed")
           setNote("")
         },
         onError: (err) => toast.error(err.message),
@@ -293,6 +296,24 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
               <div>
                 <Label>Datum početka</Label>
                 <Input type="date" value={onsetDate} onChange={(e) => setOnsetDate(e.target.value)} />
+              </div>
+              <div>
+                <Label>Status verifikacije</Label>
+                <Select value={verification} onValueChange={(v) => v && setVerification(v)}>
+                  <SelectTrigger>
+                    <SelectValue>{VERIFICATION_STATUS_LABELS[verification] || verification}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(VERIFICATION_STATUS_LABELS)
+                      .filter(([v]) => v !== "entered-in-error")
+                      .map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Zatvaranje slučaja moguće je samo za Potvrđen status.
+                </p>
               </div>
               <div>
                 <Label>Napomena (opcionalno)</Label>
