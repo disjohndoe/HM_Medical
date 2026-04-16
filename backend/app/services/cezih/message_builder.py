@@ -497,13 +497,14 @@ async def _add_signature_smartcard(
 
     import jcs
 
+    from app.config import settings as _settings
     from app.services.agent_connection_manager import agent_manager
     from app.services.cezih.client import current_tenant_id
 
     # Build signature element. Testing two canonicalization approaches:
     # - include_data=True: set data="" (matching extsigner input format)
     # - include_data=False: omit data key entirely (per spec section 3.4)
-    _include_data = getattr(settings, "CEZIH_SMARTCARD_INCLUDE_DATA", True)
+    _include_data = getattr(_settings, "CEZIH_SMARTCARD_INCLUDE_DATA", True)
     sig_elem = {
         "type": [
             {
@@ -527,8 +528,6 @@ async def _add_signature_smartcard(
     # ── DEBUG: dump pre-sign payload so we can compare what we *sent* to the
     #    agent vs what extsigner received as input. If payloads differ the JWS
     #    will differ regardless of crypto.
-    from app.config import settings as _settings
-
     if _settings.CEZIH_SIGNING_DEBUG:
         try:
             _pre_json = json.loads(bundle_json_bytes)
@@ -549,9 +548,7 @@ async def _add_signature_smartcard(
         result = await sign_fn(bundle_json_bytes)
         jws_base64 = result.get("jws_base64", "")
     else:
-        from app.config import settings
-
-        if settings.CEZIH_SMARTCARD_DUMMY_SIG:
+        if _settings.CEZIH_SMARTCARD_DUMMY_SIG:
             # ── DEBUG: inject structurally valid but crypto-meaningless JWS ──
             # Tests whether CEZIH verifies signature crypto or just checks structure.
             # Uses proper base64url encoding to match real JWS format.
@@ -559,7 +556,7 @@ async def _add_signature_smartcard(
             import hashlib as _hashlib
 
             b64url = _base64.urlsafe_b64encode
-            dummy_alg = getattr(settings, "CEZIH_SMARTCARD_DUMMY_ALG", "RS256") or "RS256"
+            dummy_alg = getattr(_settings, "CEZIH_SMARTCARD_DUMMY_ALG", "RS256") or "RS256"
 
             if dummy_alg == "ES384":
                 # P-384 signature: r||s, 48+48 = 96 bytes
