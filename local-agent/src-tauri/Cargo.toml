@@ -1,6 +1,6 @@
 [package]
 name = "hm-digital-agent"
-version = "0.12.0"
+version = "0.12.1"
 description = "HM Digital Local Agent — CEZIH smart card + VPN bridge"
 authors = ["HM Digital"]
 license = "proprietary"

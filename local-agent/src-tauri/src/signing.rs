@@ -88,13 +88,14 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         return Err("No certificates found. Is the AKD smart card inserted?".into());
     }
 
-    // Per-cert diagnostics — appended to final error so backend sees exact HRESULTs
-    // for every cert that failed. This tells us whether to add CAPI fallback, fix flags,
-    // or contact AKD about CSP capabilities.
+    // Per-cert diagnostics — appended to final error so backend sees exact HRESULTs.
     let mut cert_diagnostics: Vec<String> = Vec::new();
 
-    // Try signing cert first (SignatureTest has Non-Repudiation key usage,
-    // which CEZIH requires). IdentificationTest is ECDH — wrong for signing.
+    // CERT_NCRYPT_KEY_SPEC: returned by CryptAcquireCertificatePrivateKey when CNG key acquired.
+    // Other values (AT_KEYEXCHANGE=1, AT_SIGNATURE=2) indicate CAPI key (HCRYPTPROV).
+    const CERT_NCRYPT_KEY_SPEC: u32 = 0xFFFFFFFF;
+    // CALG_SHA_256 = 0x0000800c — SHA-256 algorithm ID for CryptCreateHash (CAPI path).
+    const CALG_SHA_256_ID: u32 = 0x0000800c;
 
     for (cert_ctx, cert_label) in &certs {
         let kid = match get_cert_thumbprint(*cert_ctx) {
@@ -108,14 +109,15 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         info!("JWS: [diag] Trying {} (kid={:.16})...", cert_label, kid);
 
         // Step 1 — acquire private key.
-        // CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG = 0x00040000 forces CNG; fails if CSP is CAPI-only.
+        // CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG (0x00020000): tries CNG first, falls back to
+        // CAPI if the CSP is CAPI-only (AKD HZZO minidriver returns 0x80090016 with CNG-only).
         let mut key_handle: usize = 0;
         let mut key_spec: u32 = 0;
         let mut must_free: i32 = 0;
 
         let ok = CryptAcquireCertificatePrivateKey(
             *cert_ctx,
-            0x00040000,
+            0x00020000, // CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG
             ptr::null(),
             &mut key_handle as *mut usize as *mut _,
             &mut key_spec,
@@ -126,211 +128,213 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             let err = GetLastError();
             warn!("JWS: [diag] acquire failed {} hresult=0x{:08x}", cert_label, err);
             cert_diagnostics.push(format!(
-                "cert={} kid={:.16}: step1_acquire failed hresult=0x{:08x} (CNG-only flag; CSP likely CAPI-only if 0x80090016/0x8009001D)",
+                "cert={} kid={:.16}: step1_acquire failed hresult=0x{:08x}",
                 cert_label, kid, err
             ));
             continue;
         }
         info!(
-            "JWS: [diag] acquired {} key_spec=0x{:08x} must_free={}",
-            cert_label, key_spec, must_free
+            "JWS: [diag] acquired {} key_spec=0x{:08x} must_free={} path={}",
+            cert_label, key_spec, must_free,
+            if key_spec == CERT_NCRYPT_KEY_SPEC { "CNG" } else { "CAPI" }
         );
 
-        // Step 2 — probe signature size (tells us algorithm via sig length).
-        let probe_hash = [0u8; 48];
-        let mut sig_len: u32 = 0;
-        let status = NCryptSignHash(
-            key_handle,
-            ptr::null(),
-            probe_hash.as_ptr(),
-            48,
-            ptr::null_mut(),
-            0,
-            &mut sig_len,
-            0,
-        );
-
-        if status != 0 {
-            warn!(
-                "JWS: [diag] probe failed {} ntstatus=0x{:08x}",
-                cert_label, status as u32
-            );
-            cert_diagnostics.push(format!(
-                "cert={} kid={:.16}: step2_probe failed ntstatus=0x{:08x} key_spec=0x{:08x}",
-                cert_label, kid, status as u32, key_spec
-            ));
-            if must_free != 0 { NCryptFreeObject(key_handle); }
-            continue;
-        }
-        info!("JWS: [diag] probe OK {} sig_len={}", cert_label, sig_len);
-
-        // Determine algorithm from signature length
-        let algorithm = match sig_len as usize {
-            64 => "ES256",
-            96 => "ES384",
-            132 => "ES512",
-            256 => "RS256",
-            _ => "RS256",
-        };
-
-        // Extract X.509 certificate DER bytes for x5c header parameter.
+        // Extract X.509 certificate DER bytes (shared between CNG and CAPI paths).
         let cert_der = std::slice::from_raw_parts(
             (**cert_ctx).pbCertEncoded,
             (**cert_ctx).cbCertEncoded as usize,
         );
         let cert_b64 = b64std.encode(cert_der);
-
-        // Extract EC public key coordinates for jwk header parameter.
-        // SubjectPublicKeyInfo.PublicKey = 0x04 || x || y (uncompressed EC point)
         let cert_info_ptr = (**cert_ctx).pCertInfo;
-        let pub_key_blob = &(*cert_info_ptr).SubjectPublicKeyInfo.PublicKey;
-        let pub_key_data = std::slice::from_raw_parts(
-            pub_key_blob.pbData,
-            pub_key_blob.cbData as usize,
-        );
 
-        // Full JOSE header per CEZIH Simplifier spec: alg + kid + jwk + x5c.
-        // x5c provides the cert so the verifier can find our public key.
-        info!("JWS: cert DER={} bytes, pub_key={} bytes", cert_der.len(), pub_key_data.len());
-
-        let jose_header = if pub_key_data.len() > 1 && pub_key_data[0] == 0x04 {
-            // EC key: extract x, y coordinates from uncompressed point (0x04 || x || y)
-            let coord_size = (pub_key_data.len() - 1) / 2;
-            let x_b64url = b64url.encode(&pub_key_data[1..1 + coord_size]);
-            let y_b64url = b64url.encode(&pub_key_data[1 + coord_size..]);
-            let crv = match coord_size {
-                32 => "P-256",
-                48 => "P-384",
-                66 => "P-521",
-                _ => "P-384",
-            };
-            format!(
-                r#"{{"alg":"{}","kid":"{}","jwk":{{"crv":"{}","kty":"EC","x":"{}","y":"{}"}},"x5c":["{}"]}}"#,
-                algorithm, kid, crv, x_b64url, y_b64url, cert_b64
-            )
-        } else {
-            // RSA or unknown: include x5c for cert discovery
-            format!(r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#, algorithm, kid, cert_b64)
-        };
-        info!("JWS: JOSE header {} bytes", jose_header.len());
-
-        // Standard JWS signing input (RFC 7515):
-        //   base64url(header) + "." + base64url(payload)
-        let header_b64url = b64url.encode(jose_header.as_bytes());
-        let payload_b64url = b64url.encode(bundle_json);
-        let signing_input = format!("{}.{}", header_b64url, payload_b64url);
-
-        let hash_bytes: Vec<u8> = match algorithm {
-            "ES384" => {
-                let mut h = Sha384::new();
-                h.update(signing_input.as_bytes());
-                h.finalize().to_vec()
-            }
-            "ES512" => {
-                let mut h = sha2::Sha512::new();
-                h.update(signing_input.as_bytes());
-                h.finalize().to_vec()
-            }
-            _ => {
-                let mut h = Sha256::new();
-                h.update(signing_input.as_bytes());
-                h.finalize().to_vec()
-            }
-        };
-
-        info!("JWS: signing_input={} chars, hash={} bytes ({})",
-              signing_input.len(), hash_bytes.len(), algorithm);
-
-        // Sign the hash with P1363 format for ECDSA (raw r||s, not DER).
-        // JWS (RFC 7515) requires P1363 format. RSA keys use flags=0.
-        let sign_flags: u32 = if algorithm.starts_with("ES") {
-            NCRYPT_ECDSA_P1363_FORMAT_FLAG
-        } else {
-            0
-        };
-        let mut sig_buf = vec![0u8; sig_len as usize];
-        let mut actual_len = sig_len;
-        let status = NCryptSignHash(
-            key_handle,
-            ptr::null(),
-            hash_bytes.as_ptr(),
-            hash_bytes.len() as u32,
-            sig_buf.as_mut_ptr(),
-            sig_len,
-            &mut actual_len,
-            sign_flags,
-        );
-
-        if must_free != 0 { NCryptFreeObject(key_handle); }
-
-        if status != 0 {
-            warn!(
-                "JWS: [diag] sign failed {} ntstatus=0x{:08x} alg={}",
-                cert_label, status as u32, algorithm
-            );
-            cert_diagnostics.push(format!(
-                "cert={} kid={:.16}: step3_sign failed ntstatus=0x{:08x} alg={} key_spec=0x{:08x} p1363={}",
-                cert_label, kid, status as u32, algorithm, key_spec, algorithm.starts_with("ES")
-            ));
-            continue;
-        }
-
-        sig_buf.truncate(actual_len as usize);
-        info!("JWS: [diag] sign OK {} raw_sig={} bytes (P1363={})", cert_label, sig_buf.len(), algorithm.starts_with("ES"));
-
-        // Self-verify against same signing input.
-        // BCryptVerifySignature with ECDSA expects the same format (P1363) that was used for signing.
-        {
-            let mut pub_key_handle: *mut core::ffi::c_void = ptr::null_mut();
-            let import_ok = CryptImportPublicKeyInfoEx2(
-                ENCODING,
-                &(*cert_info_ptr).SubjectPublicKeyInfo as *const _ as *mut _,
-                0,
+        if key_spec == CERT_NCRYPT_KEY_SPEC {
+            // ── CNG path (modern CSP or smart card with CNG minidriver) ──────────
+            let probe_hash = [0u8; 48];
+            let mut sig_len: u32 = 0;
+            let status = NCryptSignHash(
+                key_handle,
+                ptr::null(),
+                probe_hash.as_ptr(),
+                48,
                 ptr::null_mut(),
-                &mut pub_key_handle,
+                0,
+                &mut sig_len,
+                0,
             );
-            if import_ok != 0 && !pub_key_handle.is_null() {
-                let verify_status = BCryptVerifySignature(
-                    pub_key_handle,
-                    ptr::null(),
-                    hash_bytes.as_ptr(),
-                    hash_bytes.len() as u32,
-                    sig_buf.as_ptr(),
-                    actual_len,
-                    0,
-                );
-                if verify_status == 0 {
-                    info!("JWS: SELF-VERIFICATION PASSED (P1363 format)");
-                } else {
-                    warn!("JWS: SELF-VERIFICATION FAILED: 0x{:08x} — P1363 format may not match BCrypt expectation", verify_status as u32);
-                }
-                BCryptDestroyKey(pub_key_handle);
-            } else {
-                warn!("JWS: Could not import public key for self-verification");
+
+            if status != 0 {
+                warn!("JWS: [diag] CNG probe failed {} ntstatus=0x{:08x}", cert_label, status as u32);
+                cert_diagnostics.push(format!(
+                    "cert={} kid={:.16}: cng_probe failed ntstatus=0x{:08x}",
+                    cert_label, kid, status as u32
+                ));
+                if must_free != 0 { NCryptFreeObject(key_handle); }
+                continue;
             }
+            info!("JWS: CNG probe OK {} sig_len={}", cert_label, sig_len);
+
+            let algorithm = match sig_len as usize {
+                64 => "ES256",
+                96 => "ES384",
+                132 => "ES512",
+                256 => "RS256",
+                _ => "RS256",
+            };
+
+            let pub_key_blob = &(*cert_info_ptr).SubjectPublicKeyInfo.PublicKey;
+            let pub_key_data = std::slice::from_raw_parts(pub_key_blob.pbData, pub_key_blob.cbData as usize);
+            info!("JWS: CNG cert DER={} bytes, pub_key={} bytes", cert_der.len(), pub_key_data.len());
+
+            let jose_header = if pub_key_data.len() > 1 && pub_key_data[0] == 0x04 {
+                let coord_size = (pub_key_data.len() - 1) / 2;
+                let x_b64url = b64url.encode(&pub_key_data[1..1 + coord_size]);
+                let y_b64url = b64url.encode(&pub_key_data[1 + coord_size..]);
+                let crv = match coord_size { 32 => "P-256", 48 => "P-384", 66 => "P-521", _ => "P-384" };
+                format!(r#"{{"alg":"{}","kid":"{}","jwk":{{"crv":"{}","kty":"EC","x":"{}","y":"{}"}},"x5c":["{}"]}}"#,
+                    algorithm, kid, crv, x_b64url, y_b64url, cert_b64)
+            } else {
+                format!(r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#, algorithm, kid, cert_b64)
+            };
+            info!("JWS: CNG JOSE header {} bytes", jose_header.len());
+
+            let header_b64url = b64url.encode(jose_header.as_bytes());
+            let payload_b64url = b64url.encode(bundle_json);
+            let signing_input = format!("{}.{}", header_b64url, payload_b64url);
+
+            let hash_bytes: Vec<u8> = match algorithm {
+                "ES384" => { let mut h = Sha384::new(); h.update(signing_input.as_bytes()); h.finalize().to_vec() }
+                "ES512" => { let mut h = sha2::Sha512::new(); h.update(signing_input.as_bytes()); h.finalize().to_vec() }
+                _ => { let mut h = Sha256::new(); h.update(signing_input.as_bytes()); h.finalize().to_vec() }
+            };
+            info!("JWS: CNG signing_input={} chars, hash={} bytes ({})", signing_input.len(), hash_bytes.len(), algorithm);
+
+            let sign_flags: u32 = if algorithm.starts_with("ES") { NCRYPT_ECDSA_P1363_FORMAT_FLAG } else { 0 };
+            let mut sig_buf = vec![0u8; sig_len as usize];
+            let mut actual_len = sig_len;
+            let status = NCryptSignHash(
+                key_handle, ptr::null(),
+                hash_bytes.as_ptr(), hash_bytes.len() as u32,
+                sig_buf.as_mut_ptr(), sig_len, &mut actual_len, sign_flags,
+            );
+
+            if must_free != 0 { NCryptFreeObject(key_handle); }
+
+            if status != 0 {
+                warn!("JWS: CNG sign failed {} ntstatus=0x{:08x} alg={}", cert_label, status as u32, algorithm);
+                cert_diagnostics.push(format!(
+                    "cert={} kid={:.16}: cng_sign failed ntstatus=0x{:08x} alg={} p1363={}",
+                    cert_label, kid, status as u32, algorithm, algorithm.starts_with("ES")
+                ));
+                continue;
+            }
+
+            sig_buf.truncate(actual_len as usize);
+            info!("JWS: CNG sign OK {} raw_sig={} bytes (P1363={})", cert_label, sig_buf.len(), algorithm.starts_with("ES"));
+
+            // Self-verify.
+            {
+                let mut pub_key_handle: *mut core::ffi::c_void = ptr::null_mut();
+                let import_ok = CryptImportPublicKeyInfoEx2(
+                    ENCODING, &(*cert_info_ptr).SubjectPublicKeyInfo as *const _ as *mut _,
+                    0, ptr::null_mut(), &mut pub_key_handle,
+                );
+                if import_ok != 0 && !pub_key_handle.is_null() {
+                    let vs = BCryptVerifySignature(
+                        pub_key_handle, ptr::null(),
+                        hash_bytes.as_ptr(), hash_bytes.len() as u32,
+                        sig_buf.as_ptr(), actual_len, 0,
+                    );
+                    if vs == 0 { info!("JWS: CNG SELF-VERIFICATION PASSED"); }
+                    else { warn!("JWS: CNG SELF-VERIFICATION FAILED: 0x{:08x}", vs as u32); }
+                    BCryptDestroyKey(pub_key_handle);
+                }
+            }
+
+            let sig_b64url = b64url.encode(&sig_buf);
+            let jws_compact = format!("{}.{}.{}", header_b64url, payload_b64url, sig_b64url);
+            let jws_base64 = b64std.encode(jws_compact.as_bytes());
+            info!("JWS: CNG complete! alg={}, jws_compact={} chars, double_b64={} chars",
+                  algorithm, jws_compact.len(), jws_base64.len());
+
+            for (ctx, _) in &certs { CertFreeCertificateContext(*ctx); }
+            CertCloseStore(store, 0);
+            return Ok(JwsSignResult { jws_base64, kid, algorithm: algorithm.to_string() });
+
+        } else {
+            // ── CAPI path (AKD HZZO smart card with CAPI-only CSP minidriver) ─
+            // key_handle = HCRYPTPROV; key_spec = AT_SIGNATURE (2) or AT_KEYEXCHANGE (1).
+            // Sign with CryptCreateHash + CryptHashData + CryptSignHash.
+            // CAPI RSA output is little-endian; JWS RS256 requires big-endian — reverse after signing.
+            let hprov = key_handle;
+            let algorithm = "RS256";
+
+            let jose_header = format!(r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#, algorithm, kid, cert_b64);
+            info!("JWS: CAPI JOSE header {} bytes, alg={}", jose_header.len(), algorithm);
+
+            let header_b64url = b64url.encode(jose_header.as_bytes());
+            let payload_b64url = b64url.encode(bundle_json);
+            let signing_input = format!("{}.{}", header_b64url, payload_b64url);
+
+            let mut hhash: usize = 0;
+            let ok_hash = CryptCreateHash(hprov, CALG_SHA_256_ID, 0, 0, &mut hhash);
+            if ok_hash == 0 {
+                let err = GetLastError();
+                warn!("JWS: CAPI CryptCreateHash failed for {}: 0x{:08x}", cert_label, err);
+                cert_diagnostics.push(format!("cert={} kid={:.16}: capi_hash_create failed 0x{:08x}", cert_label, kid, err));
+                if must_free != 0 { CryptReleaseContext(hprov, 0); }
+                continue;
+            }
+
+            let si_bytes = signing_input.as_bytes();
+            let ok_data = CryptHashData(hhash, si_bytes.as_ptr(), si_bytes.len() as u32, 0);
+            if ok_data == 0 {
+                let err = GetLastError();
+                warn!("JWS: CAPI CryptHashData failed for {}: 0x{:08x}", cert_label, err);
+                cert_diagnostics.push(format!("cert={} kid={:.16}: capi_hash_data failed 0x{:08x}", cert_label, kid, err));
+                CryptDestroyHash(hhash);
+                if must_free != 0 { CryptReleaseContext(hprov, 0); }
+                continue;
+            }
+
+            // Query signature size first (null output buffer).
+            let mut sig_len: u32 = 0;
+            let ok_size = CryptSignHash(hhash, key_spec, ptr::null(), 0, ptr::null_mut(), &mut sig_len);
+            if ok_size == 0 {
+                let err = GetLastError();
+                warn!("JWS: CAPI CryptSignHash size query failed for {}: 0x{:08x}", cert_label, err);
+                cert_diagnostics.push(format!("cert={} kid={:.16}: capi_sign_size failed 0x{:08x}", cert_label, kid, err));
+                CryptDestroyHash(hhash);
+                if must_free != 0 { CryptReleaseContext(hprov, 0); }
+                continue;
+            }
+
+            let mut sig_buf = vec![0u8; sig_len as usize];
+            let ok_sign = CryptSignHash(hhash, key_spec, ptr::null(), 0, sig_buf.as_mut_ptr(), &mut sig_len);
+            CryptDestroyHash(hhash);
+            if must_free != 0 { CryptReleaseContext(hprov, 0); }
+
+            if ok_sign == 0 {
+                let err = GetLastError();
+                warn!("JWS: CAPI CryptSignHash sign failed for {}: 0x{:08x}", cert_label, err);
+                cert_diagnostics.push(format!("cert={} kid={:.16}: capi_sign failed 0x{:08x}", cert_label, kid, err));
+                continue;
+            }
+
+            sig_buf.truncate(sig_len as usize);
+            // CAPI RSA output is little-endian (standard PKCS#1 is big-endian for JWS RS256).
+            sig_buf.reverse();
+            info!("JWS: CAPI sign OK {} raw_sig={} bytes", cert_label, sig_buf.len());
+
+            let sig_b64url = b64url.encode(&sig_buf);
+            let jws_compact = format!("{}.{}.{}", header_b64url, payload_b64url, sig_b64url);
+            let jws_base64 = b64std.encode(jws_compact.as_bytes());
+            info!("JWS: CAPI complete! alg={}, jws_compact={} chars, double_b64={} chars",
+                  algorithm, jws_compact.len(), jws_base64.len());
+
+            for (ctx, _) in &certs { CertFreeCertificateContext(*ctx); }
+            CertCloseStore(store, 0);
+            return Ok(JwsSignResult { jws_base64, kid, algorithm: algorithm.to_string() });
         }
-
-        // JWS compact serialization (RFC 7515): header.payload.signature
-        let sig_b64url = b64url.encode(&sig_buf);
-        let jws_compact = format!("{}.{}.{}", header_b64url, payload_b64url, sig_b64url);
-
-        // Double base64: base64(JWS_compact) — FHIR base64Binary compatible.
-        let jws_base64 = b64std.encode(jws_compact.as_bytes());
-
-        info!("JWS: complete! alg={}, jws_compact={} chars, double_b64={} chars",
-              algorithm, jws_compact.len(), jws_base64.len());
-
-        // Cleanup
-        for (ctx, _) in &certs {
-            CertFreeCertificateContext(*ctx);
-        }
-        CertCloseStore(store, 0);
-
-        return Ok(JwsSignResult {
-            jws_base64,
-            kid,
-            algorithm: algorithm.to_string(),
-        });
     }
 
     for (ctx, _) in &certs {
@@ -354,8 +358,8 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
         cert_diagnostics.join(" || ")
     };
     Err(format!(
-        "NCryptSignHash failed for all certificates. Per-cert diagnostic: {}. \
-        Common meanings — 0x80090016/0x8009001D = CSP is CAPI-only (no CNG); \
+        "JWS signing failed for all certificates (tried CNG + CAPI). Per-cert diagnostic: {}. \
+        Common meanings — 0x80090016/0x8009001D = key container not found; \
         0x80090008/0x80090029 = card refuses requested algorithm; \
         0x80090011 = key missing; 0x80090005 = bad data.",
         diag_joined

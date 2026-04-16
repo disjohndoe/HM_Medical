@@ -580,6 +580,7 @@ async def _add_signature_smartcard(
 
             if "error" in result:
                 from app.services.cezih.exceptions import CezihSigningError
+                logger.warning("Smartcard agent signing error: %s", result['error'])
                 raise CezihSigningError(
                     f"Potpisivanje pametnom karticom nije uspjelo: {result['error']}"
                 )

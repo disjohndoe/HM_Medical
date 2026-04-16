@@ -405,6 +405,12 @@ async def send_enalaz(
         practitioner_name=practitioner_name,
     )
 
+    try:
+        from app.services.cezih.message_builder import add_signature
+        bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
+    except Exception as _sig_err:
+        logger.warning("TC18 send_enalaz: signing skipped (%s), proceeding unsigned", _sig_err)
+
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
         json_body=bundle_dict,
@@ -1391,6 +1397,12 @@ async def replace_document(
         use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
     )
 
+    try:
+        from app.services.cezih.message_builder import add_signature
+        bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
+    except Exception as _sig_err:
+        logger.warning("TC19 replace_document: signing skipped (%s), proceeding unsigned", _sig_err)
+
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
         json_body=bundle_dict,
@@ -1526,11 +1538,14 @@ async def cancel_document(
         use_external_profile=False,
     )
 
-    # Override DocumentReference status to entered-in-error (built as "current" by default)
+    try:
+        from app.services.cezih.message_builder import add_signature
+        bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
+    except Exception as _sig_err:
+        logger.warning("TC20 cancel_document: signing skipped (%s), proceeding unsigned", _sig_err)
+
     # CEZIH rejects entered-in-error status in ITI-65 bundles (ERR_DOM_10057).
     # Cancel works as a "replace" — the new doc supersedes the original.
-    # The original gets status=superseded automatically in CEZIH's registry.
-    # No status override needed — _build_document_bundle already sets status=current.
 
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
