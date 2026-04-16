@@ -162,10 +162,10 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo }: S
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <DialogTitle>Pošalji nalaze na CEZIH</DialogTitle>
+            <DialogTitle>Pošalji e-Nalaze (skupno)</DialogTitle>
           </div>
           <DialogDescription>
-            Odaberite nalaze za slanje na CEZIH
+            Odaberite nalaze koji postaju e-Nalazi na CEZIH-u.
           </DialogDescription>
         </DialogHeader>
 

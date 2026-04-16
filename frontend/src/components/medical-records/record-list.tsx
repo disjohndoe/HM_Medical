@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { PlusIcon, PencilIcon, EyeIcon } from "lucide-react"
+import { PlusIcon, PencilIcon, EyeIcon, Info } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,10 +20,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
 import { RecordForm } from "./record-form"
 import { RecordDetail } from "./record-detail"
+import { CezihStatusBadge } from "@/components/cezih/cezih-status-badge"
+import { NalazCezihGlossary } from "@/components/cezih/nalaz-cezih-glossary"
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -45,7 +52,7 @@ export function RecordList({ patientId }: RecordListProps) {
   const [editRecord, setEditRecord] = useState<MedicalRecord | null>(null)
 
   const { canCreateMedicalRecord, canEditMedicalRecord } = usePermissions()
-  const { recordTypes, tipLabelMap, tipColorMap, isCezihMandatory, isCezihEligible } = useRecordTypeMaps()
+  const { recordTypes, tipLabelMap, tipColorMap, isCezihEligible } = useRecordTypeMaps()
   const cezihRecordTypes = recordTypes.filter((rt) => isCezihEligible.has(rt.slug))
   const { data, isLoading } = useMedicalRecords(
     patientId,
@@ -104,7 +111,22 @@ export function RecordList({ patientId }: RecordListProps) {
               <TableHead>Tip</TableHead>
               <TableHead className="hidden md:table-cell">Dijagnoza</TableHead>
               <TableHead className="hidden lg:table-cell">Doktor</TableHead>
-              <TableHead className="hidden sm:table-cell">CEZIH</TableHead>
+              <TableHead>
+                <div className="flex items-center gap-1">
+                  <span>Status e-Nalaza</span>
+                  <Popover>
+                    <PopoverTrigger
+                      aria-label="Objašnjenje statusa e-Nalaza"
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-80">
+                      <NalazCezihGlossary />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </TableHead>
               <TableHead className="text-right">Akcije</TableHead>
             </TableRow>
           </TableHeader>
@@ -113,17 +135,12 @@ export function RecordList({ patientId }: RecordListProps) {
               <TableRow key={r.id}>
                 <TableCell>{formatDateHR(r.datum)}</TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-1">
-                    <Badge
-                      variant="secondary"
-                      className={tipColorMap[r.tip] || ""}
-                    >
-                      {tipLabelMap[r.tip] || r.tip}
-                    </Badge>
-                    {isCezihMandatory.has(r.tip) && (
-                      <span className="text-[10px] font-medium text-emerald-600" title="Obavezno za CEZIH">CEZIH</span>
-                    )}
-                  </div>
+                  <Badge
+                    variant="secondary"
+                    className={tipColorMap[r.tip] || ""}
+                  >
+                    {tipLabelMap[r.tip] || r.tip}
+                  </Badge>
                 </TableCell>
                 <TableCell className="hidden md:table-cell">
                   {r.dijagnoza_tekst
@@ -135,18 +152,23 @@ export function RecordList({ patientId }: RecordListProps) {
                     ? `${r.doktor_ime} ${r.doktor_prezime}`
                     : "—"}
                 </TableCell>
-                <TableCell className="hidden sm:table-cell">
-                  {r.sensitivity && r.sensitivity !== "standard" && (
-                    <Badge
-                      variant="secondary"
-                      className={`mr-1 ${RECORD_SENSITIVITY_COLORS[r.sensitivity] || ""}`}
-                    >
-                      {RECORD_SENSITIVITY[r.sensitivity]}
-                    </Badge>
-                  )}
-                  <Badge variant={r.cezih_sent ? "default" : "outline"} className={r.cezih_storno ? "bg-red-100 text-red-800" : r.cezih_sent ? "bg-green-100 text-green-800" : "text-muted-foreground"}>
-                    {r.cezih_storno ? "Storniran" : r.cezih_sent ? "Poslan" : "Nije poslan"}
-                  </Badge>
+                <TableCell>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {r.sensitivity && r.sensitivity !== "standard" && (
+                      <Badge
+                        variant="secondary"
+                        className={`${RECORD_SENSITIVITY_COLORS[r.sensitivity] || ""} hidden sm:inline-flex`}
+                      >
+                        {RECORD_SENSITIVITY[r.sensitivity]}
+                      </Badge>
+                    )}
+                    <CezihStatusBadge
+                      record={r}
+                      showIcon
+                      size="sm"
+                      labelClassName="hidden sm:inline"
+                    />
+                  </div>
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">

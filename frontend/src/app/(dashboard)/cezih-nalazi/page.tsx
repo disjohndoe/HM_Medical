@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Send, Loader2, Check, AlertTriangle } from "lucide-react"
+import { Send, Loader2, Check, AlertTriangle, Info } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -15,9 +15,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
+import { NalazCezihGlossary } from "@/components/cezih/nalaz-cezih-glossary"
 import { useCezihUnsentRecords } from "@/lib/hooks/use-medical-records"
 import { useSendENalaz } from "@/lib/hooks/use-cezih"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -119,7 +125,7 @@ export default function CezihNalaziPage() {
   if (!canPerformCezihOps) {
     return (
       <div className="space-y-6">
-        <PageHeader title="CEZIH Nalazi" />
+        <PageHeader title="Slanje e-Nalaza" />
         <p className="text-sm text-muted-foreground">Nemate ovlasti za ovu stranicu.</p>
       </div>
     )
@@ -129,7 +135,23 @@ export default function CezihNalaziPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="CEZIH Nalazi" description="Neposlani obavezni nalazi za CEZIH — svi pacijenti" />
+      <div className="flex items-start gap-2">
+        <PageHeader
+          title="Slanje e-Nalaza"
+          description="Neposlani obavezni nalazi — svi pacijenti. Nakon uspješnog slanja postaju e-Nalazi na CEZIH-u."
+        />
+        <Popover>
+          <PopoverTrigger
+            aria-label="Objašnjenje Nalaz vs e-Nalaz"
+            className="mt-1 text-muted-foreground hover:text-foreground"
+          >
+            <Info className="h-4 w-4" />
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-80">
+            <NalazCezihGlossary />
+          </PopoverContent>
+        </Popover>
+      </div>
 
       {/* Failed records banner */}
       {failedRecords.length > 0 && !sending && (
@@ -161,7 +183,7 @@ export default function CezihNalaziPage() {
       ) : records.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16">
           <AlertTriangle className="h-8 w-8 text-muted-foreground" />
-          <p className="text-muted-foreground">Nema neposlanih CEZIH nalaza</p>
+          <p className="text-muted-foreground">Nema e-Nalaza za slanje</p>
           <p className="text-sm text-muted-foreground">Svi obavezni nalazi su poslani na CEZIH.</p>
         </div>
       ) : (

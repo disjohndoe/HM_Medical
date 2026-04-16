@@ -22,6 +22,10 @@ import { usePermissions } from "@/lib/hooks/use-permissions"
 import { usePerformedProcedures } from "@/lib/hooks/use-procedures"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import {
+  CezihStatusBadge,
+  deriveCezihState,
+} from "@/components/cezih/cezih-status-badge"
 import type { MedicalRecord } from "@/lib/types"
 
 interface RecordDetailProps {
@@ -43,6 +47,8 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
   const [pdfLoading, setPdfLoading] = useState(false)
 
   const { tipLabelMap, tipColorMap, isCezihMandatory, isCezihEligible } = useRecordTypeMaps()
+  const cezihState = deriveCezihState(record, isCezihMandatory)
+  const cezihEligible = isCezihEligible.has(record.tip)
 
   const handleSendENalaz = () => {
     sendENalaz.mutate(
@@ -129,6 +135,44 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
         </SheetHeader>
 
         <div className="mt-6 space-y-4 px-4">
+          {canPerformCezihOps && cezihEligible && (
+            <div className="rounded-lg border bg-muted/30 px-3 py-2.5 space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CezihStatusBadge record={record} size="md" showIcon />
+                {cezihState === "aktivan" && record.cezih_sent_at && (
+                  <span className="text-xs text-muted-foreground">
+                    Poslano {formatDateTimeHR(record.cezih_sent_at)}
+                  </span>
+                )}
+                {cezihState === "storniran" && record.cezih_sent_at && (
+                  <span className="text-xs text-muted-foreground">
+                    Storniran {formatDateTimeHR(record.cezih_sent_at)}
+                  </span>
+                )}
+              </div>
+              {cezihState === "aktivan" && record.cezih_reference_id && (
+                <p className="text-[11px] text-muted-foreground font-mono truncate" title={record.cezih_reference_id}>
+                  Ref: {record.cezih_reference_id}
+                </p>
+              )}
+              {cezihState === "ceka_slanje" && (
+                <p className="text-xs text-amber-800">
+                  Obavezno slanje na CEZIH (čl. 23, NN 14/2019)
+                </p>
+              )}
+              {cezihState === "lokalno" && (
+                <p className="text-xs text-muted-foreground">
+                  Postoji samo u lokalnoj evidenciji.
+                </p>
+              )}
+            </div>
+          )}
+          {canPerformCezihOps && !cezihEligible && (
+            <p className="text-xs text-muted-foreground">
+              Ovaj tip zapisa ({tipLabelMap[record.tip] || record.tip}) ne šalje se na CEZIH.
+            </p>
+          )}
+
           {record.dijagnoza_tekst && (
             <div>
               <h4 className="text-sm font-medium text-muted-foreground">Dijagnoza</h4>
@@ -202,123 +246,24 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
             )}
           </div>
 
-          <Separator />
-
-          {canPerformCezihOps && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-medium text-muted-foreground">CEZIH status</h4>
-            </div>
-            {!isCezihEligible.has(record.tip) ? (
-              <p className="text-xs text-muted-foreground">
-                Ovaj tip zapisa ({tipLabelMap[record.tip] || record.tip}) nije predviđen za slanje na CEZIH.
-              </p>
-            ) : record.cezih_sent ? (
+          {canPerformCezihOps && canUseHzzo && (
+            <>
+              <Separator />
               <div className="space-y-2">
-                {record.cezih_storno ? (
-                  <Badge className="bg-red-100 text-red-800 border-red-200">
-                    Storniran na CEZIH
-                  </Badge>
-                ) : (
-                  <Badge className="bg-green-100 text-green-800 border-green-200">
-                    Poslano na CEZIH
-                  </Badge>
-                )}
-                {record.cezih_reference_id && (
-                  <p className="text-xs text-muted-foreground">
-                    Referenca: <span className="font-mono">{record.cezih_reference_id}</span>
-                  </p>
-                )}
-                {record.cezih_sent_at && (
-                  <p className="text-xs text-muted-foreground">
-                    Vrijeme: {formatDateTimeHR(record.cezih_sent_at)}
-                  </p>
-                )}
-                {record.cezih_reference_id && !record.cezih_storno && (
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setConfirmReplace(true)}
-                      disabled={replaceDocument.isPending}
-                    >
-                      {replaceDocument.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                      )}
-                      Zamijeni
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => setConfirmCancel(true)}
-                      disabled={cancelDocument.isPending}
-                    >
-                      {cancelDocument.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <XCircle className="mr-2 h-4 w-4" />
-                      )}
-                      Storniraj
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {isCezihMandatory.has(record.tip) && (
-                  <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2">
-                    <p className="text-xs font-medium text-amber-800">
-                      Obavezno slanje na CEZIH (čl. 23, NN 14/2019)
-                    </p>
-                  </div>
-                )}
+                <h4 className="text-sm font-medium text-muted-foreground">e-Recept</h4>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleSendENalaz}
-                  disabled={sendENalaz.isPending}
+                  onClick={() => setEReceptOpen(true)}
                 >
-                  {sendENalaz.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="mr-2 h-4 w-4" />
-                  )}
-                  Pošalji e-Nalaz
+                  <Pill className="mr-2 h-4 w-4" />
+                  Pošalji e-Recept
                 </Button>
               </div>
-            )}
-          </div>
+            </>
           )}
-
-          {canPerformCezihOps && (
-          <>
-          <Separator />
-
-          {/* e-Recept button */}
-          {canUseHzzo && (
-          <>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-medium text-muted-foreground">e-Recept</h4>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEReceptOpen(true)}
-            >
-              <Pill className="mr-2 h-4 w-4" />
-              Pošalji e-Recept
-            </Button>
-          </div>
 
           <Separator />
-          </>
-          )}
-          </>
-          )}
 
           <div className="text-xs text-muted-foreground">
             Kreiran: {formatDateTimeHR(record.created_at)}
@@ -329,7 +274,50 @@ export function RecordDetail({ open, onOpenChange, record, patientId, onEdit }: 
             </div>
           )}
 
-          <div className="flex gap-2 pt-4">
+          <div className="flex flex-wrap gap-2 pt-4">
+            {canPerformCezihOps && cezihEligible && (cezihState === "lokalno" || cezihState === "ceka_slanje") && (
+              <Button
+                onClick={handleSendENalaz}
+                disabled={sendENalaz.isPending}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {sendENalaz.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Pošalji e-Nalaz
+              </Button>
+            )}
+            {canPerformCezihOps && cezihState === "aktivan" && record.cezih_reference_id && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmReplace(true)}
+                  disabled={replaceDocument.isPending}
+                >
+                  {replaceDocument.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Zamijeni e-Nalaz
+                </Button>
+                <Button
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setConfirmCancel(true)}
+                  disabled={cancelDocument.isPending}
+                >
+                  {cancelDocument.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="mr-2 h-4 w-4" />
+                  )}
+                  Storniraj e-Nalaz
+                </Button>
+              </>
+            )}
             <Button
               variant="outline"
               className="flex-1"

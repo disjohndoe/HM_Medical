@@ -340,7 +340,7 @@ export const NAV_ITEMS: {
   { href: "/pacijenti", label: "Pacijenti", icon: Users },
   { href: "/termini", label: "Termini", icon: CalendarDays },
   { href: "/postupci", label: "Postupci", icon: FileText },
-  { href: "/cezih-nalazi", label: "CEZIH Nalazi", icon: Send, perm: "canPerformCezihOps" },
+  { href: "/cezih-nalazi", label: "Slanje e-Nalaza", icon: Send, perm: "canPerformCezihOps" },
   { href: "/cezih?tab=postavke", label: "CEZIH Postavke", icon: Shield, perm: "canViewCezih" },
   { href: "/postavke", label: "Postavke", icon: Settings, perm: "canViewSettings" },
 ];

@@ -144,7 +144,7 @@ export default function PacijentDetailPage() {
               onClick={() => setSendNalazOpen(true)}
             >
               <Send className="mr-2 h-5 w-5" />
-              Pošalji nalaze (CEZIH)
+              Pošalji e-Nalaze
             </Button>
           </div>
           {ekartonOpen && (
