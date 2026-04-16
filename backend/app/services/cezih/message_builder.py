@@ -783,19 +783,26 @@ def build_condition_status_update(
 ) -> dict[str, Any]:
     """Build Condition for case status update (codes 2.3-2.5, 2.7).
 
-    Minimal payload — global identifier + subject only.
-    CEZIH profiles forbid clinicalStatus in status-transition messages
-    (remission/relapse/resolve/reopen) — the event code conveys the new status.
+    Field requirements per CEZIH `hr-health-issue-resolve-message|0.1` profile
+    plus FHIR R4 invariant `con-4` (if abated, clinicalStatus ∈ inactive/
+    resolved/remission):
 
-    CEZIH `hr-health-issue-resolve-message` profile requires `abatement[x]`
-    for remission/relapse/resolve (codes 2.3/2.4/2.5) — validation fails
-    otherwise with ERROR Validation_VAL_Profile_Minimum.
+    - 2.3 Remisija: abatementDateTime + clinicalStatus=remission
+    - 2.4 Relaps:   clinicalStatus=relapse only (no abatement — relapse is
+      a return to active; abatement would violate con-4)
+    - 2.5 Resolve:  abatementDateTime + clinicalStatus=resolved
+    - 2.7 Reopen:   minimal — no abatement, no clinicalStatus
     """
     condition: dict[str, Any] = {
         "resourceType": "Condition",
         "identifier": [{"system": ID_CASE_GLOBAL, "value": case_identifier}],
         "subject": patient_ref(patient_mbo),
     }
+
+    if clinical_status:
+        condition["clinicalStatus"] = {
+            "coding": [{"system": CS_CONDITION_CLINICAL, "code": clinical_status}],
+        }
 
     if abatement_date:
         condition["abatementDateTime"] = abatement_date

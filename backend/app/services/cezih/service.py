@@ -1199,17 +1199,19 @@ async def update_case(
     if action == "delete":
         condition = build_condition_delete(case_identifier=case_identifier, patient_mbo=patient_mbo)
     else:
-        # CEZIH hr-health-issue-resolve-message profile requires abatement[x]
-        # for remission/relapse/resolve (2.3/2.4/2.5). Reopen (2.7) and
-        # create_recurring (2.2) do not — reopen brings a case back to active.
+        # CEZIH profile requires abatement[x] for remission/resolve, and
+        # FHIR con-4 then requires clinicalStatus ∈ {inactive,resolved,remission}.
+        # Relaps and Reopen must NOT have abatement (relapse/active violates con-4).
         abatement_date = (
             datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-            if action in ("remission", "relapse", "resolve")
+            if action in ("remission", "resolve")
             else None
         )
+        # Reopen stays minimal (no clinicalStatus); others send the new status.
+        cs = None if action == "reopen" else clinical_status
         condition = build_condition_status_update(
             case_identifier=case_identifier, patient_mbo=patient_mbo,
-            clinical_status=clinical_status,
+            clinical_status=cs,
             abatement_date=abatement_date,
         )
 
