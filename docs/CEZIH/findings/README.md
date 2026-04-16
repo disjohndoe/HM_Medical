@@ -42,6 +42,7 @@ What needs to be done next...
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
+| [smartcard-jws-format-fix.md](smartcard-jws-format-fix.md) | 2026-04-16 | resolved | **ROOT CAUSE FOUND** — two bugs: compact JSON (must be JCS) + attached JWS (must be detached + jwk with EC coords). VERIFIED working. |
 | [ERR_DS_1002-signature-debugging.md](ERR_DS_1002-signature-debugging.md) | 2026-04-09 | resolved | Full history of signature debugging attempts — root cause was POST→GET redirect |
 | [ERR_DS_1002-post-redirect-fix.md](ERR_DS_1002-post-redirect-fix.md) | 2026-04-08 | resolved | POST→GET redirect was the real cause of ERR_DS_1002 |
 
