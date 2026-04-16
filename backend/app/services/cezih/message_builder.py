@@ -888,33 +888,12 @@ def build_condition_data_update(
     return condition
 
 
-def build_condition_delete(
-    *,
-    case_identifier: str,
-    patient_mbo: str,
-    note_text: str,
-) -> dict[str, Any]:
-    """Build Condition for delete case (message code 2.8).
-
-    Per `hr-delete-health-issue-message|0.1` profile, `note` is required (1..*)
-    with invariant `himgmt-1: Mora postojati razlog brisanja`.
-    """
-    return {
-        "resourceType": "Condition",
-        "identifier": [{"system": ID_CASE_GLOBAL, "value": case_identifier}],
-        "subject": patient_ref(patient_mbo),
-        "note": [{
-            "extension": [{
-                "url": EXT_ANNOTATION_TYPE,
-                "valueCoding": {"system": CS_ANNOTATION_TYPE, "code": "4"},
-            }],
-            "text": note_text,
-        }],
-    }
-
-
 # --- Mapping: case action -> message code + clinical status ---
 
+# 2.8 Delete is deliberately NOT wired — CEZIH rejects every delete
+# transition with ERR_HEALTH_ISSUE_2004 regardless of case state. Use
+# 2.6 Data update + verificationStatus=entered-in-error to neutralize
+# a mistaken entry.
 CASE_ACTION_MAP: dict[str, dict[str, str | None]] = {
     "create": {"code": "2.1", "clinical_status": None},
     "create_recurring": {"code": "2.2", "clinical_status": None},
@@ -923,7 +902,6 @@ CASE_ACTION_MAP: dict[str, dict[str, str | None]] = {
     "resolve": {"code": "2.5", "clinical_status": "resolved"},
     "update_data": {"code": "2.6", "clinical_status": None},  # Data-only update, no status change
     "reopen": {"code": "2.7", "clinical_status": "active"},
-    "delete": {"code": "2.8", "clinical_status": None},
 }
 
 
@@ -969,12 +947,11 @@ CEZIH_RELAPSE_SEMANTIC_CORRECT = False
 # or substrings of the English diagnostics text for pattern matches.
 _CEZIH_ERROR_MESSAGES_HR: dict[str, str] = {
     "ERR_HEALTH_ISSUE_2004": (
-        "CEZIH state-machine odbija ovu tranziciju. "
-        "Zatvaranje (2.5) i brisanje (2.8) rade pouzdano samo na slučajevima "
-        "koji su kreirani kao 'Potvrđen' u istoj sesiji — naknadno flipanje "
-        "iz 'Nepotvrđen' u 'Potvrđen' preko 2.6 NE mijenja pogled CEZIH "
-        "state-machine-a. Rješenje: kreirajte novi slučaj s 'Potvrđen' "
-        "statusom i odmah pokrenite željenu akciju."
+        "CEZIH ne dopušta ovu tranziciju stanja. Zatvaranje (2.5) radi samo "
+        "na slučajevima koji su kreirani kao 'Potvrđen' u istoj sesiji — "
+        "naknadno flipanje iz 'Nepotvrđen' u 'Potvrđen' preko 2.6 NE mijenja "
+        "pogled CEZIH state-machine-a. Rješenje: kreirajte novi slučaj s "
+        "'Potvrđen' statusom i odmah pokrenite željenu akciju."
     ),
     "ERR_DS_1002": (
         "Digitalni potpis ili struktura poruke nije prošla validaciju. "
@@ -991,14 +968,6 @@ _CEZIH_ERROR_MESSAGES_HR: dict[str, str] = {
 }
 
 _CEZIH_DIAGNOSTIC_PATTERNS_HR: dict[str, str] = {
-    "hr-delete-health-issue-message": (
-        "Za brisanje slučaja potrebno je navesti razlog (polje 'napomena'). "
-        "Otvorite izmjenu slučaja i dodajte razlog brisanja."
-    ),
-    "Mora postojati razlog brisanja": (
-        "Za brisanje slučaja potrebno je navesti razlog. "
-        "Otvorite izmjenu slučaja i dodajte napomenu."
-    ),
     "must be 'resolved'": (
         "CEZIH traži status 'Zatvoren' umjesto trenutnog. "
         "Provjerite slijed akcija (neke tranzicije nisu podržane u test okruženju)."

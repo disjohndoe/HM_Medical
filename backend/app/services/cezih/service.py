@@ -15,7 +15,6 @@ from app.services.cezih.message_builder import (
     add_signature,
     build_condition_create,
     build_condition_data_update,
-    build_condition_delete,
     build_condition_status_update,
     build_iti65_transaction_bundle,
     build_message_bundle,
@@ -1234,9 +1233,13 @@ async def update_case(
     org_code: str,
     action: str,
     source_oid: str | None = None,
-    note_text: str | None = None,
 ) -> dict:
-    """Update a case via FHIR messaging (TC17, codes 2.2-2.8)."""
+    """Update a case via FHIR messaging (TC17, codes 2.2-2.7).
+
+    Note: 2.8 Delete is not supported — CEZIH rejects every delete
+    transition. Use update_case_data with verification_status=
+    `entered-in-error` to neutralize a mistaken entry.
+    """
     from app.services.cezih.message_builder import (
         CASE_ACTION_MAP,
         CASE_EVENT_PROFILE,
@@ -1249,16 +1252,7 @@ async def update_case(
 
     event_code = action_info["code"] or ""
 
-    if action == "delete":
-        razlog = (note_text or "").strip()
-        if not razlog:
-            raise CezihError("Za brisanje slučaja obavezno je navesti razlog (napomena).")
-        condition = build_condition_delete(
-            case_identifier=case_identifier,
-            patient_mbo=patient_mbo,
-            note_text=razlog,
-        )
-    elif action == "create_recurring":
+    if action == "create_recurring":
         # Event 2.2 uses hr-create-health-issue-recurrence-message profile:
         # identifier FORBIDDEN (server assigns), ICD + verificationStatus + onset REQUIRED.
         # Needs full build_condition_create routing — not yet implemented.

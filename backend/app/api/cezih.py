@@ -601,7 +601,6 @@ async def update_case_status(
         case_id, mbo, current_user.practitioner_id or "",
         org_code,
         data.action,
-        note_text=data.note,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         source_oid=source_oid,

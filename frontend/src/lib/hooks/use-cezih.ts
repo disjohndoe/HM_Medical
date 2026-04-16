@@ -445,15 +445,12 @@ const CASE_ACTION_TO_STATUS: Record<string, string> = {
 export function useUpdateCaseStatus() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ caseId, mbo, action, note }: { caseId: string; mbo: string; action: string; note?: string }) =>
-      api.put<CaseActionResponse>(`/cezih/cases/${caseId}/status?mbo=${encodeURIComponent(mbo)}`, { action, note }),
+    mutationFn: ({ caseId, mbo, action }: { caseId: string; mbo: string; action: string }) =>
+      api.put<CaseActionResponse>(`/cezih/cases/${caseId}/status?mbo=${encodeURIComponent(mbo)}`, { action }),
     onSuccess: (resp, vars) => {
       const queryKey = ["cezih", "cases", vars.mbo]
       qc.setQueryData<CasesListResponse>(queryKey, (old) => {
         if (!old) return old
-        if (vars.action === "delete") {
-          return { cases: old.cases.filter((c) => c.case_id !== vars.caseId) }
-        }
         if (vars.action === "create_recurring") {
           // 2.2 Ponavljajući spawns a new case inheriting the parent's ICD.
           const parent = old.cases.find((c) => c.case_id === vars.caseId)

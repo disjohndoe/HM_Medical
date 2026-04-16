@@ -88,25 +88,34 @@ Failed on-site exam at HZZO Zagreb. Examiner feedback → 4 blocking items below
 
 ## 5. Case actions — normal doctor flow (UI + spec-compliant payloads)
 
-**Fixes applied (2026-04-16, commit pending):**
+**Fixes applied (2026-04-16):**
 
 Authoritative spec source: `cezih.hr.condition-management/0.2.1` on Simplifier
 (separate package from `cezih.osnova`; contains all 8 message StructureDefinitions).
 
-- **2.8 Delete** — `build_condition_delete` now emits `Condition.note` with razlog
-  (annotation-type "4"); API schema + dispatcher thread `note` through; UI opens
-  a required-razlog Dialog when Obriši is picked. Re-enabled in `getAvailableActions`.
-- **2.7 Reopen** — current minimal payload already matches spec (no note required,
-  only globalni-id + subject). Re-enabled in `getAvailableActions` for `resolved` cases.
-- **2.5 Resolve / 2.8 Delete UI eligibility** — dropped the `_local`-only hack.
-  Now shown on any case where `verification_status === "confirmed"` (plus session
-  cases). CEZIH's Croatian error translation surfaces ERR_HEALTH_ISSUE_2004 rejections.
+- **2.8 Delete — REMOVED from codebase.** Live test 2026-04-16 confirmed CEZIH
+  unconditionally rejects every delete with ERR_HEALTH_ISSUE_2004 regardless of
+  state, role, or payload. Replacement UX: 2.6 Data update with
+  `verificationStatus=entered-in-error` neutralizes mistaken cases while
+  preserving audit trail. FE, backend service, schema, and error-translation
+  strings all cleaned. See `project_cezih_no_delete.md` memory.
+- **2.7 Reopen** — minimal payload matches spec (no note, only globalni-id +
+  subject). Re-enabled in `getAvailableActions` for `resolved` cases.
+- **2.5 Resolve UI eligibility** — dropped the `_local`-only hack. Now shown
+  on any case where `verification_status === "confirmed"`. CEZIH's Croatian
+  error translation surfaces ERR_HEALTH_ISSUE_2004 rejections on pre-existing
+  unconfirmed cases.
+
+**Verified 2026-04-16:**
+- [x] 2.1 Create (fresh active+confirmed case J06.9) — 200 OK
+- [x] 2.8 Delete → CEZIH rejects with ERR_HEALTH_ISSUE_2004 (confirming the
+  hard rule; action now fully removed from codebase)
 
 **Still to verify live:**
-- [ ] E2E on real CEZIH: create active+confirmed → 2.8 Delete with razlog → 200
-- [ ] E2E on real CEZIH: 2.5 Resolve on imported confirmed case (disambiguates H2)
-- [ ] E2E on real CEZIH: 2.7 Reopen on resolved case
-- [ ] E2E on real CEZIH: 2.5 Resolve on recurrence+confirmed case (disambiguates H1)
+- [ ] 2.5 Resolve on imported confirmed case (H2 disambiguation)
+- [ ] 2.5 Resolve on session-created active+confirmed case
+- [ ] 2.7 Reopen on resolved case
+- [ ] 2.5 Resolve on recurrence+confirmed case (H1 disambiguation)
 
 **Known test-env quirks (unchanged):**
 - 2.4 Relaps sends resolve-shaped payload (cs=resolved + abatement) per test-env
