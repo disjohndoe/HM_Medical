@@ -63,16 +63,70 @@ pub struct JwsSignResult {
 /// Sign a FHIR Bundle for CEZIH per RFC 7515 (JWS) + RFC 8785 (JCS).
 ///
 /// Takes JCS-canonicalized Bundle JSON bytes (with signature.data = "").
-/// JOSE header includes alg + kid + jwk (EC coords) + x5c (cert) per spec.
-/// extra_certs: additional DER certs (base64-std) to append to x5c after leaf (intermediate, root).
+/// JOSE header includes alg + kid + jwk (EC coords) + x5c (full chain) per spec.
+/// The x5c chain is built automatically by walking the Windows cert store (My → CA → Root).
 ///
 /// Signing input (RFC 7515): base64url(header) + "." + base64url(payload)
 /// Output: base64(JWS_compact) — double base64 for HAPI base64Binary compatibility.
-pub fn sign_for_jws(bundle_json: &[u8], extra_certs: &[String]) -> Result<JwsSignResult, String> {
-    unsafe { sign_for_jws_inner(bundle_json, extra_certs) }
+pub fn sign_for_jws(bundle_json: &[u8]) -> Result<JwsSignResult, String> {
+    unsafe { sign_for_jws_inner(bundle_json) }
 }
 
-unsafe fn sign_for_jws_inner(bundle_json: &[u8], extra_certs: &[String]) -> Result<JwsSignResult, String> {
+/// Walk the Windows cert store chain for `leaf_ctx` and return x5c array (base64-std DER).
+/// Searches "My", "CA", and "Root" system stores for each issuer up the chain.
+unsafe fn build_x5c_chain(
+    my_store: *mut core::ffi::c_void,
+    leaf_ctx: *const CERT_CONTEXT,
+    b64std: &base64::engine::GeneralPurpose,
+) -> Vec<String> {
+    let leaf_der = std::slice::from_raw_parts((*leaf_ctx).pbCertEncoded, (*leaf_ctx).cbCertEncoded as usize);
+    let mut chain = vec![b64std.encode(leaf_der)];
+
+    let ca_name: Vec<u16> = "CA\0".encode_utf16().collect();
+    let root_name: Vec<u16> = "Root\0".encode_utf16().collect();
+    let ca_store = CertOpenSystemStoreW(0, ca_name.as_ptr());
+    let root_store = CertOpenSystemStoreW(0, root_name.as_ptr());
+
+    let mut subject_ctx: *const CERT_CONTEXT = leaf_ctx;
+    let mut acquired: Vec<*const CERT_CONTEXT> = Vec::new();
+
+    for _ in 0..4 {
+        let mut found: *const CERT_CONTEXT = ptr::null();
+        for &search in &[my_store, ca_store, root_store] {
+            if search.is_null() { continue; }
+            let mut flags: u32 = 0;
+            let issuer = CertGetIssuerCertificateFromStore(search, subject_ctx, ptr::null(), &mut flags);
+            if !issuer.is_null() {
+                found = issuer;
+                break;
+            }
+        }
+        if found.is_null() { break; }
+
+        let der = std::slice::from_raw_parts((*found).pbCertEncoded, (*found).cbCertEncoded as usize);
+        chain.push(b64std.encode(der));
+        acquired.push(found);
+        subject_ctx = found;
+
+        // Stop at self-signed root (Subject DN == Issuer DN)
+        let ci = &*(*found).pCertInfo;
+        let is_root = ci.Subject.cbData == ci.Issuer.cbData && {
+            let s = std::slice::from_raw_parts(ci.Subject.pbData, ci.Subject.cbData as usize);
+            let i = std::slice::from_raw_parts(ci.Issuer.pbData, ci.Issuer.cbData as usize);
+            s == i
+        };
+        if is_root { break; }
+    }
+
+    for ctx in acquired { CertFreeCertificateContext(ctx); }
+    if !ca_store.is_null() { CertCloseStore(ca_store, 0); }
+    if !root_store.is_null() { CertCloseStore(root_store, 0); }
+
+    info!("JWS: x5c chain = {} cert(s)", chain.len());
+    chain
+}
+
+unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String> {
     const ENCODING: u32 = X509_ASN_ENCODING | PKCS_7_ASN_ENCODING;
     let b64url = base64::engine::general_purpose::URL_SAFE_NO_PAD;
     let b64std = base64::engine::general_purpose::STANDARD;
@@ -145,7 +199,6 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8], extra_certs: &[String]) -> Resu
             (**cert_ctx).pbCertEncoded,
             (**cert_ctx).cbCertEncoded as usize,
         );
-        let cert_b64 = b64std.encode(cert_der);
         let cert_info_ptr = (**cert_ctx).pCertInfo;
 
         if key_spec == CERT_NCRYPT_KEY_SPEC {
@@ -186,12 +239,9 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8], extra_certs: &[String]) -> Resu
             let pub_key_data = std::slice::from_raw_parts(pub_key_blob.pbData, pub_key_blob.cbData as usize);
             info!("JWS: CNG cert DER={} bytes, pub_key={} bytes", cert_der.len(), pub_key_data.len());
 
-            // Build x5c array: leaf cert first, then any extra chain certs (intermediate, root).
-            let x5c_parts: Vec<String> = std::iter::once(format!("\"{}\"", cert_b64))
-                .chain(extra_certs.iter().map(|c| format!("\"{}\"", c)))
-                .collect();
-            let x5c_json = x5c_parts.join(",");
-            info!("JWS: x5c chain length = {} cert(s)", x5c_parts.len());
+            // Build x5c chain by walking Windows cert store (My → CA → Root).
+            let x5c_chain = build_x5c_chain(store, *cert_ctx, &b64std);
+            let x5c_json = x5c_chain.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(",");
 
             let jose_header = if pub_key_data.len() > 1 && pub_key_data[0] == 0x04 {
                 let coord_size = (pub_key_data.len() - 1) / 2;
@@ -294,7 +344,9 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8], extra_certs: &[String]) -> Resu
             let hprov = key_handle;
             let algorithm = "RS256";
 
-            let jose_header = format!(r#"{{"alg":"{}","kid":"{}","x5c":["{}"]}}"#, algorithm, kid, cert_b64);
+            let x5c_chain = build_x5c_chain(store, *cert_ctx, &b64std);
+            let x5c_json = x5c_chain.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(",");
+            let jose_header = format!(r#"{{"alg":"{}","kid":"{}","x5c":[{}]}}"#, algorithm, kid, x5c_json);
             info!("JWS: CAPI JOSE header {} bytes, alg={}", jose_header.len(), algorithm);
 
             let header_b64url = b64url.encode(jose_header.as_bytes());

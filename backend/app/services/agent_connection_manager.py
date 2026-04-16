@@ -228,17 +228,12 @@ class AgentConnectionManager:
         tenant_id: UUID,
         *,
         data_base64: str,
-        extra_certs: list[str] | None = None,
         timeout: float = 30.0,
     ) -> dict:
         """Send data to the agent for JWS signing (NCryptSignHash).
 
-        The agent signs using raw NCrypt API → returns raw ECDSA/RSA signature
-        + certificate DER + kid + algorithm.  Used for CEZIH signature format:
-        base64(JOSE_header_JSON + Bundle_JSON + raw_signature_bytes).
-
-        extra_certs: optional list of base64-std DER certificates to append to
-        x5c after the leaf cert (intermediate, root in order).
+        The agent builds the full x5c cert chain from the Windows cert store and
+        signs using NCryptSignHash. Returns jws_base64 + kid + algorithm.
         """
         conn = self.get_any_connected(tenant_id)
         if not conn:
@@ -254,8 +249,6 @@ class AgentConnectionManager:
             "request_id": request_id,
             "data": data_base64,
         }
-        if extra_certs:
-            message["extra_certs"] = extra_certs
 
         try:
             await conn.websocket.send_json(message)

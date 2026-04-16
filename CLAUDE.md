@@ -204,6 +204,20 @@ Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
 - **Workflow:** `.github/workflows/release-agent.yml` — only runs when `local-agent/` files changed AND version bumped
 - **Required GitHub Secrets:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
+### Local Agent — Dev Mode (pointed at prod)
+
+**The local Tauri agent at `C:\Dev\HM DIGITAL\MEDICAL_MVP\local-agent` runs in dev mode against `app.hmdigital.hr` (production backend).** This means agent code changes can be tested immediately without a full release cycle.
+
+```bash
+cd "C:\Dev\HM DIGITAL\MEDICAL_MVP\local-agent"
+pnpm tauri dev
+```
+
+- Dev agent connects to `wss://app.hmdigital.hr` (same prod WebSocket endpoint)
+- AKD smart card + VPN work exactly as in production
+- Use this for all smartcard signing development — no need to bump version or wait for CI
+- The installed released agent and the dev agent cannot run simultaneously (single-instance lock)
+
 ### Local Development (available but NOT used for testing)
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
@@ -238,8 +252,10 @@ Workflow for every code change:
 ```bash
 # Check logs:
 ssh root@178.104.169.150 "cd /opt/medical-mvp && docker compose logs backend --tail 100"
-# Restart a service:
+# Restart a service (does NOT re-read .env — use up -d for env changes):
 ssh root@178.104.169.150 "cd /opt/medical-mvp && docker compose restart backend"
+# To pick up .env changes, use up -d instead:
+ssh root@178.104.169.150 "cd /opt/medical-mvp && docker compose up -d backend"
 # Full deploy (also triggered automatically on push to main):
 ssh root@178.104.169.150 "cd /opt/medical-mvp && bash deploy.sh"
 ```

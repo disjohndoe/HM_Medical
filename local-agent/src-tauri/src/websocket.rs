@@ -615,12 +615,7 @@ pub fn spawn_connection_task(
                                                     // JWS signing: receive bundle JSON, build JOSE header + sign
                                                     let rid = parsed.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                                     let data_b64 = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("");
-                                                    // Optional extra x5c chain certs (intermediate, root) in base64-std DER
-                                                    let extra_certs: Vec<String> = parsed.get("extra_certs")
-                                                        .and_then(|v| v.as_array())
-                                                        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-                                                        .unwrap_or_default();
-                                                    info!("Received sign_jws {} ({} chars, {} extra_certs)", &rid[..rid.len().min(8)], data_b64.len(), extra_certs.len());
+                                                    info!("Received sign_jws {} ({} chars)", &rid[..rid.len().min(8)], data_b64.len());
 
                                                     let sign_result = {
                                                         let data_bytes = match base64::engine::general_purpose::STANDARD.decode(data_b64) {
@@ -636,7 +631,7 @@ pub fn spawn_connection_task(
                                                             }
                                                         };
                                                         tokio::task::spawn_blocking(move || {
-                                                            crate::signing::sign_for_jws(&data_bytes, &extra_certs)
+                                                            crate::signing::sign_for_jws(&data_bytes)
                                                         }).await
                                                     };
 
