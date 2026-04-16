@@ -372,6 +372,32 @@ async def _add_signature_extsigner(
             signed_bundle_bytes = _base64.b64decode(doc["base64Document"])
             signed_bundle = json.loads(signed_bundle_bytes)
             logger.info("Extsigner returned signed bundle — using CEZIH-signed document")
+
+            # ── DEBUG: decode and log extsigner's JWS signature for comparison ──
+            try:
+                _sig_data = signed_bundle.get("signature", {}).get("data", "")
+                if _sig_data:
+                    _jws_raw = _base64.b64decode(_sig_data).decode("ascii")
+                    _parts = _jws_raw.split(".")
+                    if len(_parts) == 3:
+                        _header_raw = _base64.urlsafe_b64decode(_parts[0] + "==")
+                        _header_json = json.loads(_header_raw)
+                        logger.info(
+                            "EXTSIGNER JWS DECODED: alg=%s kid=%s jwk_keys=%s x5c_count=%d "
+                            "header_b64url=%d chars payload_b64url=%d chars sig_b64url=%d chars",
+                            _header_json.get("alg"), _header_json.get("kid", "?")[:16],
+                            list(_header_json.get("jwk", {}).keys()) if "jwk" in _header_json else "none",
+                            len(_header_json.get("x5c", [])),
+                            len(_parts[0]), len(_parts[1]), len(_parts[2]),
+                        )
+                    elif len(_parts) == 2:
+                        logger.info("EXTSIGNER JWS: appears to be 2-part (detached?) len=%d", len(_jws_raw))
+                    else:
+                        logger.info("EXTSIGNER JWS: unexpected format (dot_count=%d, total=%d chars)",
+                                    _jws_raw.count("."), len(_jws_raw))
+            except Exception as _dbg_err:
+                logger.warning("Extsigner JWS decode debug failed: %s", _dbg_err)
+
             return signed_bundle
         if isinstance(doc, dict) and doc.get("signature"):
             bundle["signature"]["data"] = doc["signature"]
@@ -494,6 +520,24 @@ async def _add_signature_smartcard(
 
             logger.info("JWS signature: kid=%s, alg=%s, data=%d chars",
                          result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
+
+            # ── DEBUG: decode and log full JWS structure for comparison ──
+            try:
+                _jws_raw = _base64.b64decode(jws_base64).decode("ascii")
+                _parts = _jws_raw.split(".")
+                if len(_parts) == 3:
+                    _header_raw = _base64.urlsafe_b64decode(_parts[0] + "==")
+                    _header_json = json.loads(_header_raw)
+                    logger.info(
+                        "SMARTCARD JWS DECODED: alg=%s kid=%s jwk_keys=%s x5c_count=%d "
+                        "header_b64url=%d chars payload_b64url=%d chars sig_b64url=%d chars",
+                        _header_json.get("alg"), _header_json.get("kid", "?")[:16],
+                        list(_header_json.get("jwk", {}).keys()) if "jwk" in _header_json else "none",
+                        len(_header_json.get("x5c", [])),
+                        len(_parts[0]), len(_parts[1]), len(_parts[2]),
+                    )
+            except Exception as _dbg_err:
+                logger.warning("JWS decode debug failed: %s", _dbg_err)
 
     # Inject the JWS into signature.data AFTER signing. The bundle sent to
     # CEZIH carries signature.data; the verifier strips it before re-canonicalizing.
@@ -1076,6 +1120,12 @@ def parse_message_response(response_body: dict[str, Any]) -> dict[str, Any]:
                     details = issue.get("details", {}).get("coding", [{}])[0]
                     error_code = details.get("code")
                     diagnostics = issue.get("diagnostics")
+                    issue_code = issue.get("code")
+                    logger.warning(
+                        "CEZIH ERROR DETAIL: code=%s issue_code=%s diagnostics=%s details=%s",
+                        error_code, issue_code, diagnostics,
+                        json.dumps(details, ensure_ascii=False)[:500],
+                    )
                     result["error_message"] = _translate_cezih_error(error_code, diagnostics)
                     result["success"] = False
                     break
