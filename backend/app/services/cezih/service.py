@@ -1148,11 +1148,17 @@ async def create_case(
     icd_code: str,
     icd_display: str,
     onset_date: str,
-    verification_status: str = "unconfirmed",
+    verification_status: str = "confirmed",
     note_text: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
-    """Create a case via FHIR messaging (TC16, code 2.1)."""
+    """Create a case via FHIR messaging (TC16, code 2.1).
+
+    Default verificationStatus is "confirmed" because CEZIH's case state machine
+    rejects 2.5 resolve (ERR_HEALTH_ISSUE_2004 "Not allowed to perform requested
+    transition with current roles") on cases that are still "unconfirmed".
+    Users can override via the 2.6 data-update flow.
+    """
     fhir_client = CezihFhirClient(client)
     condition = build_condition_create(
         patient_mbo=patient_mbo, icd_code=icd_code, icd_display=icd_display,
