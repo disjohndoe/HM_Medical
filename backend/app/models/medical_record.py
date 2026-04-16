@@ -36,3 +36,9 @@ class MedicalRecord(BaseTenantModel):
     cezih_signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sensitivity: Mapped[str] = mapped_column(String(20), nullable=False, server_default="standard")
     preporucena_terapija: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )

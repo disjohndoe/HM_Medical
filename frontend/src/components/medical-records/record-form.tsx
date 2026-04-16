@@ -173,10 +173,11 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
           sadrzaj: data.sadrzaj,
           preporucena_terapija: therapy.length > 0 ? therapy : null,
         }
-        await createMutation.mutateAsync(payload)
+        const created = await createMutation.mutateAsync(payload)
         if (attachedFile) {
           try {
-            await uploadDoc.mutateAsync({ patientId, file: attachedFile, kategorija: "nalaz" })
+            const uploaded = await uploadDoc.mutateAsync({ patientId, file: attachedFile, kategorija: "nalaz" })
+            await updateMutation.mutateAsync({ id: created.id, data: { document_id: uploaded.id } })
           } catch {
             toast.error("Zapis kreiran, ali prilog nije uploadan")
           }

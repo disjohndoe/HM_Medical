@@ -260,6 +260,33 @@ async def send_enalaz(
 
     record_data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
 
+    if record.document_id:
+        import base64
+        from pathlib import Path
+        from app.models.document import Document
+
+        document = await db.get(Document, record.document_id)
+        if document and document.tenant_id == tenant_id:
+            file_path = Path(document.file_path)
+            if not file_path.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Prilog nije pronađen na disku. Ponovno priložite datoteku.",
+                )
+            try:
+                file_bytes = file_path.read_bytes()
+            except OSError as e:
+                logger.error("Failed to read attachment %s: %s", record.document_id, e)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Greška pri čitanju priloga.",
+                ) from e
+            record_data["prilog"] = {
+                "filename": document.naziv,
+                "content_type": document.mime_type,
+                "data_b64": base64.b64encode(file_bytes).decode("ascii"),
+            }
+
     try:
         result = await real_service.send_enalaz(
             http_client, patient_data, record_data,
@@ -842,6 +869,24 @@ async def dispatch_replace_document(
                     "preporucena_terapija": record.preporucena_terapija,
                     "created_at": record.created_at.isoformat() if record.created_at else _now_iso(),
                 }
+                if record.document_id:
+                    import base64
+                    from pathlib import Path
+                    from app.models.document import Document
+
+                    document = await db.get(Document, record.document_id)
+                    if document and document.tenant_id == tenant_id:
+                        file_path = Path(document.file_path)
+                        if file_path.exists():
+                            try:
+                                file_bytes = file_path.read_bytes()
+                                record_data["prilog"] = {
+                                    "filename": document.naziv,
+                                    "content_type": document.mime_type,
+                                    "data_b64": base64.b64encode(file_bytes).decode("ascii"),
+                                }
+                            except OSError as e:
+                                logger.warning("Failed to read attachment %s on replace: %s", record.document_id, e)
             if not patient_data and record.patient_id:
                 patient = await db.get(Patient, record.patient_id)
                 if patient:
