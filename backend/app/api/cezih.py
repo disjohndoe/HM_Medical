@@ -518,6 +518,7 @@ async def search_patient_by_identifier(
         _http_client(request),
         identifier_system=system,
         value=value,
+        tenant_id=current_user.tenant_id,
     )
     return result
 

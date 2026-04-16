@@ -43,6 +43,7 @@ async def search_patient_by_identifier(
     client: httpx.AsyncClient,
     identifier_system: str,
     value: str,
+    tenant_id=None,
 ) -> dict:
     """Search CEZIH patient registry by identifier (MBO, passport, or EHIC).
 
@@ -53,7 +54,7 @@ async def search_patient_by_identifier(
     if not system_uri:
         raise CezihError(f"Nepoznati tip identifikatora: {identifier_system}")
 
-    fhir_client = CezihFhirClient(client)
+    fhir_client = CezihFhirClient(client, tenant_id=tenant_id)
     params = {"identifier": f"{system_uri}|{value}"}
     response = await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
 
