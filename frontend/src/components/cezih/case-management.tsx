@@ -44,15 +44,19 @@ import type { CaseItem } from "@/lib/types"
 
 const CLINICAL_STATUS_COLORS: Record<string, string> = {
   active: "bg-blue-100 text-blue-800",
+  recurrence: "bg-purple-100 text-purple-800",
   remission: "bg-green-100 text-green-800",
   relapse: "bg-orange-100 text-orange-800",
+  inactive: "bg-gray-100 text-gray-800",
   resolved: "bg-gray-100 text-gray-800",
 }
 
 const CLINICAL_STATUS_LABELS: Record<string, string> = {
   active: "Aktivan",
+  recurrence: "Ponavljajući",
   remission: "Remisija",
   relapse: "Relaps",
+  inactive: "Neaktivan",
   resolved: "Zatvoren",
 }
 
@@ -188,12 +192,14 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   const getAvailableActions = (c: CaseItem) => {
     switch (c.clinical_status) {
       case "active":
+      case "recurrence":
         return CASE_ACTIONS.filter((a) => ["create_recurring", "remission", "resolve", "delete"].includes(a.value))
       case "remission":
         return CASE_ACTIONS.filter((a) => ["relapse", "resolve", "delete"].includes(a.value))
       case "relapse":
         return CASE_ACTIONS.filter((a) => ["remission", "resolve", "delete"].includes(a.value))
       case "resolved":
+      case "inactive":
         return CASE_ACTIONS.filter((a) => ["reopen", "delete"].includes(a.value))
       default:
         return CASE_ACTIONS.filter((a) => a.value === "delete")
