@@ -21,7 +21,7 @@ export function deriveCezihState(
 const LABELS: Record<CezihLifecycleState, string> = {
   lokalno: "Samo lokalno",
   ceka_slanje: "Čeka slanje",
-  aktivan: "e-Nalaz aktivan",
+  aktivan: "e-Nalaz poslan",
   storniran: "Storniran",
 }
 
