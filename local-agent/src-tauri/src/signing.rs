@@ -208,56 +208,46 @@ unsafe fn sign_for_jws_inner(bundle_json: &[u8]) -> Result<JwsSignResult, String
             };
             info!("JWS: CNG signing_input={} chars, hash={} bytes ({})", signing_input.len(), hash_bytes.len(), algorithm);
 
-            let sign_flags: u32 = if algorithm.starts_with("ES") { NCRYPT_ECDSA_P1363_FORMAT_FLAG } else { 0 };
-            // Buffer large enough for both P1363 (96 for ES384) and DER ECDSA (up to 106 for ES384).
+            // Pass flags=0: AKD card CSPs reject NCRYPT_ECDSA_P1363_FORMAT_FLAG (0x80090009)
+            // and return P1363 natively. For CSPs that return DER, we detect and convert below.
             let mut sig_buf = vec![0u8; (sig_len as usize).max(128)];
             let mut actual_len = sig_buf.len() as u32;
-            let mut status = NCryptSignHash(
+            let status = NCryptSignHash(
                 key_handle, ptr::null(),
                 hash_bytes.as_ptr(), hash_bytes.len() as u32,
-                sig_buf.as_mut_ptr(), sig_buf.len() as u32, &mut actual_len, sign_flags,
+                sig_buf.as_mut_ptr(), sig_buf.len() as u32, &mut actual_len, 0,
             );
-
-            // AKD card CSPs reject NCRYPT_ECDSA_P1363_FORMAT_FLAG (NTE_BAD_FLAGS 0x80090009).
-            // Retry without it: card returns DER-encoded ECDSA, which we convert to P1363.
-            const NTE_BAD_FLAGS_STATUS: u32 = 0x80090009;
-            if status as u32 == NTE_BAD_FLAGS_STATUS && sign_flags != 0 {
-                info!("JWS: P1363 flag rejected (0x80090009), retrying DER then converting to P1363");
-                actual_len = sig_buf.len() as u32;
-                status = NCryptSignHash(
-                    key_handle, ptr::null(),
-                    hash_bytes.as_ptr(), hash_bytes.len() as u32,
-                    sig_buf.as_mut_ptr(), sig_buf.len() as u32, &mut actual_len, 0,
-                );
-                if status == 0 {
-                    let coord_size: usize = match algorithm { "ES256" => 32, "ES384" => 48, _ => 66 };
-                    match der_ecdsa_to_p1363(&sig_buf[..actual_len as usize], coord_size) {
-                        Some(p1363) => {
-                            info!("JWS: DER→P1363 OK, sig={} bytes", p1363.len());
-                            actual_len = p1363.len() as u32;
-                            sig_buf = p1363;
-                        }
-                        None => {
-                            warn!("JWS: DER→P1363 conversion failed for {}", cert_label);
-                            status = 0x80090005u32 as i32; // NTE_BAD_DATA
-                        }
-                    }
-                }
-            }
 
             if must_free != 0 { NCryptFreeObject(key_handle); }
 
             if status != 0 {
                 warn!("JWS: CNG sign failed {} ntstatus=0x{:08x} alg={}", cert_label, status as u32, algorithm);
                 cert_diagnostics.push(format!(
-                    "cert={} kid={:.16}: cng_sign failed ntstatus=0x{:08x} alg={} p1363={}",
-                    cert_label, kid, status as u32, algorithm, algorithm.starts_with("ES")
+                    "cert={} kid={:.16}: cng_sign failed ntstatus=0x{:08x} alg={}",
+                    cert_label, kid, status as u32, algorithm
                 ));
                 continue;
             }
 
             sig_buf.truncate(actual_len as usize);
-            info!("JWS: CNG sign OK {} raw_sig={} bytes (P1363)", cert_label, sig_buf.len());
+
+            // Normalize EC signature to P1363. Most CSPs return P1363 by default with flags=0.
+            // If the card returned DER-encoded ECDSA (starts with 0x30), convert it.
+            if algorithm.starts_with("ES") && sig_buf.first() == Some(&0x30) {
+                let coord_size: usize = match algorithm { "ES256" => 32, "ES384" => 48, _ => 66 };
+                match der_ecdsa_to_p1363(&sig_buf, coord_size) {
+                    Some(p1363) => {
+                        info!("JWS: DER→P1363 conversion OK, sig={} bytes", p1363.len());
+                        sig_buf = p1363;
+                    }
+                    None => {
+                        warn!("JWS: DER→P1363 failed for {}", cert_label);
+                        cert_diagnostics.push(format!("cert={} kid={:.16}: der_to_p1363 failed", cert_label, kid));
+                        continue;
+                    }
+                }
+            }
+            info!("JWS: CNG sign OK {} sig={} bytes", cert_label, sig_buf.len());
 
             // Self-verify.
             {
