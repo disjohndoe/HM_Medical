@@ -320,7 +320,10 @@ export function useRegisterForeigner() {
   return useMutation({
     mutationFn: (data: ForeignerRegistrationRequest) =>
       api.post<ForeignerRegistrationResponse>("/cezih/patients/foreigner", data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["cezih", "activity"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "patients", "search"] })
+    },
   })
 }
 

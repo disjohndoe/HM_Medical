@@ -83,7 +83,10 @@ export function ForeignerSearch() {
         </div>
 
         {search.isError && (
-          <p className="text-sm text-red-600">{(search.error as Error)?.message ?? "Pacijent nije pronađen"}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-red-600 flex-1">{(search.error as Error)?.message ?? "Pacijent nije pronađen"}</p>
+            <Button variant="outline" size="sm" onClick={() => search.refetch()}>Pokušaj ponovo</Button>
+          </div>
         )}
 
         {search.data && (
