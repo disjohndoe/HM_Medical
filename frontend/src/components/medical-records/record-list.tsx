@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { PlusIcon, PencilIcon, EyeIcon, Info } from "lucide-react"
+import { PlusIcon, PencilIcon, Send, Info } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,8 +28,8 @@ import {
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
 import { RecordForm } from "./record-form"
-import { RecordDetail } from "./record-detail"
 import { CezihStatusBadge } from "@/components/cezih/cezih-status-badge"
+import { SendNalazDialog } from "@/components/cezih/send-nalaz-dialog"
 import { NalazCezihGlossary } from "@/components/cezih/nalaz-cezih-glossary"
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
@@ -49,8 +49,9 @@ export function RecordList({ patientId, patientMbo }: RecordListProps) {
   const [tipFilter, setTipFilter] = useState<string>("")
   const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
-  const [viewRecordId, setViewRecordId] = useState<string | null>(null)
   const [editRecord, setEditRecord] = useState<MedicalRecord | null>(null)
+  const [sendNalazOpen, setSendNalazOpen] = useState(false)
+  const [sendRecordId, setSendRecordId] = useState<string | undefined>()
 
   const { canCreateMedicalRecord, canEditMedicalRecord } = usePermissions()
   const { recordTypes, tipLabelMap, tipColorMap, isCezihEligible } = useRecordTypeMaps()
@@ -64,12 +65,6 @@ export function RecordList({ patientId, patientMbo }: RecordListProps) {
     PAGE_SIZE,
   )
   const records = (data?.items ?? []).filter((r) => isCezihEligible.has(r.tip))
-  const viewRecord = viewRecordId ? records.find((r) => r.id === viewRecordId) ?? null : null
-
-  function handleEdit(record: MedicalRecord) {
-    setViewRecordId(null)
-    setEditRecord(record)
-  }
 
   if (isLoading) {
     return <LoadingSpinner text="Učitavanje..." />
@@ -177,17 +172,19 @@ export function RecordList({ patientId, patientMbo }: RecordListProps) {
                       variant="ghost"
                       size="icon-sm"
                       onClick={() => {
-                        setEditRecord(null)
-                        setViewRecordId(r.id)
+                        setSendRecordId(r.id)
+                        setSendNalazOpen(true)
                       }}
+                      disabled={!!r.cezih_sent}
+                      title={r.cezih_sent ? "Već poslano na CEZIH" : "Pošalji e-Nalaz"}
                     >
-                      <EyeIcon className="h-4 w-4" />
+                      <Send className="h-4 w-4" />
                     </Button>
                     {canEditMedicalRecord && (
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        onClick={() => handleEdit(r)}
+                        onClick={() => setEditRecord(r)}
                       >
                         <PencilIcon className="h-4 w-4" />
                       </Button>
@@ -222,16 +219,13 @@ export function RecordList({ patientId, patientMbo }: RecordListProps) {
         record={editRecord}
       />
 
-      {viewRecord && (
-        <RecordDetail
-          open={!!viewRecord}
-          onOpenChange={(open) => !open && setViewRecordId(null)}
-          record={viewRecord}
-          patientId={patientId}
-          patientMbo={patientMbo ?? null}
-          onEdit={() => handleEdit(viewRecord)}
-        />
-      )}
+      <SendNalazDialog
+        open={sendNalazOpen}
+        onOpenChange={setSendNalazOpen}
+        patientId={patientId}
+        patientMbo={patientMbo ?? null}
+        onlyRecordId={sendRecordId}
+      />
     </div>
   )
 }
