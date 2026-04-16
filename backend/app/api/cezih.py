@@ -36,6 +36,7 @@ from app.schemas.cezih import (
     EReceptStornoResponse,
     ForeignerRegistrationRequest,
     ForeignerRegistrationResponse,
+    PatientIdentifierSearchResponse,
     InsuranceCheckRequest,
     InsuranceCheckResponse,
     LijekItem,
@@ -494,6 +495,31 @@ async def search_practitioners(
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
+
+
+# ============================================================
+# Foreigner patient search by passport / EHIC (PDQm ITI-78)
+# ============================================================
+
+
+@router.get("/patients/search", response_model=PatientIdentifierSearchResponse)
+async def search_patient_by_identifier(
+    request: Request,
+    system: str = Query(..., description="Tip identifikatora: mbo, putovnica, ili ehic"),
+    value: str = Query(..., description="Vrijednost identifikatora"),
+    current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search CEZIH patient registry by MBO, passport, or EHIC number."""
+    from app.services.cezih.service import search_patient_by_identifier as _search
+
+    await check_cezih_access(db, current_user.tenant_id)
+    result = await _search(
+        _http_client(request),
+        identifier_system=system,
+        value=value,
+    )
+    return result
 
 
 # ============================================================

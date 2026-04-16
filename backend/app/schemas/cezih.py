@@ -12,6 +12,16 @@ class InsuranceCheckRequest(BaseModel):
     mbo: str
 
 
+class PatientIdentifierSearchResponse(BaseModel):
+    cezih_id: str
+    ime: str
+    prezime: str
+    datum_rodjenja: str
+    spol: str
+    identifier_system: str
+    identifier_value: str
+
+
 class InsuranceCheckResponse(BaseModel):
 
     mbo: str

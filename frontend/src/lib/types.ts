@@ -691,8 +691,18 @@ export interface PractitionerItem {
 }
 
 // ============================================================
-// TC11: Foreigner Registration
+// TC11: Foreigner Registration & Search
 // ============================================================
+
+export interface PatientIdentifierSearchResponse {
+  cezih_id: string;
+  ime: string;
+  prezime: string;
+  datum_rodjenja: string;
+  spol: string;
+  identifier_system: string;
+  identifier_value: string;
+}
 
 export interface ForeignerRegistrationRequest {
   ime: string;

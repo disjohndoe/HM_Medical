@@ -29,7 +29,63 @@ logger = logging.getLogger(__name__)
 # CEZIH identifier systems
 SYS_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
 SYS_OIB = "http://fhir.cezih.hr/specifikacije/identifikatori/oib"
+SYS_PUTOVNICA = "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica"
+SYS_EUROPSKA = "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica"
 
+_IDENTIFIER_SYSTEM_MAP = {
+    "mbo": SYS_MBO,
+    "putovnica": SYS_PUTOVNICA,
+    "ehic": SYS_EUROPSKA,
+}
+
+
+async def search_patient_by_identifier(
+    client: httpx.AsyncClient,
+    identifier_system: str,
+    value: str,
+) -> dict:
+    """Search CEZIH patient registry by identifier (MBO, passport, or EHIC).
+
+    identifier_system must be one of: 'mbo', 'putovnica', 'ehic'.
+    Uses ITI-78 PDQm — same transaction as fetch_patient_demographics / check_insurance.
+    """
+    system_uri = _IDENTIFIER_SYSTEM_MAP.get(identifier_system)
+    if not system_uri:
+        raise CezihError(f"Nepoznati tip identifikatora: {identifier_system}")
+
+    fhir_client = CezihFhirClient(client)
+    params = {"identifier": f"{system_uri}|{value}"}
+    response = await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
+
+    if response.get("resourceType") != "Bundle":
+        raise CezihError("Neočekivan format odgovora iz CEZIH-a")
+
+    entries = response.get("entry", [])
+    if not entries:
+        id_label = {"mbo": "MBO", "putovnica": "putovnica", "ehic": "EHIC broj"}.get(identifier_system, identifier_system)
+        raise CezihError(f"Pacijent s {id_label} '{value}' nije pronađen u CEZIH registru")
+
+    patient = FHIRPatient.model_validate(entries[0].get("resource", {}))
+    family, given = _extract_name(patient)
+
+    cezih_id = ""
+    for ident in patient.identifier:
+        if ident.value:
+            cezih_id = ident.value
+            break
+
+    spol_map = {"male": "M", "female": "Ž", "other": "Ostalo", "unknown": "Nepoznato"}
+    spol = spol_map.get(patient.gender or "", "")
+
+    return {
+        "cezih_id": cezih_id,
+        "ime": given,
+        "prezime": family,
+        "datum_rodjenja": patient.birthDate or "",
+        "spol": spol,
+        "identifier_system": identifier_system,
+        "identifier_value": value,
+    }
 
 
 async def fetch_patient_demographics(client: httpx.AsyncClient, mbo: str) -> dict:
@@ -405,11 +461,7 @@ async def send_enalaz(
         practitioner_name=practitioner_name,
     )
 
-    try:
-        from app.services.cezih.message_builder import add_signature
-        bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
-    except Exception as _sig_err:
-        logger.warning("TC18 send_enalaz: signing skipped (%s), proceeding unsigned", _sig_err)
+    bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
 
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
@@ -1397,11 +1449,7 @@ async def replace_document(
         use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
     )
 
-    try:
-        from app.services.cezih.message_builder import add_signature
-        bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
-    except Exception as _sig_err:
-        logger.warning("TC19 replace_document: signing skipped (%s), proceeding unsigned", _sig_err)
+    bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
 
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
@@ -1538,11 +1586,7 @@ async def cancel_document(
         use_external_profile=False,
     )
 
-    try:
-        from app.services.cezih.message_builder import add_signature
-        bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
-    except Exception as _sig_err:
-        logger.warning("TC20 cancel_document: signing skipped (%s), proceeding unsigned", _sig_err)
+    bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
 
     # CEZIH rejects entered-in-error status in ITI-65 bundles (ERR_DOM_10057).
     # Cancel works as a "replace" — the new doc supersedes the original.

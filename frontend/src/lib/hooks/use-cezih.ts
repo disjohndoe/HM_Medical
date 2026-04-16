@@ -19,6 +19,7 @@ import type {
   EReceptStornoResponse,
   ForeignerRegistrationRequest,
   ForeignerRegistrationResponse,
+  PatientIdentifierSearchResponse,
   InsuranceCheckResponse,
   LijekItem,
   OidGenerateResponse,
@@ -320,6 +321,18 @@ export function useRegisterForeigner() {
     mutationFn: (data: ForeignerRegistrationRequest) =>
       api.post<ForeignerRegistrationResponse>("/cezih/patients/foreigner", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cezih", "activity"] }),
+  })
+}
+
+export function useForeignerSearch(system: string, value: string) {
+  return useQuery({
+    queryKey: ["cezih", "patients", "search", system, value],
+    queryFn: () =>
+      api.get<PatientIdentifierSearchResponse>(
+        `/cezih/patients/search?system=${encodeURIComponent(system)}&value=${encodeURIComponent(value)}`
+      ),
+    enabled: system !== "mbo" && value.length >= 5,
+    retry: false,
   })
 }
 

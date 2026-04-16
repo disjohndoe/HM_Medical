@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Globe, Loader2, CheckCircle, ExternalLink } from "lucide-react"
+import { Globe, Loader2, CheckCircle, ExternalLink, Search } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 
@@ -16,11 +16,98 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useRegisterForeigner } from "@/lib/hooks/use-cezih"
+import { useRegisterForeigner, useForeignerSearch } from "@/lib/hooks/use-cezih"
 
 const EHIC_REGEX = /^[0-9A-Za-z]{20}$/
 const PASSPORT_REGEX = /^[A-Za-z0-9]{5,15}$/
 const COUNTRY_REGEX = /^[A-Za-z]{2,3}$/
+
+const SPOL_LABELS: Record<string, string> = { M: "Muški", Ž: "Ženski", Ostalo: "Ostalo", Nepoznato: "Nepoznato" }
+
+export function ForeignerSearch() {
+  const [system, setSystem] = useState("putovnica")
+  const [value, setValue] = useState("")
+  const [submitted, setSubmitted] = useState("")
+  const [submittedSystem, setSubmittedSystem] = useState("")
+
+  const search = useForeignerSearch(submittedSystem, submitted)
+
+  const handleSearch = () => {
+    if (value.length < 5) {
+      toast.error("Unesite valjani identifikator (min. 5 znakova)")
+      return
+    }
+    setSubmittedSystem(system)
+    setSubmitted(value)
+  }
+
+  const systemLabel = system === "putovnica" ? "Broj putovnice" : "EHIC broj"
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Search className="h-5 w-5" />
+          Pretraga stranca u CEZIH
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-3">
+          <div className="w-48">
+            <Label>Tip identifikatora</Label>
+            <Select value={system} onValueChange={(v) => { setSystem(v); setSubmitted(""); setValue("") }}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="putovnica">Putovnica</SelectItem>
+                <SelectItem value="ehic">EHIC kartica</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex-1">
+            <Label>{systemLabel}</Label>
+            <div className="flex gap-2">
+              <Input
+                value={value}
+                onChange={(e) => setValue(e.target.value.toUpperCase())}
+                placeholder={system === "putovnica" ? "AB1234567" : "20 znakova, npr. HR123..."}
+                maxLength={system === "ehic" ? 20 : 15}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              />
+              <Button onClick={handleSearch} disabled={search.isFetching || value.length < 5}>
+                {search.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {search.isError && (
+          <p className="text-sm text-red-600">{(search.error as Error)?.message ?? "Pacijent nije pronađen"}</p>
+        )}
+
+        {search.data && (
+          <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 space-y-1">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-blue-600 shrink-0" />
+              <span className="font-medium text-sm">Pronađen u CEZIH</span>
+            </div>
+            <div className="text-sm grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+              <span className="text-muted-foreground">Ime i prezime</span>
+              <span className="font-medium">{search.data.prezime} {search.data.ime}</span>
+              <span className="text-muted-foreground">Datum rođenja</span>
+              <span>{search.data.datum_rodjenja || "—"}</span>
+              <span className="text-muted-foreground">Spol</span>
+              <span>{SPOL_LABELS[search.data.spol] ?? search.data.spol || "—"}</span>
+              <span className="text-muted-foreground">CEZIH ID</span>
+              <span className="font-mono text-xs">{search.data.cezih_id}</span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 function validate(form: {
   ime: string

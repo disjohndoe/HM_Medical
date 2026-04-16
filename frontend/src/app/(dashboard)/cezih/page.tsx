@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { CezihStatusCard } from "@/components/cezih/cezih-status"
 import { InsuranceCheck } from "@/components/cezih/insurance-check"
 import { CezihActivityLog } from "@/components/cezih/activity-log"
-import { ForeignerRegistration } from "@/components/cezih/foreigner-registration"
+import { ForeignerRegistration, ForeignerSearch } from "@/components/cezih/foreigner-registration"
 import { RegistryTools } from "@/components/cezih/registry-tools"
 import { toast } from "sonner"
 import { CreditCard, X, Loader2 } from "lucide-react"
@@ -180,7 +180,10 @@ export default function CezihPage() {
         </TabsList>
 
         <TabsContent value="stranci">
-          <ForeignerRegistration />
+          <div className="space-y-4">
+            <ForeignerSearch />
+            <ForeignerRegistration />
+          </div>
         </TabsContent>
 
         <TabsContent value="registri">

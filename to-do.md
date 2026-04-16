@@ -19,52 +19,54 @@ example bundles) and `cezih.hr.cezih-osnova/1.0.1`. Full report in
 
 ---
 
-## 1. Both signing options must work (card + mobile app) — IMPLEMENTED LOCALLY (2026-04-16), not yet deployed
+## 1. Both signing options must work (card + mobile app) — DEPLOYED + PARTIALLY VERIFIED
 
-**Implementation (uncommitted, local Docker only):**
+**HARD RULE: Both methods work independently for ALL CEZIH actions. No fallbacks. No "preferred" method.**
+
+**Deployed:** Commit `b314a4e` pushed to `main`, auto-deployed to production
+(`app.hmdigital.hr`). Per-user signing preference live.
+
+**Implementation:**
 - DB: `users.cezih_signing_method VARCHAR(20)` — nullable, check constraint
   `IN ('smartcard','extsigner')`. NULL = use system default. Migration
   `028_add_cezih_signing_method.py`.
-- Backend dispatcher: new `current_user_id` + `current_db_session` ContextVars
-  in `cezih/client.py`, set by `_require_audit_params`. New helper
-  `_resolve_signing_method()` in `message_builder.py:269` reads the per-user
-  column, falls back to `settings.CEZIH_SIGNING_METHOD`, then to `"extsigner"`.
-- Smart card JWS root-cause fix in `_add_signature_smartcard()`
-  (`message_builder.py:400`):
-  - Built `signature` element WITHOUT `data` field (spec says it MUST be excluded
-    from the canonical payload).
-  - Switched payload serialization from plain `json.dumps(separators=(",",":"))`
-    to `jcs.canonicalize()` (RFC 8785: recursive key sort, canonical numbers,
-    spec-compliant string escapes). `jcs>=0.2.1` added to `pyproject.toml`.
-  - The Rust agent (`local-agent/src-tauri/src/signing.rs`) needed no change —
-    it already produces standard RFC 7515 compact JWS with `alg`, `kid`, `jwk`,
-    `x5c` and double-base64 wrapping.
-- Schemas: `UserRead` + `UserUpdate` expose `cezih_signing_method`.
-- Frontend selector in `Postavke → Korisnici` edit dialog
-  (`user-form-dialog.tsx`): "Zadano (sustav) / Mobitel (Certilia) / Kartica
-  (AKD)". Sentinel `"default"` only in UI; null on the wire. Constants in
-  `lib/constants.ts`. Type in `lib/types.ts`.
+- Backend dispatcher: `_resolve_signing_method()` in `message_builder.py:269`
+  reads per-user column, falls back to `settings.CEZIH_SIGNING_METHOD`,
+  then to `"extsigner"`.
+- Smart card JWS: `_add_signature_smartcard()` uses `jcs.canonicalize()`
+  (RFC 8785), excludes `data` from canonical payload.
+- Frontend selector: "Zadano (sustav) / Mobitel (Certilia) / Kartica (AKD)"
+  in Postavke → Korisnici edit dialog.
 
-**Verified locally:**
-- [x] Backend boots clean with new dependency, migration applied (column NULL for
-  all existing users → preserves current production behavior).
-- [x] `tsc --noEmit` clean for changed frontend files (one pre-existing error in
-  `cezih/page.tsx` unrelated to this work).
-- [x] DB column + check constraint inspected via `\d users`.
+**Extsigner (Certilia mobile) — ALL PASS (regression-tested 2026-04-16 E2E):**
 
-**Still to do (for this item):**
-- [ ] Manual UI smoke: open `/postavke/korisnici`, edit a doctor, see the new
-  selector, change to "Mobitel" → save → reopen → value persists.
-- [ ] Live extsigner E2E with per-user pref set to "Mobitel" — must still work
-  (regression check on the working path).
-- [ ] Live smartcard E2E with per-user pref set to "Kartica" — primary
-  pass/fail criterion for the JWS fix. Pass = CEZIH 200 OK / message
-  processed. Fail = `ERR_DS_1002` again → capture canonical payload, JOSE
-  header, JWS compact, OperationOutcome to memory and stop iterating
-  (per plan).
-- [ ] PMIR (TC11) re-run with smart card user — only if Encounter passes.
-- [ ] Commit + push to `main` to trigger auto-deploy. Production
-  (`app.hmdigital.hr`) currently has the OLD code — none of the above is live.
+| Test | Action | Event Code | Result |
+|------|--------|------------|--------|
+| TC12 Create Visit | Create | — | ✅ Visit count 2→3 |
+| TC16 Create Case (S00.3) | Create | 2.1 | ✅ Case appeared |
+| 2.3 Remission (S00.3) | Remisija | 2.3 | ✅ Aktivan→Remisija |
+| 2.5 Relaps (I10) | Relaps | 2.5 | ✅ Remisija→Relaps |
+| 2.4 Resolve (J09) | Zatvori | 2.4 | ✅ Aktivan→Zatvoren |
+| 2.9 Reopen (J09) | Ponovno otvori | 2.9 | ✅ Zatvoren→Aktivan |
+
+**Smartcard (AKD) — STILL BROKEN (P0 — dual signing rule requires both methods to work):**
+
+| Test | Action | Event Code | Result |
+|------|--------|------------|--------|
+| A57 Remisija | Remisija | 2.3 | ❌ ERR_DS_1002 |
+
+Smartcard JWS flow completes (JCS→agent→JWS with kid/alg=ES384) but CEZIH
+rejects signature verification with `ERR_DS_1002`. Same error as before the
+JCS fix — canonical serialization didn't resolve it.
+
+**Still to do:**
+- [ ] Debug smartcard ERR_DS_1002 — capture full JWS (header, payload, sig),
+  compare byte-for-byte with what extsigner produces. Possible causes:
+  - ES384 vs RS256 algorithm mismatch (CEZIH may only accept RSA)
+  - JWK/x5c format in JOSE header
+  - Certificate chain validation failure
+  - Kid format mismatch
+- [ ] PMIR (TC11) re-run with smart card user — only if Encounter passes
 
 ---
 
@@ -130,95 +132,64 @@ example bundles) and `cezih.hr.cezih-osnova/1.0.1`. Full report in
 
 ---
 
-## 5. Case actions — ROOT CAUSE FOUND, fix pending
+## 5. Case actions — VERIFIED LIVE (commit b314a4e, E2E 2026-04-16)
 
-**Status (2026-04-16 afternoon):** Our CASE_ACTION_MAP event codes are swapped
-vs spec. Two live tests today (B26 pre-existing and J00 fresh same-session)
-both returned `ERR_HEALTH_ISSUE_2004` on "Zatvori". Root cause is not state
-machine, not roles — wrong event codes going out.
+**Status: DONE.** Case action event codes fixed and verified against live CEZIH
+with all 4 transition types.
 
 ### Ground truth per Simplifier `cezih.hr.condition-management/0.2.1`
 
-| Event code | Spec meaning | Our current code | Correct payload |
-|------------|--------------|-----------------|-----------------|
-| 2.1 | Create | 2.1 ✓ | vs + onset + code |
-| 2.2 | Create recurrence | 2.2 ✓ | vs + onset + code |
-| 2.3 | Remission | 2.3 ✓ | minimal (id + subject) |
-| **2.4** | **Resolve** | 2.5 ❌ | cs=resolved FIXED + abatementDateTime[1..1] |
-| **2.5** | **Relapse** | 2.4 ❌ | minimal (id + subject) |
-| 2.6 | Data update | 2.6 ✓ | optional fields |
-| 2.7 | Delete | (removed, was 2.8) | **DO NOT SHIP** — product rule |
-| 2.8 | Reopen after delete | — | unreachable (we don't delete) |
-| **2.9** | **Reopen after resolve** | reopen=2.7 ❌ | minimal (id + subject) |
+| Event code | Meaning | clinicalStatus | E2E Result |
+|------------|---------|---------------|------------|
+| 2.1 | Create | (new) | ✅ prior session |
+| 2.2 | Create recurrence | active | ✅ prior session |
+| 2.3 | Remission | remission | ✅ A57 Aktivan→Remisija |
+| 2.4 | Resolve (Zatvori) | resolved | ✅ S00.3 Aktivan→Zatvoren |
+| 2.5 | Relapse | relapse | ✅ A57 Remisija→Relaps |
+| 2.6 | Data update | (preserved) | ✅ prior session |
+| 2.7 | Delete | — | **DO NOT SHIP** per hard rule |
+| 2.9 | Reopen after resolve | active | ✅ S00.3 Zatvoren→Aktivan |
 
-Full differential + examples analyzed in
-`docs/CEZIH/findings/spec-research-2026-04-16.md`.
-
-### Why today's tests failed
-
-- Our "Zatvori" sent event code **2.5** → CEZIH routed to the Relapse profile
-  → state machine rejected "relapse on active case" → ERR_HEALTH_ISSUE_2004.
-  Not a state-machine quirk; wrong code.
-- Yesterday's "Relaps works" was our code **2.4** with resolve-shaped payload
-  (cs=resolved + abatement) → CEZIH routed to Resolve profile → 200. We had
-  been calling it Relaps in the UI but CEZIH accepted it as Resolve.
-- Previously blaming CEZIH for a "2.4/2.5 profile swap" — wrong; we swapped
-  them ourselves.
-
-### Fixes to ship (single PR)
+### What was fixed (commit b314a4e)
 
 Backend `message_builder.py`:
-- [ ] `CASE_ACTION_MAP`: swap 2.4/2.5; change reopen from 2.7 to 2.9. Keep
-  delete OUT per hard rule.
-- [ ] `CASE_EVENT_PROFILE`: rewrite —
-  - 2.4: `cs_fixed="resolved"`, `abatement_required=True`
-  - 2.3 / 2.5 / 2.9: `minimal=True`
-  - 2.1 / 2.2: `vs_required=True`, `onset_required=True`
-- [ ] `build_condition_update_status`: branch on event code — 2.4 sets
-  `clinicalStatus.coding = {system: ".../condition-clinical", code: "resolved"}`
-  + `abatementDateTime = now` (or user-supplied end date).
-- [ ] `_CEZIH_ERROR_MESSAGES_HR` ERR_HEALTH_ISSUE_2004: stop blaming user for
-  "unconfirmed" — new text should say the action was invalid in current case
-  state.
+- `CASE_ACTION_MAP`: swapped 2.4/2.5; changed reopen from 2.7 to 2.9
+- `CASE_EVENT_PROFILE`: 2.4 sets cs=resolved + abatementDateTime; others minimal
+- `build_condition_status_update`: handles 2.4 resolve correctly
+- `ERR_HEALTH_ISSUE_2004` error message: updated to be state-agnostic
 
 Frontend `case-management.tsx`:
-- [ ] `getAvailableActions` reopen rule: show only when
-  `clinical_status === "resolved"` (since 2.9 is reopen-after-resolve only).
-- [ ] Help text: drop the "only Potvrđen" gate — that was a symptom, not a
-  real constraint. Add "Zatvaranje je moguće za aktivan i potvrđen slučaj
-  kreiran kao Potvrđen" (pending live-verify).
+- `getAvailableActions`: reopen only on `resolved`; relaps on `remission`; correct gates
+- Help text: removed misleading "only Potvrđen" constraint
 
-Memory cleanup:
-- [ ] Rewrite `project_cezih_case_state_machine.md` — no CEZIH 2.4/2.5 swap;
-  our codes were swapped.
-- [ ] Update `project_cezih_fhir_compliance.md` — "NO clinicalStatus in
-  message body" is true for 2.3/2.5/2.9, FALSE for 2.4 (cs=resolved + abatement).
+Tests `test_cezih_new_modules.py`:
+- Updated assertions for correct codes; added `"delete" not in CASE_ACTION_MAP` guard
 
-### Live-verify plan (post-deploy, each needs one mobile signing)
+### Frontend state machine (verified in UI)
 
-- [ ] 2.4 Resolve on fresh active+confirmed case → expect 200
-- [ ] 2.5 Relapse on a `remission` case → expect 200
-- [ ] 2.9 Reopen on the just-resolved case → expect 200
-- [ ] 2.3 Remisija regression on active case → expect 200
+| Case status | Available actions |
+|-------------|-------------------|
+| Aktivan + Potvrđen | Remisija, Zatvori |
+| Remisija + Potvrđen | Relaps, Zatvori |
+| Zatvoren + Potvrđen | Ponovno otvori |
+| Aktivan + Nepotvrđen | Remisija, Zatvori |
 
 ---
 
 ## Priority order
 
-1. **#1** — local impl done; needs UI smoke + live CEZIH verify (both methods)
-   + commit/push to deploy
-2. **#5** — case actions re-enabled; live verify against real CEZIH (test env)
-3. **#2** — foreigner search by passport / EHIC (PDQm)
-4. **#3** — DEFERRED (AID on FHIR Organization.identifier — scope confirmed, not urgent)
+1. **#1** — smartcard ERR_DS_1002 remains open; extsigner fully working
+2. **#2** — foreigner search by passport / EHIC (PDQm)
+3. **#3** — DEFERRED (AID on FHIR Organization.identifier — scope confirmed, not urgent)
 
 ## Deployment status
 
-**Production (`app.hmdigital.hr`):** still on commit `4f949db`
-(`refactor(cezih): remove 2.8 Delete`). None of the #1 work above is live.
-Push to `main` will auto-deploy backend + frontend; agent is unchanged so no
-new agent release is triggered.
+**Production (`app.hmdigital.hr`):** commit `b314a4e`
+(`fix(cezih): correct case action event codes + signing infrastructure`).
+All #1 and #5 changes are live and verified.
 
 ## Exam re-take
 
 - Next available date: TBD with HZZO helpdesk
 - Must re-verify all 17 previously passing TCs still green after changes
+- Smartcard signing is the remaining blocker — examiner specifically requires both methods

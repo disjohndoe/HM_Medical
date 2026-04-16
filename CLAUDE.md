@@ -46,25 +46,39 @@ MEDICAL_MVP/
 - **Backend:** FastAPI, SQLAlchemy async, PostgreSQL
 - **Local Agent:** Tauri 2.x (Rust), tokio-tungstenite, system tray — **REQUIRED**, reads AKD smart card, manages VPN
 - **Infrastructure:** Docker Compose, Caddy (reverse proxy + auto-SSL), GitHub Actions CI/CD
-- **CEZIH Integration (novi format za privatnike):** FHIR R4 + IHE profili (MHD, PDQm, SVCM, mCSD, PMIR, QEDm), OAuth2 via Keycloak, AKD smart card (mandatory for VPN)
+- **CEZIH Integration (novi format za privatnike):** FHIR R4 + IHE profili (MHD, PDQm, SVCM, mCSD, PMIR, QEDm), OAuth2 via Keycloak
 
 ## CEZIH Integration Architecture
 
-### Smart Card + Local Agent (MANDATORY)
+### Dual Signing — Both Methods Work Independently
+
+**Every CEZIH action MUST work with EITHER signing method. No fallbacks. No "preferred" method. A user with only a smart card can do everything. A user with only Certilia mobile can do everything.**
+
+| Method | How | What's Needed |
+|--------|-----|---------------|
+| **AKD Smart Card** | Local Agent reads card → JWS signature → VPN + mTLS + signing | AKD kartica + USB čitač + VPN klijent + Local Agent |
+| **Certilia Mobile/Cloud** | Remote signing via certpubws.cezih.hr → push notification to phone | Certilia račun + mobitel (no card, no VPN, no local agent) |
+
 ```
-Browser ←→ Cloud Backend (FastAPI) ←→ Local Agent (Tauri) ←→ CEZIH
-                REST API                  AKD smart card + VPN    FHIR/JSON
+Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
+                REST API
+                    ↕
+            ┌───────┴────────┐
+            │                │
+    Local Agent (Tauri)   Certilia Remote Signing
+    AKD smart card        certpubws.cezih.hr
+    VPN + mTLS + JWS      OAuth2 + push approval
 ```
 
-**⚠️ VPN does NOT support Certilia Cloud certificates.** Physical AKD smart card is required for VPN authentication. Cloud cert is signing-only (certpubws.cezih.hr, no VPN needed) — useful for remote document signing but not for CEZIH API access.
+**Per-user preference:** Each user chooses their signing method in Postavke → Korisnici (`cezih_signing_method`: `smartcard` or `extsigner`). System default configurable via `CEZIH_SIGNING_METHOD` env var.
 
-**Each client needs:** AKD kartica + USB čitač (ISO 7816) + VPN klijent + Local Agent installed
+**⚠️ HARD RULE:** Never treat one method as a fallback for the other. Both must be independently tested and verified for ALL 22 test cases. If one method breaks, it's a P0 bug — not a "use the other method" situation.
 
 ## Key CEZIH Modules (Unified Private Provider Certification)
 
 | Module | Description | Format/Profile |
 |--------|-------------|---------------|
-| Auth & Signing | Smart card + cloud cert auth, document signing | PKI, OAuth2 |
+| Auth & Signing | Dual signing: smart card OR Certilia mobile — both work for ALL actions | PKI, OAuth2 |
 | Patient Lookup | Demographics by MBO | IHE PDQm (ITI-78) |
 | Clinical Documents | Send/replace/cancel/search/retrieve findings | IHE MHD (ITI-65/67/68) |
 | Visits | Create/update/close patient visits | FHIR messaging |
