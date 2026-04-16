@@ -686,10 +686,27 @@ async def dispatch_update_case(
 ) -> dict:
     _require_audit_params(db, user_id, tenant_id)
     try:
-        result = await real_service.update_case(
-            http_client, case_id, patient_mbo, practitioner_id, org_code, action,
-            source_oid=source_oid,
-        )
+        if action == "create_recurring":
+            # 2.2 Ponavljajući creates a NEW case inheriting the parent's ICD.
+            # Look up parent via QEDm since we don't persist cases locally.
+            from datetime import UTC, datetime
+            existing = await real_service.retrieve_cases(http_client, patient_mbo)
+            parent = next((c for c in existing if c.get("case_id") == case_id), None)
+            if parent is None:
+                raise CezihError(f"Roditeljski slučaj {case_id} nije pronađen za pacijenta.")
+            result = await real_service.create_recurring_case(
+                http_client, patient_mbo, practitioner_id, org_code,
+                icd_code=parent.get("icd_code") or "",
+                icd_display=parent.get("icd_display") or "",
+                onset_date=datetime.now(UTC).strftime("%Y-%m-%d"),
+                verification_status=parent.get("verification_status") or "confirmed",
+                source_oid=source_oid,
+            )
+        else:
+            result = await real_service.update_case(
+                http_client, case_id, patient_mbo, practitioner_id, org_code, action,
+                source_oid=source_oid,
+            )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(

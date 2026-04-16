@@ -1177,6 +1177,49 @@ async def create_case(
     }
 
 
+async def create_recurring_case(
+    client: httpx.AsyncClient,
+    patient_mbo: str,
+    practitioner_id: str,
+    org_code: str,
+    *,
+    icd_code: str,
+    icd_display: str,
+    onset_date: str,
+    verification_status: str = "confirmed",
+    note_text: str | None = None,
+    source_oid: str | None = None,
+) -> dict:
+    """Create recurring case via FHIR messaging (code 2.2).
+
+    Profile: hr-create-health-issue-recurrence-message|0.1
+    Requires: ICD code + verificationStatus + onset[x], identifier FORBIDDEN
+    (server assigns new global identifier).
+    """
+    fhir_client = CezihFhirClient(client)
+    condition = build_condition_create(
+        patient_mbo=patient_mbo, icd_code=icd_code, icd_display=icd_display,
+        onset_date=onset_date, practitioner_id=practitioner_id,
+        verification_status=verification_status, note_text=note_text,
+    )
+    local_case_id = condition["identifier"][0]["value"]
+    bundle = await build_message_bundle(
+        "2.2", condition,
+        sender_org_code=org_code, author_practitioner_id=practitioner_id,
+        source_oid=source_oid,
+    )
+    bundle = await add_signature(bundle, practitioner_id, http_client=client)
+    response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
+    result = parse_message_response(response)
+    if not result["success"]:
+        raise CezihError(result.get("error_message") or "Failed to create recurring case")
+    return {
+        "success": True,
+        "local_case_id": local_case_id,
+        "cezih_case_id": result["identifier"] or "",
+    }
+
+
 async def update_case(
     client: httpx.AsyncClient,
     case_identifier: str,
