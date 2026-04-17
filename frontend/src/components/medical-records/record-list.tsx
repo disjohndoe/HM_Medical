@@ -1,9 +1,11 @@
 "use client"
 
-import { useState } from "react"
-import { PlusIcon, PencilIcon, Send, Info } from "lucide-react"
+import { useState, useRef } from "react"
+import { PlusIcon, PencilIcon, Send, Info, Download, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { api } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
 import {
   Select,
@@ -54,6 +56,38 @@ export function RecordList({ patientId, hasCezihIdentifier = false }: RecordList
   const [editRecord, setEditRecord] = useState<MedicalRecord | null>(null)
   const [sendNalazOpen, setSendNalazOpen] = useState(false)
   const [sendRecordId, setSendRecordId] = useState<string | undefined>()
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const downloadingRef = useRef<Set<string>>(new Set())
+
+  const handleDownloadPdf = async (record: MedicalRecord) => {
+    if (downloadingRef.current.has(record.id)) return
+    downloadingRef.current.add(record.id)
+    setDownloadingId(record.id)
+    try {
+      const res = await api.fetchRaw(`/medical-records/${record.id}/pdf`)
+      const blob = await res.blob()
+      const disposition = res.headers.get("content-disposition") || ""
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : `nalaz_${record.datum}_${record.id.slice(0, 4)}.pdf`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      const digitallySigned = res.headers.get("x-pdf-digitally-signed") === "true"
+      if (digitallySigned) {
+        toast.success("PDF preuzet i digitalno potpisan.")
+      } else {
+        toast.warning("PDF preuzet bez digitalnog potpisa.")
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Greška pri preuzimanju PDF-a")
+    } finally {
+      downloadingRef.current.delete(record.id)
+      setDownloadingId(null)
+    }
+  }
 
   const { canCreateMedicalRecord, canEditMedicalRecord } = usePermissions()
   const { recordTypes, tipLabelMap, tipColorMap, isCezihEligible } = useRecordTypeMaps()
@@ -196,6 +230,19 @@ export function RecordList({ patientId, hasCezihIdentifier = false }: RecordList
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      onClick={() => handleDownloadPdf(r)}
+                      disabled={downloadingId === r.id}
+                      title="Preuzmi PDF"
+                    >
+                      {downloadingId === r.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => {
                         setSendRecordId(r.id)
                         setSendNalazOpen(true)
@@ -210,6 +257,7 @@ export function RecordList({ patientId, hasCezihIdentifier = false }: RecordList
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => setEditRecord(r)}
+                        title="Uredi"
                       >
                         <PencilIcon className="h-4 w-4" />
                       </Button>

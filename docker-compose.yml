@@ -101,6 +101,8 @@ services:
       APP_DEBUG: "false"
       DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/medical_mvp
       CORS_ORIGINS: https://${DOMAIN}
+    volumes:
+      - ./uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy

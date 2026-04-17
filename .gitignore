@@ -62,6 +62,7 @@ screenshot_*.png
 
 # Uploads (user-generated)
 backend/uploads/
+uploads/
 
 # Python egg-info
 *.egg-info/

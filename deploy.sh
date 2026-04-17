@@ -7,6 +7,9 @@ cd "$SCRIPT_DIR"
 echo "=== Pulling latest code ==="
 git pull origin main
 
+echo "=== Ensuring persistent directories exist ==="
+mkdir -p uploads
+
 echo "=== Tagging current images for rollback ==="
 docker compose images -q 2>/dev/null | xargs -r docker tag 2>/dev/null || true
 
