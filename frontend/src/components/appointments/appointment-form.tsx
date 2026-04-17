@@ -28,6 +28,8 @@ import {
   APPOINTMENT_VRSTA,
   APPOINTMENT_STATUS,
   DURATION_OPTIONS,
+  WORKING_HOURS_START,
+  WORKING_HOURS_END,
 } from "@/lib/constants"
 import {
   useCreateAppointment,
@@ -35,6 +37,7 @@ import {
   useDoctors,
 } from "@/lib/hooks/use-appointments"
 import { usePatients } from "@/lib/hooks/use-patients"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import type { Appointment, AppointmentCreate } from "@/lib/types"
 
 function formatLocalDate(d: Date): string {
@@ -43,6 +46,10 @@ function formatLocalDate(d: Date): string {
   const day = String(d.getDate()).padStart(2, "0")
   return `${y}-${m}-${day}`
 }
+
+const pad = (n: number) => String(n).padStart(2, "0")
+const WORK_START_LABEL = `${pad(WORKING_HOURS_START)}:00`
+const WORK_END_LABEL = `${pad(WORKING_HOURS_END)}:00`
 
 const appointmentSchema = z.object({
   patient_id: z.string().min(1, "Pacijent je obavezan"),
@@ -54,6 +61,22 @@ const appointmentSchema = z.object({
   napomena: z.string().optional(),
   status: z.string().optional(),
 })
+
+function getOutsideHoursReason(vrijeme: string, trajanje: number): string | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(vrijeme)
+  if (!match) return null
+  const startMin = Number(match[1]) * 60 + Number(match[2])
+  const endMin = startMin + trajanje
+  const workStart = WORKING_HOURS_START * 60
+  const workEnd = WORKING_HOURS_END * 60
+  if (startMin < workStart || startMin >= workEnd) {
+    return `Početak termina je izvan radnog vremena (${WORK_START_LABEL}–${WORK_END_LABEL}).`
+  }
+  if (endMin > workEnd) {
+    return `Termin završava nakon radnog vremena (${WORK_END_LABEL}).`
+  }
+  return null
+}
 
 type AppointmentFormData = z.infer<typeof appointmentSchema>
 
@@ -78,6 +101,10 @@ export function AppointmentForm({
   const { data: doctorsData } = useDoctors()
   const [patientSearch, setPatientSearch] = useState("")
   const [patientDropdownOpen, setPatientDropdownOpen] = useState(false)
+  const [outsideHoursWarning, setOutsideHoursWarning] = useState<{
+    reason: string
+    data: AppointmentFormData
+  } | null>(null)
   const { data: patientsData } = usePatients(patientSearch, 0, 20)
   const patientSearchRef = useRef<HTMLInputElement>(null)
 
@@ -148,6 +175,15 @@ export function AppointmentForm({
   }, [open, doctors, defaultDoktorId, setValue, getValues])
 
   async function onSubmit(data: AppointmentFormData) {
+    const reason = getOutsideHoursReason(data.vrijeme, data.trajanje_minuta)
+    if (reason) {
+      setOutsideHoursWarning({ reason, data })
+      return
+    }
+    await performSubmit(data)
+  }
+
+  async function performSubmit(data: AppointmentFormData) {
     try {
       const datum_vrijeme = new Date(`${data.datum}T${data.vrijeme}:00`).toISOString()
 
@@ -416,6 +452,27 @@ export function AppointmentForm({
           </div>
         </form>
       </DialogContent>
+      <ConfirmDialog
+        open={outsideHoursWarning !== null}
+        onOpenChange={(o) => {
+          if (!o) setOutsideHoursWarning(null)
+        }}
+        title="Termin izvan radnog vremena"
+        description={
+          outsideHoursWarning
+            ? `${outsideHoursWarning.reason} Želite li svejedno kreirati termin?`
+            : ""
+        }
+        confirmLabel="Svejedno kreiraj"
+        cancelLabel="Odustani"
+        loading={isSubmitting}
+        onConfirm={async () => {
+          if (!outsideHoursWarning) return
+          const data = outsideHoursWarning.data
+          setOutsideHoursWarning(null)
+          await performSubmit(data)
+        }}
+      />
     </Dialog>
   )
 }

@@ -45,8 +45,8 @@ export const APPOINTMENT_STATUS_COLORS: Record<string, string> = {
   nije_dosao: "bg-orange-100 text-orange-700",
 };
 
-export const WORKING_HOURS_START = 8;
-export const WORKING_HOURS_END = 20;
+export const WORKING_HOURS_START = 6;
+export const WORKING_HOURS_END = 21;
 export const SLOT_GRANULARITY = 15;
 
 export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330] as const;
