@@ -276,8 +276,7 @@ export function UserFormDialog({
             <p className="text-xs text-muted-foreground">
               Napomena: Digitalno potpisivanje preuzetih PDF nalaza uvijek
               zahtijeva pametnu karticu u čitaču. Bez kartice se PDF preuzima
-              nepotpisan. Odabir ovdje utječe samo na CEZIH, ne na preuzimanje
-              PDF-a.
+              nepotpisan.
             </p>
           </div>
 
