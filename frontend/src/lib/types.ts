@@ -627,6 +627,7 @@ export interface PatientCezihSummary {
   insurance: PatientCezihInsurance;
   e_nalaz_history: PatientCezihENalaz[];
   e_recept_history: PatientCezihERecept[];
+  identifier_label?: string | null;
 }
 
 // --- CEZIH Dashboard Stats ---

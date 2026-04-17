@@ -156,6 +156,12 @@ async def provjera_osiguranja(
             db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
             http_client=_http_client(request),
         )
+    if data.identifier_type and data.identifier_value:
+        return await cezih.insurance_check_by_identifier(
+            data.identifier_type, data.identifier_value,
+            db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+            http_client=_http_client(request),
+        )
     if data.mbo:
         return await cezih.insurance_check_by_mbo(
             data.mbo,
@@ -319,6 +325,10 @@ async def get_patient_cezih_summary(
 
     # Insurance: read from patient record (persisted on each insurance check)
     from app.models.patient import Patient
+    from app.services.cezih.service import (
+        _IDENTIFIER_LABEL_MAP,
+        resolve_cezih_identifier,
+    )
 
     patient = await db.get(Patient, patient_id)
     insurance = PatientCezihInsurance()
@@ -329,10 +339,19 @@ async def get_patient_cezih_summary(
             last_checked=patient.cezih_insurance_checked_at,
         )
 
+    identifier_label: str | None = None
+    if patient:
+        try:
+            system_uri, _ = resolve_cezih_identifier(patient)
+            identifier_label = _IDENTIFIER_LABEL_MAP.get(system_uri)
+        except Exception:
+            identifier_label = None
+
     return PatientCezihSummary(
         insurance=insurance,
         e_nalaz_history=e_nalaz_history,
         e_recept_history=e_recept_history,
+        identifier_label=identifier_label,
     )
 
 

@@ -186,6 +186,11 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
         <CardTitle className="text-lg flex items-center gap-2">
           <FileText className="h-5 w-5" />
           e-Karton iz CEZIH-a
+          {summary?.identifier_label && (
+            <Badge variant="outline" className="text-xs font-normal" title="Identifikator korišten za dohvat iz CEZIH-a">
+              {summary.identifier_label}
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

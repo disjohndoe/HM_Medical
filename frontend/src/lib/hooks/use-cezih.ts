@@ -138,6 +138,30 @@ export function useInsuranceCheckByMbo() {
   })
 }
 
+export type AdhocIdentifierType = "mbo" | "ehic" | "putovnica"
+
+/** Ad-hoc insurance check by any CEZIH identifier type (MBO, EHIC, passport). */
+export function useInsuranceCheckByIdentifier() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      identifier_type,
+      identifier_value,
+    }: {
+      identifier_type: AdhocIdentifierType
+      identifier_value: string
+    }) =>
+      api.post<InsuranceCheckResponse>("/cezih/provjera-osiguranja", {
+        identifier_type,
+        identifier_value,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
+    },
+  })
+}
+
 export function useSendENalaz() {
   const queryClient = useQueryClient()
   return useMutation({

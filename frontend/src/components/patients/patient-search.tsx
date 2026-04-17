@@ -15,7 +15,7 @@ interface PatientSearchProps {
 export function PatientSearch({
   value,
   onChange,
-  placeholder = "Pretraži pacijente...",
+  placeholder = "Pretraži po imenu, OIB-u, MBO-u, putovnici, EHIC-u...",
   className,
 }: PatientSearchProps) {
   return (

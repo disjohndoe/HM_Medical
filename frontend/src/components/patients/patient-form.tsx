@@ -43,6 +43,30 @@ const patientSchema = z.object({
       (v) => !v || /^\d{9}$/.test(v),
       "MBO mora imati točno 9 znamenki"
     ),
+  broj_putovnice: z
+    .string()
+    .nullable()
+    .optional()
+    .refine(
+      (v) => !v || /^[A-Za-z0-9]{5,15}$/.test(v),
+      "Broj putovnice mora imati 5-15 alfanumeričkih znakova",
+    ),
+  ehic_broj: z
+    .string()
+    .nullable()
+    .optional()
+    .refine(
+      (v) => !v || /^[0-9A-Za-z]{20}$/.test(v),
+      "EHIC broj mora imati točno 20 znakova",
+    ),
+  drzavljanstvo: z
+    .string()
+    .nullable()
+    .optional()
+    .refine(
+      (v) => !v || /^[A-Za-z]{2,3}$/.test(v),
+      "Državljanstvo mora biti ISO-3166 kod (2 ili 3 slova)",
+    ),
   adresa: z.string().nullable().optional(),
   grad: z.string().nullable().optional(),
   postanski_broj: z.string().nullable().optional(),
@@ -85,6 +109,9 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
           spol: patient.spol ?? null,
           oib: patient.oib ?? null,
           mbo: patient.mbo ?? null,
+          broj_putovnice: patient.broj_putovnice ?? null,
+          ehic_broj: patient.ehic_broj ?? null,
+          drzavljanstvo: patient.drzavljanstvo ?? null,
           adresa: patient.adresa ?? null,
           grad: patient.grad ?? null,
           postanski_broj: patient.postanski_broj ?? null,
@@ -101,6 +128,9 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
           spol: null,
           oib: null,
           mbo: null,
+          broj_putovnice: null,
+          ehic_broj: null,
+          drzavljanstvo: null,
           adresa: null,
           grad: null,
           postanski_broj: null,
@@ -119,6 +149,9 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
         email: data.email || null,
         oib: data.oib || null,
         mbo: data.mbo || null,
+        broj_putovnice: data.broj_putovnice || null,
+        ehic_broj: data.ehic_broj || null,
+        drzavljanstvo: data.drzavljanstvo ? data.drzavljanstvo.toUpperCase() : null,
       })
       toast.success(isEdit ? "Pacijent ažuriran" : "Pacijent kreiran")
       if (!isEdit) {
@@ -210,6 +243,66 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
           </div>
         </CardContent>
       </Card>
+
+      {/* Podaci za strane pacijente — vidljivo samo ako pacijent nema MBO */}
+      {isEdit && !patient?.mbo && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Strani pacijent</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="drzavljanstvo">Državljanstvo (ISO kod)</Label>
+              <Input
+                id="drzavljanstvo"
+                maxLength={3}
+                placeholder="npr. ITA, DEU, AUT"
+                {...register("drzavljanstvo")}
+              />
+              {errors.drzavljanstvo && (
+                <p className="text-sm text-destructive">{errors.drzavljanstvo.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="broj_putovnice">Broj putovnice</Label>
+              <Input
+                id="broj_putovnice"
+                maxLength={15}
+                placeholder="5-15 alfanumeričkih znakova"
+                {...register("broj_putovnice")}
+              />
+              {errors.broj_putovnice && (
+                <p className="text-sm text-destructive">{errors.broj_putovnice.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ehic_broj">EHIC broj</Label>
+              <Input
+                id="ehic_broj"
+                maxLength={20}
+                placeholder="20 znakova s EHIC kartice"
+                {...register("ehic_broj")}
+              />
+              {errors.ehic_broj && (
+                <p className="text-sm text-destructive">{errors.ehic_broj.message}</p>
+              )}
+            </div>
+            {patient?.cezih_patient_id && (
+              <div className="space-y-2">
+                <Label>CEZIH identifikator</Label>
+                <Input
+                  value={patient.cezih_patient_id}
+                  readOnly
+                  className="font-mono bg-muted"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Dodijeljeno kroz PMIR registraciju — ne može se mijenjati.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Kontakt podaci */}
       <Card>

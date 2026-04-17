@@ -7,22 +7,75 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { useInsuranceCheckByMbo } from "@/lib/hooks/use-cezih"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  useInsuranceCheckByIdentifier,
+  type AdhocIdentifierType,
+} from "@/lib/hooks/use-cezih"
 import { OSIGURANJE_STATUS } from "@/lib/constants"
 import { formatDateHR } from "@/lib/utils"
 
+type IdType = AdhocIdentifierType
+
+const ID_CONFIG: Record<IdType, {
+  label: string
+  placeholder: string
+  validate: (v: string) => boolean
+  errorMsg: string
+  sanitize?: (v: string) => string
+}> = {
+  mbo: {
+    label: "MBO",
+    placeholder: "MBO (9 znamenki)",
+    validate: (v) => /^\d{9}$/.test(v),
+    errorMsg: "MBO mora imati točno 9 znamenki",
+    sanitize: (v) => v.replace(/\D/g, "").slice(0, 9),
+  },
+  ehic: {
+    label: "EHIC",
+    placeholder: "EHIC broj (20 znakova)",
+    validate: (v) => /^[0-9A-Za-z]{20}$/.test(v),
+    errorMsg: "EHIC broj mora imati točno 20 alfanumeričkih znakova",
+    sanitize: (v) => v.replace(/[^0-9A-Za-z]/g, "").slice(0, 20),
+  },
+  putovnica: {
+    label: "Putovnica",
+    placeholder: "Broj putovnice (5-15 znakova)",
+    validate: (v) => /^[A-Za-z0-9]{5,15}$/.test(v),
+    errorMsg: "Broj putovnice mora imati 5-15 alfanumeričkih znakova",
+    sanitize: (v) => v.replace(/[^A-Za-z0-9]/g, "").slice(0, 15),
+  },
+}
+
 export function InsuranceCheck() {
-  const [mbo, setMbo] = useState("")
-  const checkInsurance = useInsuranceCheckByMbo()
+  const [idType, setIdType] = useState<IdType>("mbo")
+  const [value, setValue] = useState("")
+  const checkInsurance = useInsuranceCheckByIdentifier()
+
+  const config = ID_CONFIG[idType]
 
   const handleCheck = () => {
-    if (!mbo || mbo.length !== 9 || !/^\d{9}$/.test(mbo)) {
-      toast.error("MBO mora imati točno 9 znamenki")
+    if (!config.validate(value)) {
+      toast.error(config.errorMsg)
       return
     }
-    checkInsurance.mutate(mbo, {
-      onError: (err) => toast.error(err.message),
-    })
+    checkInsurance.mutate(
+      { identifier_type: idType, identifier_value: value },
+      { onError: (err) => toast.error(err.message) },
+    )
+  }
+
+  const handleTypeChange = (v: IdType | null) => {
+    if (!v) return
+    setIdType(v)
+    setValue("")
+    checkInsurance.reset()
   }
 
   const result = checkInsurance.data
@@ -35,16 +88,25 @@ export function InsuranceCheck() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
+          <Select value={idType} onValueChange={handleTypeChange}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mbo">MBO</SelectItem>
+              <SelectItem value="ehic">EHIC</SelectItem>
+              <SelectItem value="putovnica">Putovnica</SelectItem>
+            </SelectContent>
+          </Select>
           <Input
-            placeholder="MBO (9 znamenki)"
-            value={mbo}
-            onChange={(e) => setMbo(e.target.value.replace(/\D/g, "").slice(0, 9))}
-            maxLength={9}
+            placeholder={config.placeholder}
+            value={value}
+            onChange={(e) => setValue(config.sanitize ? config.sanitize(e.target.value) : e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCheck()}
           />
           <Button
             onClick={handleCheck}
-            disabled={checkInsurance.isPending || mbo.length !== 9}
+            disabled={checkInsurance.isPending || !config.validate(value)}
           >
             {checkInsurance.isPending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -68,14 +130,18 @@ export function InsuranceCheck() {
                 )}
               </div>
               <div className="grid gap-2 text-sm sm:grid-cols-2">
-                <div>
-                  <span className="text-muted-foreground">MBO:</span>{" "}
-                  <span className="font-mono">{result.mbo}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">OIB:</span>{" "}
-                  <span className="font-mono">{result.oib}</span>
-                </div>
+                {result.mbo && (
+                  <div>
+                    <span className="text-muted-foreground">MBO:</span>{" "}
+                    <span className="font-mono">{result.mbo}</span>
+                  </div>
+                )}
+                {result.oib && (
+                  <div>
+                    <span className="text-muted-foreground">OIB:</span>{" "}
+                    <span className="font-mono">{result.oib}</span>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Datum rođenja:</span>{" "}
                   {formatDateHR(result.datum_rodjenja)}

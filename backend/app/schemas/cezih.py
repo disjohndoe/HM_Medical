@@ -1,7 +1,8 @@
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class CezihImportRequest(BaseModel):
@@ -9,11 +10,25 @@ class CezihImportRequest(BaseModel):
 
 
 class InsuranceCheckRequest(BaseModel):
-    # Ad-hoc MBO lookup (standalone CEZIH card) OR local patient (e-Karton flow).
-    # Exactly one must be set. patient_id resolves the correct CEZIH identifier
-    # (MBO > jedinstveni-id > EHIC > passport) server-side.
+    # Three mutually exclusive inputs:
+    # - patient_id: local patient → resolver picks MBO/CEZIH-ID/EHIC/putovnica
+    # - mbo: legacy ad-hoc MBO lookup (kept for backward compatibility)
+    # - identifier_type + identifier_value: ad-hoc lookup by any identifier type
     patient_id: UUID | None = None
     mbo: str | None = None
+    identifier_type: Literal["mbo", "ehic", "putovnica"] | None = None
+    identifier_value: str | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_input(self) -> "InsuranceCheckRequest":
+        has_patient = self.patient_id is not None
+        has_legacy_mbo = bool(self.mbo)
+        has_typed = bool(self.identifier_type and self.identifier_value)
+        if sum([has_patient, has_legacy_mbo, has_typed]) != 1:
+            raise ValueError(
+                "Proslijedite točno jedno: patient_id, mbo, ili (identifier_type + identifier_value)"
+            )
+        return self
 
 
 class PatientIdentifier(BaseModel):
@@ -162,6 +177,9 @@ class PatientCezihSummary(BaseModel):
     insurance: PatientCezihInsurance
     e_nalaz_history: list[PatientCezihENalaz] = []
     e_recept_history: list[PatientCezihERecept] = []
+    # Which identifier resolve_cezih_identifier picked for this patient:
+    # "MBO" | "CEZIH ID" | "EHIC" | "Putovnica" | None (no identifier at all).
+    identifier_label: str | None = None
 
 
 # --- Feature 3: Dashboard Stats ---
