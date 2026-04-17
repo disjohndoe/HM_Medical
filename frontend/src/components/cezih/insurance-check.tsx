@@ -80,6 +80,8 @@ export function InsuranceCheck() {
 
   const result = checkInsurance.data
   const statusInfo = result ? OSIGURANJE_STATUS[result.status_osiguranja] : null
+  const submittedType: IdType = checkInsurance.variables?.identifier_type ?? "mbo"
+  const submittedLabel = ID_CONFIG[submittedType].label
 
   return (
     <Card>
@@ -132,7 +134,7 @@ export function InsuranceCheck() {
               <div className="grid gap-2 text-sm sm:grid-cols-2">
                 {result.mbo && (
                   <div>
-                    <span className="text-muted-foreground">MBO:</span>{" "}
+                    <span className="text-muted-foreground">{submittedLabel}:</span>{" "}
                     <span className="font-mono">{result.mbo}</span>
                   </div>
                 )}
