@@ -132,6 +132,7 @@ async def create_user(
         titula=data.titula,
         telefon=data.telefon,
         role=data.role,
+        cezih_signing_method=data.cezih_signing_method,
     )
     db.add(user)
     await db.flush()

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, PencilIcon, Trash2, Loader2, CreditCard } from "lucide-react"
+import { Plus, PencilIcon, Trash2, Loader2, CreditCard, Smartphone } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -54,7 +54,7 @@ export default function KorisniciPage() {
       ime_prezime: (u) => `${u.prezime ?? ""} ${u.ime ?? ""}`.trim(),
       uloga: (u) => u.role,
       status: (u) => (u.is_active ? 0 : 1),
-      kartica: (u) => u.card_holder_name || "",
+      potpisivanje: (u) => u.cezih_signing_method,
     },
   })
 
@@ -68,6 +68,7 @@ export default function KorisniciPage() {
       role: data.role,
       titula: data.titula ?? undefined,
       telefon: data.telefon ?? undefined,
+      cezih_signing_method: data.cezih_signing_method,
     }
     createUser.mutate(createData, {
       onSuccess: () => {
@@ -156,7 +157,7 @@ export default function KorisniciPage() {
                   <SortableTableHead columnKey="email" label="Email" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden sm:table-cell" />
                   <SortableTableHead columnKey="uloga" label="Uloga" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} />
                   <SortableTableHead columnKey="status" label="Status" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden md:table-cell" />
-                  <SortableTableHead columnKey="kartica" label="Kartica" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden md:table-cell" />
+                  <SortableTableHead columnKey="potpisivanje" label="Kartica / Mobitel" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden md:table-cell" />
                   <SortableTableHead columnKey="last_login_at" label="Zadnja prijava" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden lg:table-cell" />
                   <TableHead className="text-right">Akcije</TableHead>
                 </TableRow>
@@ -180,13 +181,16 @@ export default function KorisniciPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      {user.card_holder_name ? (
+                      {user.cezih_signing_method === "smartcard" ? (
                         <Badge variant="outline" className="gap-1">
                           <CreditCard className="h-3 w-3" />
-                          {user.card_holder_name}
+                          {user.card_holder_name || "Kartica"}
                         </Badge>
                       ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
+                        <Badge variant="outline" className="gap-1">
+                          <Smartphone className="h-3 w-3" />
+                          Mobitel
+                        </Badge>
                       )}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">

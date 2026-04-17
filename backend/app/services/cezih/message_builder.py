@@ -328,12 +328,11 @@ def _debug_dump_jws(source: str, jws_b64: str) -> None:
 
 
 async def _resolve_signing_method() -> str:
-    """Resolve the active signing method for the current request.
+    """Resolve the active signing method for the current request from the user's
+    `cezih_signing_method` column (always non-NULL).
 
-    Order:
-      1. Per-user `User.cezih_signing_method` (if column is non-NULL)
-      2. System fallback `settings.CEZIH_SIGNING_METHOD`
-      3. Hard default "extsigner" (the working path)
+    Fallback `settings.CEZIH_SIGNING_METHOD` only applies to background tasks with
+    no request-bound user (context var empty) — normal API traffic always has one.
     """
     from sqlalchemy import select
 

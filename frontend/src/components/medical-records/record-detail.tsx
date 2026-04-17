@@ -88,6 +88,12 @@ export function RecordDetail({ open, onOpenChange, record, patientId, hasCezihId
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
+      const digitallySigned = res.headers.get("x-pdf-digitally-signed") === "true"
+      if (digitallySigned) {
+        toast.success("PDF preuzet i digitalno potpisan.")
+      } else {
+        toast.warning("PDF preuzet bez digitalnog potpisa.")
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Greška pri preuzimanju PDF-a")
     } finally {

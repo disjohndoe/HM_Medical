@@ -22,7 +22,7 @@ from app.schemas.medical_record import (
 )
 from app.services import audit_service, medical_record_service
 from app.services.pdf_generator import NalazPDFGenerator
-from app.services.pdf_signer import sign_pdf
+from app.services.pdf_signer import SignPdfResult, sign_pdf
 from app.utils.pagination import PaginatedResponse
 
 router = APIRouter(tags=["medical-records"])
@@ -101,19 +101,14 @@ async def download_record_pdf(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate and download a digitally signed medical finding as a PDF document."""
+    """Generate and download a medical finding as a PDF document.
+
+    Digital signing via AKD smart card is attempted; if card/agent is unavailable
+    the unsigned PDF is returned so the doctor can sign by hand. The response
+    headers (X-Pdf-Digitally-Signed, X-Pdf-Unsigned-Reason) expose the outcome.
+    """
     record = await medical_record_service.get_record(
         db, current_user.tenant_id, record_id, user_role=current_user.role,
-    )
-
-    await audit_service.write_audit(
-        db,
-        tenant_id=current_user.tenant_id,
-        user_id=current_user.id,
-        action="medical_record_pdf_download",
-        resource_type="medical_record",
-        resource_id=record_id,
-        details={"patient_id": str(record["patient_id"])},
     )
 
     tenant = await db.get(Tenant, current_user.tenant_id)
@@ -165,19 +160,26 @@ async def download_record_pdf(
     prezime_doc = doctor.prezime if doctor else ""
     doctor_name = f"{titula} {ime} {prezime_doc}".strip()
     location = tenant.grad or ""
-    try:
-        pdf_bytes = await sign_pdf(
-            pdf_bytes,
-            tenant_id=current_user.tenant_id,
-            doctor_name=doctor_name,
-            location=location,
-        )
-    except Exception:
-        logger.exception("PDF signing failed for record %s", record_id)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Greška pri potpisivanju PDF-a. Pokušajte ponovo.",
-        ) from None
+    sign_result: SignPdfResult = await sign_pdf(
+        pdf_bytes,
+        tenant_id=current_user.tenant_id,
+        doctor_name=doctor_name,
+        location=location,
+    )
+
+    await audit_service.write_audit(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="medical_record_pdf_download",
+        resource_type="medical_record",
+        resource_id=record_id,
+        details={
+            "patient_id": str(record["patient_id"]),
+            "signed": sign_result.signed,
+            "sign_reason": sign_result.reason,
+        },
+    )
 
     def _to_ascii(s: str) -> str:
         """Convert Croatian characters to ASCII equivalents."""
@@ -205,12 +207,17 @@ async def download_record_pdf(
     # Fallback ASCII filename (transliterated patient name included)
     ascii_fallback = f"{tip_slug}_{ime_ascii}_{prezime_ascii}_{datum}_{short_id}.pdf"
 
+    headers = {
+        "Content-Disposition": f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded_filename}',
+        "X-Pdf-Digitally-Signed": "true" if sign_result.signed else "false",
+    }
+    if not sign_result.signed and sign_result.reason:
+        headers["X-Pdf-Unsigned-Reason"] = sign_result.reason
+
     return StreamingResponse(
-        BytesIO(pdf_bytes),
+        BytesIO(sign_result.pdf_bytes),
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded_filename}',
-        },
+        headers=headers,
     )
 
 

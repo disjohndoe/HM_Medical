@@ -26,7 +26,7 @@ class UserRead(BaseModel):
     card_certificate_serial: str | None = None
     card_required: bool = False
     practitioner_id: str | None = None
-    cezih_signing_method: CezihSigningMethod | None = None
+    cezih_signing_method: CezihSigningMethod
 
     model_config = {"from_attributes": True}
 
@@ -44,6 +44,7 @@ class UserCreate(BaseModel):
     telefon: str | None = None
     role: str = "doctor"
     practitioner_id: str | None = None
+    cezih_signing_method: CezihSigningMethod = "extsigner"
 
 
 class UserUpdate(BaseModel):
@@ -59,6 +60,7 @@ class UserUpdate(BaseModel):
     card_required: bool | None = None
     practitioner_id: str | None = None
     cezih_signing_method: CezihSigningMethod | None = None
+    """None on UserUpdate means 'do not change'; NULL values are no longer accepted."""
 
 
 class CardBindingRequest(BaseModel):

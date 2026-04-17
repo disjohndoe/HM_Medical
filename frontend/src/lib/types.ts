@@ -36,7 +36,7 @@ export interface User {
   card_holder_name: string | null;
   card_certificate_oib: string | null;
   practitioner_id: string | null;
-  cezih_signing_method: CezihSigningMethod | null;
+  cezih_signing_method: CezihSigningMethod;
   tenant?: Tenant;
 }
 
@@ -71,6 +71,7 @@ export interface UserCreate {
   telefon?: string;
   role: string;
   practitioner_id?: string | null;
+  cezih_signing_method?: CezihSigningMethod;
 }
 
 export interface CezihPatientImport {
