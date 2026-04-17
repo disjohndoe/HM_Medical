@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation"
 import { Search, Loader2, UserPlus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -192,12 +192,13 @@ export function InsuranceCheck() {
               {resultHasPatient && (
                 <div className="flex items-center gap-2 pt-1">
                   {importedId ? (
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/pacijenti/${importedId}`}>
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Otvori karton
-                      </Link>
-                    </Button>
+                    <Link
+                      href={`/pacijenti/${importedId}`}
+                      className={buttonVariants({ variant: "outline", size: "sm" })}
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Otvori karton
+                    </Link>
                   ) : (
                     <Button
                       size="sm"

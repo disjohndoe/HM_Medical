@@ -5,7 +5,7 @@ import { Globe, Loader2, CheckCircle, ExternalLink, Search, UserPlus } from "luc
 import { toast } from "sonner"
 import Link from "next/link"
 
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -190,12 +190,13 @@ export function ForeignerSearch() {
 
             <div className="pt-2 flex items-center gap-2">
               {existingLocalId ? (
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/pacijenti/${existingLocalId}`}>
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Otvori karton
-                  </Link>
-                </Button>
+                <Link
+                  href={`/pacijenti/${existingLocalId}`}
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Otvori karton
+                </Link>
               ) : (
                 <Button
                   size="sm"
