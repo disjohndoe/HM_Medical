@@ -41,12 +41,14 @@ interface RecordFormProps {
   onOpenChange: (open: boolean) => void
   patientId: string
   record?: MedicalRecord | null
+  onSaved?: (record: MedicalRecord) => void
+  submitLabel?: string
 }
 
 const ACCEPTED_TYPES = ".jpeg,.jpg,.png,.pdf"
 const MAX_SIZE_MB = 10
 
-export function RecordForm({ open, onOpenChange, patientId, record }: RecordFormProps) {
+export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel }: RecordFormProps) {
   const isEdit = !!record
   const createMutation = useCreateMedicalRecord()
   const updateMutation = useUpdateMedicalRecord()
@@ -161,8 +163,9 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
           sadrzaj: data.sadrzaj,
           preporucena_terapija: therapy.length > 0 ? therapy : null,
         }
-        await updateMutation.mutateAsync({ id: record.id, data: payload })
+        const updated = await updateMutation.mutateAsync({ id: record.id, data: payload })
         toast.success("Zapis ažuriran")
+        onSaved?.(updated)
       } else {
         const payload: MedicalRecordCreate = {
           patient_id: patientId,
@@ -431,9 +434,11 @@ export function RecordForm({ open, onOpenChange, patientId, record }: RecordForm
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting
                 ? "Spremanje..."
-                : isEdit
-                  ? "Ažuriraj"
-                  : "Kreiraj"}
+                : submitLabel
+                  ? submitLabel
+                  : isEdit
+                    ? "Ažuriraj"
+                    : "Kreiraj"}
             </Button>
           </div>
         </form>

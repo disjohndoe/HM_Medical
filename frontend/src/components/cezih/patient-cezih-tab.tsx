@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Shield, FileText, Trash2, RefreshCw, CheckCircle2, XCircle } from "lucide-react"
+import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -19,9 +19,11 @@ import {
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
+import { RecordForm } from "@/components/medical-records/record-form"
 import { CaseManagement } from "@/components/cezih/case-management"
 import { VisitManagement } from "@/components/cezih/visit-management"
 import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
+import { useMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { OSIGURANJE_STATUS } from "@/lib/constants"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
@@ -42,7 +44,8 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
   const [cezihSubTab, setCezihSubTab] = useState("posjete")
   const [eReceptOpen, setEReceptOpen] = useState(false)
   const [nalazStornoTarget, setNalazStornoTarget] = useState<string | null>(null)
-  const [nalazReplaceTarget, setNalazReplaceTarget] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<{ recordId: string; referenceId: string } | null>(null)
+  const { data: editRecord } = useMedicalRecord(editTarget?.recordId ?? "")
 
   function handleCheckInsurance() {
     if (!patientMbo) {
@@ -241,10 +244,10 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
                                 variant="ghost"
                                 size="sm"
                                 className="h-8 w-8 p-0"
-                                onClick={() => setNalazReplaceTarget(item.reference_id)}
-                                title="Zamijeni e-Nalaz"
+                                onClick={() => setEditTarget({ recordId: item.record_id, referenceId: item.reference_id! })}
+                                title="Uredi i zamijeni e-Nalaz"
                               >
-                                <RefreshCw className="h-3.5 w-3.5" />
+                                <Pencil className="h-3.5 w-3.5" />
                               </Button>
                               <Button
                                 variant="ghost"
@@ -274,6 +277,25 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
         patientId={patientId}
       />
 
+      <RecordForm
+        open={!!editTarget && !!editRecord}
+        onOpenChange={(open) => !open && setEditTarget(null)}
+        patientId={patientId}
+        record={editRecord ?? null}
+        submitLabel="Spremi i zamijeni na CEZIH"
+        onSaved={(updated) => {
+          const referenceId = editTarget?.referenceId
+          if (!referenceId) return
+          replaceDocument.mutate(
+            { referenceId, record_id: updated.id },
+            {
+              onSuccess: () => toast.success("e-Nalaz zamijenjen na CEZIH"),
+              onError: (err) => toast.error(err.message || "Greška pri zamjeni e-Nalaza"),
+            },
+          )
+        }}
+      />
+
       {/* Storno e-Nalaz confirmation dialog */}
       <ConfirmDialog
         open={!!nalazStornoTarget}
@@ -295,25 +317,6 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
         loading={cancelDocument.isPending}
       />
 
-      {/* Replace e-Nalaz confirmation dialog */}
-      <ConfirmDialog
-        open={!!nalazReplaceTarget}
-        onOpenChange={(open: boolean) => !open && setNalazReplaceTarget(null)}
-        title="Zamjena e-Nalaza"
-        description="Jeste li sigurni da želite zamijeniti ovaj dokument na CEZIH? Stari dokument će biti označen kao zamijenjen."
-        confirmLabel="Zamijeni"
-        onConfirm={() => {
-          if (!nalazReplaceTarget) return
-          replaceDocument.mutate({ referenceId: nalazReplaceTarget }, {
-            onSuccess: () => {
-              toast.success("e-Nalaz zamijenjen")
-              setNalazReplaceTarget(null)
-            },
-            onError: (err) => toast.error(err.message || "Greška pri zamjeni e-Nalaza"),
-          })
-        }}
-        loading={replaceDocument.isPending}
-      />
     </div>
   )
 }
