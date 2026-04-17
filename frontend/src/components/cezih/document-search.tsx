@@ -96,7 +96,6 @@ export function DocumentSearch() {
       onSuccess: () => {
         toast.success("Dokument storniran")
         setCancelTarget(null)
-        refetch()
       },
       onError: (err) => toast.error(err.message || "Greška pri stornu dokumenta"),
     })

@@ -28,6 +28,7 @@ import type {
   CreateVisitRequest,
   PractitionerItem,
   ValueSetExpandResponse,
+  VisitItem,
   VisitResponse,
   VisitsListResponse,
 } from "@/lib/types"
@@ -358,8 +359,37 @@ export function useCreateVisit() {
   return useMutation({
     mutationFn: (data: CreateVisitRequest) =>
       api.post<VisitResponse>("/cezih/visits", data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"], exact: false })
+    onSuccess: (resp, vars) => {
+      // CEZIH QEDm (read) is eventually consistent with the write side — the
+      // new visit is usually not visible in GET /cezih/visits for several
+      // seconds. Insert optimistically so the Posjete table sees it right
+      // away. Do NOT invalidate ["cezih","visits"] — that would trigger a
+      // refetch that blows away the optimistic row before CEZIH catches up.
+      const queryKey = ["cezih", "visits", vars.patient_mbo]
+      const newVisit: VisitItem = {
+        visit_id: resp.visit_id,
+        patient_mbo: vars.patient_mbo,
+        status: resp.status || "in-progress",
+        visit_type: resp.nacin_prijema || vars.nacin_prijema || "6",
+        visit_type_display: null,
+        vrsta_posjete: resp.vrsta_posjete || vars.vrsta_posjete || "1",
+        vrsta_posjete_display: "",
+        tip_posjete: resp.tip_posjete || vars.tip_posjete || "2",
+        tip_posjete_display: "",
+        reason: vars.reason || null,
+        period_start: new Date().toISOString(),
+        period_end: null,
+        service_provider_code: null, // null → isExternalVisit() is false → shows as "Naša"
+        practitioner_id: null,
+        practitioner_ids: [],
+        diagnosis_case_ids: [],
+        _local: true,
+      }
+      qc.setQueryData<VisitsListResponse>(queryKey, (old) => {
+        if (!old) return { visits: [newVisit] }
+        if (old.visits.some((v) => v.visit_id === newVisit.visit_id)) return old
+        return { visits: [newVisit, ...old.visits] }
+      })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
@@ -380,8 +410,39 @@ export function useUpdateVisit() {
         reason, nacin_prijema, vrsta_posjete, tip_posjete,
         diagnosis_case_id, additional_practitioner_id, period_start,
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"], exact: false })
+    onSuccess: (_resp, vars) => {
+      // Optimistic merge — see useCreateVisit comment.
+      const queryKey = ["cezih", "visits", vars.patientMbo]
+      qc.setQueryData<VisitsListResponse>(queryKey, (old) => {
+        if (!old) return old
+        return {
+          visits: old.visits.map((v) =>
+            v.visit_id !== vars.visitId
+              ? v
+              : {
+                  ...v,
+                  ...(vars.reason !== undefined && { reason: vars.reason || null }),
+                  ...(vars.nacin_prijema !== undefined && {
+                    visit_type: vars.nacin_prijema,
+                    visit_type_display: null,
+                  }),
+                  ...(vars.vrsta_posjete !== undefined && {
+                    vrsta_posjete: vars.vrsta_posjete,
+                    vrsta_posjete_display: "",
+                  }),
+                  ...(vars.tip_posjete !== undefined && {
+                    tip_posjete: vars.tip_posjete,
+                    tip_posjete_display: "",
+                  }),
+                  ...(vars.diagnosis_case_id !== undefined && {
+                    diagnosis_case_ids: vars.diagnosis_case_id ? [vars.diagnosis_case_id] : [],
+                  }),
+                  ...(vars.period_start !== undefined && { period_start: vars.period_start }),
+                  _local: true,
+                },
+          ),
+        }
+      })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
@@ -392,8 +453,35 @@ export function useVisitAction() {
   return useMutation({
     mutationFn: ({ visitId, action, patientMbo, periodStart }: { visitId: string; action: string; patientMbo: string; periodStart?: string | null }) =>
       api.post<VisitResponse>(`/cezih/visits/${visitId}/action?mbo=${encodeURIComponent(patientMbo)}`, { action, period_start: periodStart || undefined }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "visits"], exact: false })
+    onSuccess: (_resp, vars) => {
+      // Optimistic status flip — see useCreateVisit comment.
+      const queryKey = ["cezih", "visits", vars.patientMbo]
+      const newStatus =
+        vars.action === "close" ? "finished"
+        : vars.action === "reopen" ? "in-progress"
+        : vars.action === "storno" ? "entered-in-error"
+        : null
+      if (newStatus) {
+        const nowIso = new Date().toISOString()
+        qc.setQueryData<VisitsListResponse>(queryKey, (old) => {
+          if (!old) return old
+          return {
+            visits: old.visits.map((v) =>
+              v.visit_id !== vars.visitId
+                ? v
+                : {
+                    ...v,
+                    status: newStatus,
+                    period_end:
+                      vars.action === "close" ? nowIso
+                      : vars.action === "reopen" ? null
+                      : v.period_end,
+                    _local: true,
+                  },
+            ),
+          }
+        })
+      }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
   })
@@ -571,8 +659,21 @@ export function useReplaceDocument() {
   return useMutation({
     mutationFn: ({ referenceId, record_id }: { referenceId: string; record_id?: string }) =>
       api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}`, record_id ? { record_id } : {}),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "documents"] })
+    onSuccess: (_resp, vars) => {
+      // CEZIH MHD (read) is eventually consistent with replace. Mark the
+      // replaced row as "Zatvorena" (superseded) optimistically so the user
+      // sees the status change right away. A new "current" row for the
+      // replacement will appear on the next natural refetch of the search.
+      // Do NOT invalidate ["cezih","documents"] — would wipe this flip.
+      qc.setQueriesData<DocumentSearchItem[]>(
+        { queryKey: ["cezih", "documents"], exact: false },
+        (old) => {
+          if (!old) return old
+          return old.map((d) =>
+            d.id === vars.referenceId ? { ...d, status: "Zatvorena", _local: true } : d,
+          )
+        },
+      )
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
@@ -585,8 +686,18 @@ export function useCancelDocument() {
   return useMutation({
     mutationFn: (referenceId: string) =>
       api.delete<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cezih", "documents"] })
+    onSuccess: (_resp, referenceId) => {
+      // CEZIH MHD eventually-consistent — optimistic status flip to
+      // "Pogreška" (entered-in-error) so the user sees immediate feedback.
+      qc.setQueriesData<DocumentSearchItem[]>(
+        { queryKey: ["cezih", "documents"], exact: false },
+        (old) => {
+          if (!old) return old
+          return old.map((d) =>
+            d.id === referenceId ? { ...d, status: "Pogreška", _local: true } : d,
+          )
+        },
+      )
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })

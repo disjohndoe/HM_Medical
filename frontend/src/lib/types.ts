@@ -817,6 +817,10 @@ export interface VisitItem {
   practitioner_id: string | null;
   practitioner_ids: string[];
   diagnosis_case_ids: string[];
+  // Frontend-only: set when inserted optimistically after a create/update/action
+  // mutation. CEZIH QEDm is eventually consistent so the real record may take
+  // several seconds to appear in GET /cezih/visits. Lost on natural refetch.
+  _local?: boolean;
 }
 
 export interface VisitsListResponse {
@@ -853,6 +857,9 @@ export interface DocumentSearchItem {
   status: string;
   type?: string;
   content_url?: string;
+  // Frontend-only: set when the row was mutated optimistically (cancel/replace).
+  // Real CEZIH state will overwrite this on the next natural refetch.
+  _local?: boolean;
 }
 
 export interface DocumentActionResponse {
