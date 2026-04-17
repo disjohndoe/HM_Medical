@@ -815,10 +815,122 @@ async def _fetch_fresh_local_visits(
 def _merge_with_local(
     remote: list[dict], local: list[dict], id_key: str,
 ) -> list[dict]:
-    """Prepend local rows whose id_key is not present in remote list."""
-    seen = {row.get(id_key) for row in remote if row.get(id_key)}
-    extra = [row for row in local if row.get(id_key) and row[id_key] not in seen]
-    return extra + remote
+    """Merge local mirror rows into the remote list.
+
+    - Rows present in both → prefer the *local* copy for fields it owns
+      (clinical_status/verification_status for cases; status/period_end
+      for visits). CEZIH's QEDm read side lags action messages by minutes,
+      so its cached state is often staler than our mirror.
+    - Rows only in local → prepend (CEZIH hasn't caught up to the create yet).
+    - Rows only in remote → pass through unchanged.
+    """
+    local_by_id = {row[id_key]: row for row in local if row.get(id_key)}
+    merged: list[dict] = []
+    seen_local = set()
+    for row in remote:
+        rid = row.get(id_key)
+        lrow = local_by_id.get(rid) if rid else None
+        if lrow is not None:
+            merged.append({**row, **lrow})
+            seen_local.add(rid)
+        else:
+            merged.append(row)
+    extra = [row for rid, row in local_by_id.items() if rid not in seen_local]
+    return extra + merged
+
+
+# Map CEZIH case action (frontend keyword) → resulting clinical_status.
+# Keep in sync with CASE_ACTION_TO_STATUS in frontend use-cezih.ts.
+_CASE_ACTION_TO_STATUS: dict[str, str] = {
+    "remission": "remission",
+    "relapse": "relapse",
+    "resolve": "resolved",
+    "reopen": "active",
+}
+
+
+async def _update_local_case(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    case_id: str,
+    *,
+    clinical_status: str | None = None,
+    verification_status: str | None = None,
+    icd_code: str | None = None,
+    icd_display: str | None = None,
+    onset_date: str | None = None,
+    note: str | None = None,
+) -> None:
+    """Patch the local CezihCase mirror if it exists. Non-fatal on failure."""
+    if not db or not tenant_id or not case_id:
+        return
+    try:
+        from sqlalchemy import or_
+
+        from app.models.cezih_case import CezihCase
+
+        result = await db.execute(
+            select(CezihCase).where(
+                CezihCase.tenant_id == tenant_id,
+                or_(
+                    CezihCase.cezih_case_id == case_id,
+                    CezihCase.local_case_id == case_id,
+                ),
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return
+        if clinical_status is not None:
+            row.clinical_status = clinical_status
+        if verification_status is not None:
+            row.verification_status = verification_status
+        if icd_code is not None:
+            row.icd_code = icd_code
+        if icd_display is not None:
+            row.icd_display = icd_display
+        if onset_date is not None:
+            row.onset_date = onset_date
+        if note is not None:
+            row.note = note
+        await db.flush()
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to update local CezihCase mirror (non-fatal)")
+
+
+async def _update_local_visit(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    visit_id: str,
+    *,
+    status_str: str | None = None,
+    set_period_end: bool = False,
+    clear_period_end: bool = False,
+) -> None:
+    """Patch the local CezihVisit mirror if it exists. Non-fatal on failure."""
+    if not db or not tenant_id or not visit_id:
+        return
+    try:
+        from app.models.cezih_visit import CezihVisit
+
+        result = await db.execute(
+            select(CezihVisit).where(
+                CezihVisit.tenant_id == tenant_id,
+                CezihVisit.cezih_visit_id == visit_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return
+        if status_str is not None:
+            row.status = status_str
+        if set_period_end:
+            row.period_end = datetime.now(UTC)
+        if clear_period_end:
+            row.period_end = None
+        await db.flush()
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to update local CezihVisit mirror (non-fatal)")
 
 
 # ============================================================
@@ -927,6 +1039,31 @@ async def dispatch_update_case(
         db, tenant_id, user_id, action=f"case_{action}",
         details={"case_id": case_id, "action": action},
     )
+    if action == "create_recurring":
+        new_cezih_id = result.get("cezih_case_id") or ""
+        await _persist_local_case(
+            db, tenant_id, patient_mbo,
+            local_case_id=result.get("local_case_id") or "",
+            cezih_case_id=new_cezih_id,
+            icd_code=result.get("icd_code") or "",
+            icd_display=result.get("icd_display") or "",
+            onset_date=result.get("onset_date") or datetime.now(UTC).strftime("%Y-%m-%d"),
+            verification_status=result.get("verification_status") or "confirmed",
+            note_text=None,
+        )
+        # Mark the new recurrence case as clinical_status=recurrence so the FE
+        # shows it as "Ponavljajući" immediately. _persist_local_case defaults
+        # to "active"; override here via a follow-up update.
+        if new_cezih_id:
+            await _update_local_case(
+                db, tenant_id, new_cezih_id, clinical_status="recurrence",
+            )
+    else:
+        new_status = _CASE_ACTION_TO_STATUS.get(action)
+        if new_status:
+            await _update_local_case(
+                db, tenant_id, case_id, clinical_status=new_status,
+            )
     return result
 
 
@@ -965,6 +1102,13 @@ async def dispatch_update_case_data(
     await _write_audit(
         db, tenant_id, user_id, action="case_update_data",
         details={"case_id": case_id},
+    )
+    await _update_local_case(
+        db, tenant_id, case_id,
+        clinical_status=current_clinical_status,
+        verification_status=verification_status,
+        icd_code=icd_code, icd_display=icd_display,
+        onset_date=onset_date, note=note_text,
     )
     return result
 
@@ -1410,7 +1554,25 @@ async def dispatch_visit_action(
         db, tenant_id, user_id, action=f"visit_{action}",
         details={"visit_id": visit_id, "action": action},
     )
-    return _parse_visit_response(result)
+    parsed = _parse_visit_response(result)
+    # Mirror the new state onto our local CezihVisit row so subsequent
+    # merges don't revert to the creation-time state.
+    if action == "close":
+        await _update_local_visit(
+            db, tenant_id, visit_id,
+            status_str="finished", set_period_end=True,
+        )
+    elif action == "reopen":
+        await _update_local_visit(
+            db, tenant_id, visit_id,
+            status_str="in-progress", clear_period_end=True,
+        )
+    elif action == "storno":
+        await _update_local_visit(
+            db, tenant_id, visit_id,
+            status_str="entered-in-error",
+        )
+    return parsed
 
 
 async def dispatch_list_visits(
