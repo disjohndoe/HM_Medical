@@ -557,7 +557,10 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                       : "Bez povezanog slučaja"}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  alignItemWithTrigger={false}
+                  className="w-auto min-w-(--anchor-width) max-w-[min(90vw,560px)]"
+                >
                   <SelectItem value={NO_CASE}>Bez povezanog slučaja</SelectItem>
                   {activeCases.map((c) => (
                     <SelectItem key={c.case_id} value={c.case_id}>
