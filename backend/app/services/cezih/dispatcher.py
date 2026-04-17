@@ -1649,11 +1649,18 @@ def _parse_visit_response(result: dict) -> dict:
     for entry in result.get("entry", []):
         resource = entry.get("resource", {})
         if resource.get("resourceType") == "Encounter":
+            # CEZIH cross-references by identifikator-posjete (business id),
+            # NOT by Encounter.id (resource id). ITI-65 context.encounter must
+            # carry the business id — falling back to resource.id produces
+            # "Unable to resolve Encounter reference". Mirrors list_visits().
             visit_id = resource.get("id", "")
+            for ident in resource.get("identifier", []):
+                if "identifikator-posjete" in (ident.get("system") or ""):
+                    visit_id = ident.get("value", visit_id)
+                    break
             encounter_status = resource.get("status", "in-progress")
             break
         if resource.get("resourceType") == "MessageHeader":
-            # Encounter ID from focus reference (e.g. "http://fhir.cezih.hr/fhir/Encounter/1469")
             for focus in resource.get("focus", []):
                 ref = focus.get("reference", "")
                 if "Encounter" in ref:

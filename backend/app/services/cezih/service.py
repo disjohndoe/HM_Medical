@@ -289,6 +289,11 @@ async def _build_document_bundle(
     import base64
     import uuid as _uuid
 
+    logger.info(
+        "ITI-65 build: patient_system=%s encounter_id=%r case_id=%r",
+        patient_data.get("identifier_system"), encounter_id, case_id,
+    )
+
     # Build clinical content text
     content_parts: list[str] = []
     if record_data.get("dijagnoza_mkb") or record_data.get("dijagnoza_tekst"):
