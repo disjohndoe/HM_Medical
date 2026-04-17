@@ -192,7 +192,8 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Datum</TableHead>
+                      <TableHead>Datum kreiranja</TableHead>
+                      <TableHead className="hidden sm:table-cell">Datum izmjene</TableHead>
                       <TableHead>Tip</TableHead>
                       <TableHead className="hidden sm:table-cell">Referenca</TableHead>
                       <TableHead className="hidden md:table-cell">Potpis</TableHead>
@@ -201,9 +202,16 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {summary.e_nalaz_history.map((item) => (
+                    {summary.e_nalaz_history.map((item) => {
+                      const sentMs = item.cezih_sent_at ? new Date(item.cezih_sent_at).getTime() : 0
+                      const updatedMs = item.updated_at ? new Date(item.updated_at).getTime() : 0
+                      const wasEdited = sentMs > 0 && updatedMs > sentMs + 60_000
+                      return (
                       <TableRow key={item.record_id}>
                         <TableCell className="text-sm">{formatDateTimeHR(item.datum)}</TableCell>
+                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                          {wasEdited && item.updated_at ? formatDateTimeHR(item.updated_at) : "—"}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">
                             {tipLabelMap[item.tip] || item.tip}
@@ -262,7 +270,8 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
                           )}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )
+                    })}
                   </TableBody>
                 </Table>
               )}

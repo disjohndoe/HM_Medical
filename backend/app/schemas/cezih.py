@@ -144,6 +144,7 @@ class PatientCezihENalaz(BaseModel):
     cezih_storno: bool = False
     cezih_signed: bool = False
     cezih_signed_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class PatientCezihERecept(BaseModel):
