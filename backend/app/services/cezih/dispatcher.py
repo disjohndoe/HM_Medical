@@ -626,6 +626,202 @@ async def foreigner_registration(
 
 
 # ============================================================
+# Local-mirror persistence for cases + visits
+#
+# CEZIH's QEDm read side is eventually consistent — a freshly created
+# case or visit can take seconds to minutes before GET /Condition or
+# GET /Encounter returns it. We mirror fresh rows into our own DB on
+# create and merge them back into the list endpoints for a short window
+# so the UI shows them immediately and they survive a page reload. Dedup
+# happens by cezih_{case,visit}_id — CEZIH is authoritative once it catches up.
+# ============================================================
+
+# How long to keep local rows as "fresh" in the merge window.
+_LOCAL_MIRROR_WINDOW_MINUTES = 10
+
+
+async def _lookup_patient_id(
+    db: AsyncSession, tenant_id: UUID, patient_mbo: str,
+) -> UUID | None:
+    from app.models.patient import Patient
+
+    result = await db.execute(
+        select(Patient.id).where(
+            Patient.tenant_id == tenant_id,
+            Patient.mbo == patient_mbo,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _persist_local_case(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    patient_mbo: str,
+    local_case_id: str,
+    cezih_case_id: str,
+    icd_code: str,
+    icd_display: str,
+    onset_date: str,
+    verification_status: str,
+    note_text: str | None,
+) -> None:
+    if not db or not tenant_id:
+        return
+    try:
+        patient_id = await _lookup_patient_id(db, tenant_id, patient_mbo)
+        if patient_id is None:
+            logger.warning(
+                "Cannot mirror CEZIH case locally: patient with MBO %s not found in tenant %s",
+                patient_mbo, tenant_id,
+            )
+            return
+        from app.models.cezih_case import CezihCase
+
+        db.add(CezihCase(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            patient_mbo=patient_mbo,
+            local_case_id=local_case_id,
+            cezih_case_id=cezih_case_id or None,
+            icd_code=icd_code,
+            icd_display=icd_display or "",
+            clinical_status=None,
+            verification_status=verification_status or "unconfirmed",
+            onset_date=onset_date,
+            note=note_text,
+        ))
+        await db.flush()
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to persist local CezihCase mirror (non-fatal)")
+
+
+async def _persist_local_visit(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    patient_mbo: str,
+    cezih_visit_id: str,
+    status_str: str,
+    admission_type: str | None,
+) -> None:
+    if not db or not tenant_id:
+        return
+    try:
+        patient_id = await _lookup_patient_id(db, tenant_id, patient_mbo)
+        if patient_id is None:
+            logger.warning(
+                "Cannot mirror CEZIH visit locally: patient with MBO %s not found in tenant %s",
+                patient_mbo, tenant_id,
+            )
+            return
+        from app.models.cezih_visit import CezihVisit
+
+        db.add(CezihVisit(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            patient_mbo=patient_mbo,
+            cezih_visit_id=cezih_visit_id or None,
+            status=status_str or "in-progress",
+            admission_type=admission_type,
+            period_start=datetime.now(UTC),
+        ))
+        await db.flush()
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to persist local CezihVisit mirror (non-fatal)")
+
+
+async def _fetch_fresh_local_cases(
+    db: AsyncSession | None, tenant_id: UUID | None, patient_mbo: str,
+) -> list[dict]:
+    if not db or not tenant_id:
+        return []
+    try:
+        from datetime import timedelta
+
+        from app.models.cezih_case import CezihCase
+
+        cutoff = datetime.now(UTC) - timedelta(minutes=_LOCAL_MIRROR_WINDOW_MINUTES)
+        result = await db.execute(
+            select(CezihCase).where(
+                CezihCase.tenant_id == tenant_id,
+                CezihCase.patient_mbo == patient_mbo,
+                CezihCase.created_at >= cutoff,
+            ).order_by(CezihCase.created_at.desc())
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "case_id": row.cezih_case_id or row.local_case_id,
+                "icd_code": row.icd_code,
+                "icd_display": row.icd_display or "",
+                "clinical_status": row.clinical_status or "",
+                "verification_status": row.verification_status,
+                "onset_date": row.onset_date,
+                "abatement_date": None,
+                "note": row.note,
+            }
+            for row in rows
+        ]
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to read local CezihCase mirror (non-fatal)")
+        return []
+
+
+async def _fetch_fresh_local_visits(
+    db: AsyncSession | None, tenant_id: UUID | None, patient_mbo: str,
+) -> list[dict]:
+    if not db or not tenant_id:
+        return []
+    try:
+        from datetime import timedelta
+
+        from app.models.cezih_visit import CezihVisit
+
+        cutoff = datetime.now(UTC) - timedelta(minutes=_LOCAL_MIRROR_WINDOW_MINUTES)
+        result = await db.execute(
+            select(CezihVisit).where(
+                CezihVisit.tenant_id == tenant_id,
+                CezihVisit.patient_mbo == patient_mbo,
+                CezihVisit.created_at >= cutoff,
+            ).order_by(CezihVisit.created_at.desc())
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "visit_id": row.cezih_visit_id or "",
+                "patient_mbo": row.patient_mbo,
+                "status": row.status,
+                "visit_type": row.admission_type or "",
+                "visit_type_display": None,
+                "vrsta_posjete": "",
+                "vrsta_posjete_display": "",
+                "tip_posjete": "",
+                "tip_posjete_display": "",
+                "reason": None,
+                "period_start": row.period_start.isoformat() if row.period_start else None,
+                "period_end": row.period_end.isoformat() if row.period_end else None,
+                "service_provider_code": None,
+                "practitioner_id": None,
+                "practitioner_ids": [],
+                "diagnosis_case_ids": [row.diagnosis_case_id] if row.diagnosis_case_id else [],
+            }
+            for row in rows
+        ]
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to read local CezihVisit mirror (non-fatal)")
+        return []
+
+
+def _merge_with_local(
+    remote: list[dict], local: list[dict], id_key: str,
+) -> list[dict]:
+    """Prepend local rows whose id_key is not present in remote list."""
+    seen = {row.get(id_key) for row in remote if row.get(id_key)}
+    extra = [row for row in local if row.get(id_key) and row[id_key] not in seen]
+    return extra + remote
+
+
+# ============================================================
 # TC15-17: Case Management
 # ============================================================
 
@@ -644,7 +840,8 @@ async def dispatch_retrieve_cases(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(db, tenant_id, user_id, action="case_retrieve", details={"mbo": patient_mbo})
-    return result
+    local = await _fetch_fresh_local_cases(db, tenant_id, patient_mbo)
+    return _merge_with_local(result, local, id_key="case_id")
 
 
 async def dispatch_create_case(
@@ -675,6 +872,15 @@ async def dispatch_create_case(
     await _write_audit(
         db, tenant_id, user_id, action="case_create",
         details={"mbo": patient_mbo, "icd": icd_code},
+    )
+    await _persist_local_case(
+        db, tenant_id, patient_mbo,
+        local_case_id=result.get("local_case_id") or "",
+        cezih_case_id=result.get("cezih_case_id") or "",
+        icd_code=icd_code, icd_display=icd_display,
+        onset_date=onset_date,
+        verification_status=verification_status,
+        note_text=note_text,
     )
     return result
 
@@ -1032,6 +1238,12 @@ async def dispatch_create_visit(
     resp["nacin_prijema"] = nacin_prijema
     resp["vrsta_posjete"] = vrsta_posjete
     resp["tip_posjete"] = tip_posjete
+    await _persist_local_visit(
+        db, tenant_id, patient_mbo,
+        cezih_visit_id=resp.get("visit_id") or "",
+        status_str=resp.get("status") or "in-progress",
+        admission_type=nacin_prijema,
+    )
     return resp
 
 
@@ -1215,4 +1427,5 @@ async def dispatch_list_visits(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(db, tenant_id, user_id, action="visit_list", details={"mbo": patient_mbo})
-    return result
+    local = await _fetch_fresh_local_visits(db, tenant_id, patient_mbo)
+    return _merge_with_local(result, local, id_key="visit_id")

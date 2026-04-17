@@ -372,7 +372,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
           <p className="font-medium">Kako koristiti:</p>
           <ul className="list-disc list-inside space-y-0.5">
             <li>
-              <strong>Novi slučaj</strong> — upišite MKB šifru, datum početka i status verifikacije. Za kasnije zatvaranje odaberite <em>Potvrđen</em>.
+              <strong>Novi slučaj</strong> — upišite MKB šifru, datum početka i status verifikacije. Da bi mogli zatvoriti slučaj, on mora biti <em>Potvrđen</em>.
             </li>
             <li>
               Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori, Ponovno otvori ili Ponavljajući slučaj. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
