@@ -38,8 +38,11 @@ import {
   useCreateVisit,
   useUpdateVisit,
   useVisitAction,
+  useRetrieveCases,
 } from "@/lib/hooks/use-cezih"
 import type { VisitItem } from "@/lib/types"
+
+const NO_CASE = "__none__"
 
 const VISIT_STATUS_COLORS: Record<string, string> = {
   "in-progress": "bg-blue-100 text-blue-800",
@@ -124,6 +127,8 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
 
   const visits = visitsData?.visits ?? []
   const myOrgCode = tenant?.sifra_ustanove || ""
+  const { data: casesData } = useRetrieveCases(patientMbo)
+  const activeCases = (casesData?.cases ?? []).filter((c) => c.clinical_status === "active")
 
   const isExternalVisit = (v: VisitItem) =>
     !!myOrgCode && !!v.service_provider_code && v.service_provider_code !== myOrgCode
@@ -536,13 +541,33 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Povezani slučaj (ID)</Label>
-              <Input
-                className="h-8 text-sm"
-                placeholder="ID slučaja (opcionalno)"
-                value={editCaseId}
-                onChange={(e) => setEditCaseId(e.target.value)}
-              />
+              <Label className="text-xs">Povezani slučaj</Label>
+              <Select
+                value={editCaseId || NO_CASE}
+                onValueChange={(v) => setEditCaseId(v === NO_CASE ? "" : v)}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue>
+                    {editCaseId
+                      ? (() => {
+                          const c = activeCases.find((x) => x.case_id === editCaseId)
+                          return c ? `${c.icd_code} — ${c.icd_display}` : editCaseId
+                        })()
+                      : "Bez povezanog slučaja"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CASE}>Bez povezanog slučaja</SelectItem>
+                  {activeCases.map((c) => (
+                    <SelectItem key={c.case_id} value={c.case_id}>
+                      {c.icd_code} — {c.icd_display}
+                    </SelectItem>
+                  ))}
+                  {editCaseId && !activeCases.some((c) => c.case_id === editCaseId) && (
+                    <SelectItem value={editCaseId}>{editCaseId} (trenutno odabran)</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
