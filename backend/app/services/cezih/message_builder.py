@@ -1032,7 +1032,8 @@ def build_condition_data_update(
 
     # Must echo current clinicalStatus (cannot change it via data update).
     # FHIR invariant con-5: clinicalStatus SHALL NOT be present if verificationStatus=entered-in-error.
-    if current_clinical_status and verification_status != "entered-in-error":
+    entered_in_error = verification_status == "entered-in-error"
+    if current_clinical_status and not entered_in_error:
         condition["clinicalStatus"] = {
             "coding": [{"system": CS_CONDITION_CLINICAL, "code": current_clinical_status}],
         }
@@ -1050,7 +1051,9 @@ def build_condition_data_update(
     if onset_date:
         condition["onsetDateTime"] = onset_date
 
-    if abatement_date:
+    # con-4: if abated, clinicalStatus must be inactive/resolved/remission.
+    # Since entered-in-error drops clinicalStatus (con-5), abatement must also be dropped.
+    if abatement_date and not entered_in_error:
         condition["abatementDateTime"] = abatement_date
 
     if practitioner_id:
