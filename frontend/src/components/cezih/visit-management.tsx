@@ -315,10 +315,11 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Razlog (opcionalno)</Label>
-                <Input
+                <Textarea
                   placeholder="Razlog posjete"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
+                  rows={3}
                 />
               </div>
             </div>
