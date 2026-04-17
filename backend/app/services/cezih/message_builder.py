@@ -29,7 +29,7 @@ ID_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
 ID_ORG = "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije"
 ID_PRACTITIONER = "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika"
 ID_CASE_GLOBAL = "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-slucaja"
-ID_CASE_REF = "http://fhir.cezih.hr/specifikacije/identifikatori/slucaj"  # Used in Encounter.diagnosis
+ID_CASE_REF = "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-slucaja"  # Used in Encounter.diagnosis — matches CEZIH's official Encounter-1469.json example. The short-form `slucaj` used in some docs is not resolvable by the server.
 ID_CASE_LOCAL = "http://fhir.cezih.hr/specifikacije/identifikatori/lokalni-identifikator-slucaja"
 ID_ENCOUNTER = "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-posjete"
 
