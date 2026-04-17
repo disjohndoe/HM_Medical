@@ -972,13 +972,19 @@ async def _update_local_visit(
     tenant_id: UUID | None,
     visit_id: str,
     *,
+    patient_mbo: str | None = None,
     status_str: str | None = None,
     tip_posjete: str | None = None,
     admission_type: str | None = None,
     set_period_end: bool = False,
     clear_period_end: bool = False,
 ) -> None:
-    """Patch the local CezihVisit mirror if it exists. Non-fatal on failure."""
+    """Upsert the local CezihVisit mirror for this visit.
+
+    If no row exists yet (e.g. the visit was created before migration 031
+    recreated the mirror table, or before any mirror code ran), insert a
+    fresh row so the edit is reflected. Non-fatal on failure.
+    """
     if not db or not tenant_id or not visit_id:
         return
     try:
@@ -992,6 +998,25 @@ async def _update_local_visit(
         )
         row = result.scalar_one_or_none()
         if row is None:
+            if not patient_mbo:
+                return
+            patient_id = await _lookup_patient_id(db, tenant_id, patient_mbo)
+            if patient_id is None:
+                return
+            row = CezihVisit(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                patient_mbo=patient_mbo,
+                cezih_visit_id=visit_id,
+                status=status_str or "in-progress",
+                admission_type=admission_type,
+                tip_posjete=tip_posjete,
+                period_start=datetime.now(UTC),
+            )
+            if set_period_end:
+                row.period_end = datetime.now(UTC)
+            db.add(row)
+            await db.flush()
             return
         if status_str is not None:
             row.status = status_str
@@ -1550,6 +1575,7 @@ async def dispatch_update_visit(
         resp["tip_posjete"] = tip_posjete
     await _update_local_visit(
         db, tenant_id, visit_id,
+        patient_mbo=patient_mbo,
         tip_posjete=tip_posjete,
         admission_type=nacin_prijema,
     )
@@ -1641,16 +1667,19 @@ async def dispatch_visit_action(
     if action == "close":
         await _update_local_visit(
             db, tenant_id, visit_id,
+            patient_mbo=patient_mbo,
             status_str="finished", set_period_end=True,
         )
     elif action == "reopen":
         await _update_local_visit(
             db, tenant_id, visit_id,
+            patient_mbo=patient_mbo,
             status_str="in-progress", clear_period_end=True,
         )
     elif action == "storno":
         await _update_local_visit(
             db, tenant_id, visit_id,
+            patient_mbo=patient_mbo,
             status_str="entered-in-error",
         )
     return parsed

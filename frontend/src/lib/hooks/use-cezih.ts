@@ -438,12 +438,14 @@ export function useUpdateVisit() {
                     diagnosis_case_ids: vars.diagnosis_case_id ? [vars.diagnosis_case_id] : [],
                   }),
                   ...(vars.period_start !== undefined && { period_start: vars.period_start }),
+                  updated_at: new Date().toISOString(),
                   _local: true,
                 },
           ),
         }
       })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientMbo] })
     },
   })
 }
@@ -476,6 +478,7 @@ export function useVisitAction() {
                       vars.action === "close" ? nowIso
                       : vars.action === "reopen" ? null
                       : v.period_end,
+                    updated_at: nowIso,
                     _local: true,
                   },
             ),
@@ -483,6 +486,7 @@ export function useVisitAction() {
         })
       }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientMbo] })
     },
   })
 }
