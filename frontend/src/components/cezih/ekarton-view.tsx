@@ -176,7 +176,9 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
 
   const activeCases = cases.filter((c) => c.clinical_status !== "resolved")
   const filteredCases = activeCases.filter((c) => matchesIcdFilter(c.icd_code, icdFilter))
-  const activeVisits = visits.filter((v) => v.status === "in-progress" || v.status === "planned")
+  const activeVisits = visits
+    .filter((v) => v.status === "in-progress" || v.status === "planned")
+    .sort((a, b) => (b.period_start ?? "").localeCompare(a.period_start ?? ""))
 
   return (
     <Card>
@@ -349,19 +351,27 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
             <p className="text-sm text-muted-foreground">Nema aktivnih posjeta</p>
           ) : (
             <div className="space-y-1.5">
-              {activeVisits.map((v) => (
-                <div key={v.visit_id} className="flex items-center gap-2 flex-wrap">
-                  <Badge className={VISIT_STATUS_COLORS[v.status] || "bg-gray-100"}>
-                    {VISIT_STATUS_LABELS[v.status] || v.status}
-                  </Badge>
-                  {v.reason && <span className="text-sm">{v.reason}</span>}
-                  {v.period_start && (
-                    <span className="text-xs text-muted-foreground">
-                      {formatDateTimeHR(v.period_start)}
-                    </span>
-                  )}
-                </div>
-              ))}
+              {activeVisits.map((v) => {
+                const label =
+                  v.reason ||
+                  v.tip_posjete_display ||
+                  v.vrsta_posjete_display ||
+                  v.visit_type_display ||
+                  "Posjeta"
+                return (
+                  <div key={v.visit_id} className="flex items-center gap-2 flex-wrap">
+                    <Badge className={VISIT_STATUS_COLORS[v.status] || "bg-gray-100"}>
+                      {VISIT_STATUS_LABELS[v.status] || v.status}
+                    </Badge>
+                    <span className="text-sm">{label}</span>
+                    {v.period_start && (
+                      <span className="text-xs text-muted-foreground">
+                        {formatDateTimeHR(v.period_start)}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

@@ -704,6 +704,7 @@ async def _persist_local_visit(
     status_str: str,
     admission_type: str | None,
     tip_posjete: str | None = None,
+    reason: str | None = None,
 ) -> None:
     if not db or not tenant_id:
         return
@@ -725,6 +726,7 @@ async def _persist_local_visit(
             status=status_str or "in-progress",
             admission_type=admission_type,
             tip_posjete=tip_posjete,
+            reason=reason,
             period_start=datetime.now(UTC),
         ))
         await db.flush()
@@ -819,7 +821,7 @@ async def _fetch_fresh_local_visits(
                 "visit_type_display": None,
                 "tip_posjete": tip,
                 "tip_posjete_display": _TIP_POSJETE_LABELS.get(tip) if tip else None,
-                "reason": None,
+                "reason": row.reason,
                 "period_start": row.period_start.isoformat() if row.period_start else None,
                 "period_end": row.period_end.isoformat() if row.period_end else None,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -864,6 +866,10 @@ def _merge_with_local(
 
 # Visit fields that only exist locally (CEZIH never returns them)
 _VISIT_LOCAL_ONLY_FIELDS = ("tip_posjete", "tip_posjete_display", "updated_at")
+# Visit fields where CEZIH is authoritative, but we fall back to the mirror
+# when CEZIH's QEDm response leaves the field empty. QEDm read-back regularly
+# strips Encounter.reasonCode, so the user-entered reason is more reliable.
+_VISIT_LOCAL_FALLBACK_FIELDS = ("reason",)
 # Visit fields where CEZIH is authoritative, but our mirror overrides during
 # the freshness window to mask QEDm read-side lag
 _VISIT_FRESH_OVERRIDE_FIELDS = ("status", "period_end")
@@ -893,6 +899,9 @@ def _merge_visits_with_local(
         combined = dict(row)
         for field in _VISIT_LOCAL_ONLY_FIELDS:
             if lrow.get(field) is not None:
+                combined[field] = lrow[field]
+        for field in _VISIT_LOCAL_FALLBACK_FIELDS:
+            if not combined.get(field) and lrow.get(field):
                 combined[field] = lrow[field]
         if lrow.get("_fresh"):
             for field in _VISIT_FRESH_OVERRIDE_FIELDS:
@@ -976,6 +985,7 @@ async def _update_local_visit(
     status_str: str | None = None,
     tip_posjete: str | None = None,
     admission_type: str | None = None,
+    reason: str | None = None,
     set_period_end: bool = False,
     clear_period_end: bool = False,
 ) -> None:
@@ -1011,6 +1021,7 @@ async def _update_local_visit(
                 status=status_str or "in-progress",
                 admission_type=admission_type,
                 tip_posjete=tip_posjete,
+                reason=reason,
                 period_start=datetime.now(UTC),
             )
             if set_period_end:
@@ -1024,6 +1035,8 @@ async def _update_local_visit(
             row.tip_posjete = tip_posjete
         if admission_type is not None:
             row.admission_type = admission_type
+        if reason is not None:
+            row.reason = reason
         if set_period_end:
             row.period_end = datetime.now(UTC)
         if clear_period_end:
@@ -1488,6 +1501,7 @@ async def dispatch_create_visit(
         status_str=resp.get("status") or "in-progress",
         admission_type=nacin_prijema,
         tip_posjete=tip_posjete,
+        reason=reason,
     )
     return resp
 
@@ -1578,6 +1592,7 @@ async def dispatch_update_visit(
         patient_mbo=patient_mbo,
         tip_posjete=tip_posjete,
         admission_type=nacin_prijema,
+        reason=reason,
     )
     return resp
 
