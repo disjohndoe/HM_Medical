@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { FileText, Plus, Loader2, Pencil } from "lucide-react"
 import { toast } from "sonner"
-import { formatDateHR } from "@/lib/utils"
+import { formatDateTimeHR } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -245,6 +245,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
       icd_code: (c) => c.icd_code,
       naziv: (c) => c.icd_display,
       abatement_date: (c) => c.abatement_date || null,
+      updated_at: (c) => c.updated_at || null,
     },
   })
 
@@ -409,6 +410,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                     <SortableTableHead columnKey="icd_code" label="MKB šifra" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
                     <SortableTableHead columnKey="naziv" label="Naziv" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
                     <SortableTableHead columnKey="onset_date" label="Početak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
+                    <SortableTableHead columnKey="updated_at" label="Izmjena" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
                     <SortableTableHead columnKey="abatement_date" label="Završetak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
                     <TableHead className="w-[180px] text-right">Akcije</TableHead>
                   </TableRow>
@@ -437,8 +439,11 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm">{formatDateHR(c.onset_date)}</TableCell>
-                        <TableCell className="text-sm">{c.abatement_date ? formatDateHR(c.abatement_date) : "—"}</TableCell>
+                        <TableCell className="text-sm">{formatDateTimeHR(c.onset_date)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {c.updated_at ? formatDateTimeHR(c.updated_at) : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm">{c.abatement_date ? formatDateTimeHR(c.abatement_date) : "—"}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
                             <Button

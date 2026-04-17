@@ -41,7 +41,7 @@ import {
   useReplaceDocument,
   useCancelDocument,
 } from "@/lib/hooks/use-cezih"
-import { formatDateHR } from "@/lib/utils"
+import { formatDateTimeHR } from "@/lib/utils"
 
 export function DocumentSearch() {
   const [selectedPatient, setSelectedPatient] = useState<SelectedPatient | null>(null)
@@ -251,7 +251,7 @@ export function DocumentSearch() {
                       {doc.id}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {formatDateHR(doc.datum_izdavanja)}
+                      {formatDateTimeHR(doc.datum_izdavanja)}
                     </TableCell>
                     <TableCell className="text-sm max-w-[200px] truncate">
                       {doc.svrha}

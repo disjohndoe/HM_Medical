@@ -703,6 +703,7 @@ async def _persist_local_visit(
     cezih_visit_id: str,
     status_str: str,
     admission_type: str | None,
+    tip_posjete: str | None = None,
 ) -> None:
     if not db or not tenant_id:
         return
@@ -723,6 +724,7 @@ async def _persist_local_visit(
             cezih_visit_id=cezih_visit_id or None,
             status=status_str or "in-progress",
             admission_type=admission_type,
+            tip_posjete=tip_posjete,
             period_start=datetime.now(UTC),
         ))
         await db.flush()
@@ -759,6 +761,7 @@ async def _fetch_fresh_local_cases(
                 "onset_date": row.onset_date,
                 "abatement_date": None,
                 "note": row.note,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
             }
             for row in rows
         ]
@@ -767,9 +770,25 @@ async def _fetch_fresh_local_cases(
         return []
 
 
+# Tip posjete codes -> display label (mirrors TIP_POSJETE_MAP in message_builder)
+_TIP_POSJETE_LABELS = {
+    "1": "Posjeta LOM",
+    "2": "Posjeta SKZZ",
+    "3": "Hospitalizacija",
+}
+
+
 async def _fetch_fresh_local_visits(
     db: AsyncSession | None, tenant_id: UUID | None, patient_mbo: str,
 ) -> list[dict]:
+    """Fetch local CezihVisit mirror rows.
+
+    Returns ALL rows (no time window) — tip_posjete persists indefinitely
+    because CEZIH QEDm strips Encounter.type on read, making our mirror the
+    only source of truth for that field. Each row carries `_fresh` = True
+    when created within _LOCAL_MIRROR_WINDOW_MINUTES so the merger knows
+    whether to override CEZIH-authoritative fields (status, period_end).
+    """
     if not db or not tenant_id:
         return []
     try:
@@ -782,31 +801,35 @@ async def _fetch_fresh_local_visits(
             select(CezihVisit).where(
                 CezihVisit.tenant_id == tenant_id,
                 CezihVisit.patient_mbo == patient_mbo,
-                CezihVisit.created_at >= cutoff,
             ).order_by(CezihVisit.created_at.desc())
         )
         rows = result.scalars().all()
-        return [
-            {
+        out = []
+        for row in rows:
+            created_at = row.created_at
+            if created_at and created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            fresh = created_at is not None and created_at >= cutoff
+            tip = row.tip_posjete or ""
+            out.append({
                 "visit_id": row.cezih_visit_id or "",
                 "patient_mbo": row.patient_mbo,
                 "status": row.status,
                 "visit_type": row.admission_type or "",
                 "visit_type_display": None,
-                "vrsta_posjete": "",
-                "vrsta_posjete_display": "",
-                "tip_posjete": "",
-                "tip_posjete_display": "",
+                "tip_posjete": tip,
+                "tip_posjete_display": _TIP_POSJETE_LABELS.get(tip) if tip else None,
                 "reason": None,
                 "period_start": row.period_start.isoformat() if row.period_start else None,
                 "period_end": row.period_end.isoformat() if row.period_end else None,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
                 "service_provider_code": None,
                 "practitioner_id": None,
                 "practitioner_ids": [],
                 "diagnosis_case_ids": [row.diagnosis_case_id] if row.diagnosis_case_id else [],
-            }
-            for row in rows
-        ]
+                "_fresh": fresh,
+            })
+        return out
     except Exception:  # noqa: BLE001
         logger.exception("Failed to read local CezihVisit mirror (non-fatal)")
         return []
@@ -815,12 +838,12 @@ async def _fetch_fresh_local_visits(
 def _merge_with_local(
     remote: list[dict], local: list[dict], id_key: str,
 ) -> list[dict]:
-    """Merge local mirror rows into the remote list.
+    """Merge local mirror rows into the remote list (cases).
 
     - Rows present in both → prefer the *local* copy for fields it owns
-      (clinical_status/verification_status for cases; status/period_end
-      for visits). CEZIH's QEDm read side lags action messages by minutes,
-      so its cached state is often staler than our mirror.
+      (clinical_status/verification_status for cases). CEZIH's QEDm read
+      side lags action messages by minutes, so its cached state is often
+      staler than our mirror.
     - Rows only in local → prepend (CEZIH hasn't caught up to the create yet).
     - Rows only in remote → pass through unchanged.
     """
@@ -836,6 +859,52 @@ def _merge_with_local(
         else:
             merged.append(row)
     extra = [row for rid, row in local_by_id.items() if rid not in seen_local]
+    return extra + merged
+
+
+# Visit fields that only exist locally (CEZIH never returns them)
+_VISIT_LOCAL_ONLY_FIELDS = ("tip_posjete", "tip_posjete_display", "updated_at")
+# Visit fields where CEZIH is authoritative, but our mirror overrides during
+# the freshness window to mask QEDm read-side lag
+_VISIT_FRESH_OVERRIDE_FIELDS = ("status", "period_end")
+
+
+def _merge_visits_with_local(
+    remote: list[dict], local: list[dict],
+) -> list[dict]:
+    """Merge local visit mirror into remote list with field-specific rules.
+
+    Persistent fields (tip_posjete, updated_at) are overlaid from local for
+    ALL matching rows — CEZIH never returns them. State fields (status,
+    period_end) are overlaid only when the local row is fresh (<10 min old),
+    to avoid masking changes made by other systems on older visits.
+    Local-only rows are included only when fresh.
+    """
+    local_by_id = {row["visit_id"]: row for row in local if row.get("visit_id")}
+    merged: list[dict] = []
+    seen_local = set()
+    for row in remote:
+        rid = row.get("visit_id")
+        lrow = local_by_id.get(rid) if rid else None
+        if lrow is None:
+            merged.append(row)
+            continue
+        seen_local.add(rid)
+        combined = dict(row)
+        for field in _VISIT_LOCAL_ONLY_FIELDS:
+            if lrow.get(field) is not None:
+                combined[field] = lrow[field]
+        if lrow.get("_fresh"):
+            for field in _VISIT_FRESH_OVERRIDE_FIELDS:
+                if field in lrow:
+                    combined[field] = lrow[field]
+        merged.append(combined)
+    # Local-only rows that CEZIH hasn't caught up on yet
+    extra = [
+        {k: v for k, v in row.items() if k != "_fresh"}
+        for rid, row in local_by_id.items()
+        if rid not in seen_local and row.get("_fresh")
+    ]
     return extra + merged
 
 
@@ -904,6 +973,8 @@ async def _update_local_visit(
     visit_id: str,
     *,
     status_str: str | None = None,
+    tip_posjete: str | None = None,
+    admission_type: str | None = None,
     set_period_end: bool = False,
     clear_period_end: bool = False,
 ) -> None:
@@ -924,6 +995,10 @@ async def _update_local_visit(
             return
         if status_str is not None:
             row.status = status_str
+        if tip_posjete is not None:
+            row.tip_posjete = tip_posjete
+        if admission_type is not None:
+            row.admission_type = admission_type
         if set_period_end:
             row.period_end = datetime.now(UTC)
         if clear_period_end:
@@ -1387,6 +1462,7 @@ async def dispatch_create_visit(
         cezih_visit_id=resp.get("visit_id") or "",
         status_str=resp.get("status") or "in-progress",
         admission_type=nacin_prijema,
+        tip_posjete=tip_posjete,
     )
     return resp
 
@@ -1472,6 +1548,11 @@ async def dispatch_update_visit(
         resp["vrsta_posjete"] = vrsta_posjete
     if tip_posjete:
         resp["tip_posjete"] = tip_posjete
+    await _update_local_visit(
+        db, tenant_id, visit_id,
+        tip_posjete=tip_posjete,
+        admission_type=nacin_prijema,
+    )
     return resp
 
 
@@ -1590,4 +1671,4 @@ async def dispatch_list_visits(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(db, tenant_id, user_id, action="visit_list", details={"mbo": patient_mbo})
     local = await _fetch_fresh_local_visits(db, tenant_id, patient_mbo)
-    return _merge_with_local(result, local, id_key="visit_id")
+    return _merge_visits_with_local(result, local)

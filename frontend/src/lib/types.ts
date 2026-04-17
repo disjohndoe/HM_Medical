@@ -756,6 +756,7 @@ export interface CaseItem {
   onset_date: string;
   abatement_date: string | null;
   note: string | null;
+  updated_at?: string | null;
   // Frontend-only marker: true for cases created (or spawned via 2.2)
   // in the current session. CEZIH's 2.5 Resolve only works reliably
   // on cases it observed as 'Potvrđen' from creation, so we gate the
@@ -813,6 +814,7 @@ export interface VisitItem {
   reason: string | null;
   period_start: string | null;
   period_end: string | null;
+  updated_at?: string | null;
   service_provider_code: string | null;
   practitioner_id: string | null;
   practitioner_ids: string[];

@@ -65,6 +65,7 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
     defaultKey: "datum",
     defaultDir: "desc",
     keyAccessors: {
+      datum_slanja: (r) => (r.cezih_sent_at ? new Date(r.cezih_sent_at).getTime() : null),
       datum_izmjene: (r) => (r._wasEdited ? r._editedMs : null),
       tip: (r) => tipLabelMap[r.tip] || r.tip,
       referenca: (r) => {
@@ -222,6 +223,7 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
                   <TableHeader>
                     <TableRow>
                       <SortableTableHead columnKey="datum" label="Datum kreiranja" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
+                      <SortableTableHead columnKey="datum_slanja" label="Datum slanja" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
                       <SortableTableHead columnKey="datum_izmjene" label="Datum izmjene" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
                       <SortableTableHead columnKey="tip" label="Tip" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
                       <SortableTableHead columnKey="referenca" label="Referenca" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
@@ -236,6 +238,9 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
                       return (
                       <TableRow key={item.record_id}>
                         <TableCell className="text-sm">{formatDateTimeHR(item.datum)}</TableCell>
+                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                          {item.cezih_sent_at ? formatDateTimeHR(item.cezih_sent_at) : "—"}
+                        </TableCell>
                         <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                           {wasEdited && item.updated_at ? formatDateTimeHR(item.updated_at) : "—"}
                         </TableCell>

@@ -76,12 +76,6 @@ const NACIN_PRIJEMA_LABELS: Record<string, string> = {
   "10": "Program+",
 }
 
-const VRSTA_POSJETE_LABELS: Record<string, string> = {
-  "1": "Pacijent prisutan",
-  "2": "Pacijent udaljeno prisutan",
-  "3": "Pacijent nije prisutan",
-}
-
 const TIP_POSJETE_LABELS: Record<string, string> = {
   "1": "Posjeta LOM",
   "2": "Posjeta SKZZ",
@@ -107,13 +101,14 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
   const updateVisit = useUpdateVisit()
   const visitAction = useVisitAction()
 
-  // Local cache for vrsta/tip posjete (CEZIH QEDm doesn't return Encounter.type)
-  const [visitMeta, setVisitMeta] = useState<Record<string, { nacin_prijema?: string; vrsta_posjete?: string; tip_posjete?: string }>>({})
+  // Local cache for tip posjete (CEZIH QEDm doesn't return Encounter.type).
+  // Backend mirror persists it server-side now; this is just a belt-and-braces
+  // cache covering the window between a mutation and the next refetch.
+  const [visitMeta, setVisitMeta] = useState<Record<string, { nacin_prijema?: string; tip_posjete?: string }>>({})
 
   // Create form state
   const [showCreate, setShowCreate] = useState(false)
   const [nacinPrijema, setNacinPrijema] = useState("6")
-  const [vrstaPosjete, setVrstaPosjete] = useState("1")
   const [tipPosjete, setTipPosjete] = useState("2")
   const [reason, setReason] = useState("")
 
@@ -122,7 +117,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
   const [editVisitId, setEditVisitId] = useState<string | null>(null)
   const [editReason, setEditReason] = useState("")
   const [editNacinPrijema, setEditNacinPrijema] = useState("")
-  const [editVrstaPosjete, setEditVrstaPosjete] = useState("1")
   const [editTipPosjete, setEditTipPosjete] = useState("2")
   const [editCaseId, setEditCaseId] = useState("")
   const [editPractitionerId, setEditPractitionerId] = useState("")
@@ -148,16 +142,13 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
           || NACIN_PRIJEMA_LABELS[v.visit_type || visitMeta[v.visit_id]?.nacin_prijema || ""]
           || v.visit_type
           || "",
-      vrsta_posjete: (v: VisitItem) =>
-        v.vrsta_posjete_display
-          || VRSTA_POSJETE_LABELS[v.vrsta_posjete || visitMeta[v.visit_id]?.vrsta_posjete || ""]
-          || "",
       tip_posjete: (v: VisitItem) =>
         v.tip_posjete_display
           || TIP_POSJETE_LABELS[v.tip_posjete || visitMeta[v.visit_id]?.tip_posjete || ""]
           || "",
       razlog: (v: VisitItem) => v.reason || "",
       period_end: (v: VisitItem) => v.period_end || null,
+      updated_at: (v: VisitItem) => v.updated_at || null,
     },
   })
 
@@ -166,7 +157,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
       {
         patient_id: patientId, patient_mbo: patientMbo,
         nacin_prijema: nacinPrijema,
-        vrsta_posjete: vrstaPosjete,
         tip_posjete: tipPosjete,
         reason: reason || undefined,
       },
@@ -178,7 +168,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
               ...prev,
               [res.visit_id]: {
                 nacin_prijema: res.nacin_prijema || nacinPrijema,
-                vrsta_posjete: res.vrsta_posjete || vrstaPosjete,
                 tip_posjete: res.tip_posjete || tipPosjete,
               },
             }))
@@ -212,7 +201,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
         visitId,
         reason: editReason || undefined,
         nacin_prijema: editNacinPrijema || undefined,
-        vrsta_posjete: editVrstaPosjete || undefined,
         tip_posjete: editTipPosjete || undefined,
         diagnosis_case_id: editCaseId || undefined,
         additional_practitioner_id: editPractitionerId || undefined,
@@ -227,7 +215,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
               ...prev,
               [visitId]: {
                 nacin_prijema: res.nacin_prijema || editNacinPrijema,
-                vrsta_posjete: res.vrsta_posjete || editVrstaPosjete,
                 tip_posjete: res.tip_posjete || editTipPosjete,
               },
             }))
@@ -243,7 +230,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
     setEditVisitId(v.visit_id)
     setEditReason(v.reason || "")
     setEditNacinPrijema(v.visit_type || "6")
-    setEditVrstaPosjete(v.vrsta_posjete || "1")
     setEditTipPosjete(v.tip_posjete || "2")
     setEditCaseId(v.diagnosis_case_ids?.[0] || "")
     setEditPractitionerId(v.practitioner_ids?.length > 1 ? v.practitioner_ids[1] : "")
@@ -255,7 +241,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
     setEditVisitId(null)
     setEditReason("")
     setEditNacinPrijema("")
-    setEditVrstaPosjete("1")
     setEditTipPosjete("2")
     setEditCaseId("")
     setEditPractitionerId("")
@@ -301,19 +286,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
-                      <SelectItem key={val} value={val}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Vrsta posjete</Label>
-                <Select value={vrstaPosjete} onValueChange={(v) => v && setVrstaPosjete(v)}>
-                  <SelectTrigger className="h-8">
-                    <SelectValue>{VRSTA_POSJETE_LABELS[vrstaPosjete] || vrstaPosjete}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(VRSTA_POSJETE_LABELS).map(([val, label]) => (
                       <SelectItem key={val} value={val}>{label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -368,10 +340,10 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                     <SortableTableHead columnKey="izvor" label="Izvor" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="w-[100px]" />
                     <SortableTableHead columnKey="status" label="Status" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="w-[100px]" />
                     <SortableTableHead columnKey="nacin_prijema" label="Način prijema" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
-                    <SortableTableHead columnKey="vrsta_posjete" label="Vrsta posjete" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
                     <SortableTableHead columnKey="tip_posjete" label="Tip posjete" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
                     <SortableTableHead columnKey="razlog" label="Razlog" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
                     <SortableTableHead columnKey="period_start" label="Početak" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
+                    <SortableTableHead columnKey="updated_at" label="Izmjena" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
                     <SortableTableHead columnKey="period_end" label="Kraj" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
                     <TableHead className="w-[140px] text-right">Akcije</TableHead>
                   </TableRow>
@@ -409,11 +381,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                             || v.visit_type || "—"}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {v.vrsta_posjete_display
-                            || VRSTA_POSJETE_LABELS[v.vrsta_posjete || visitMeta[v.visit_id]?.vrsta_posjete || ""]
-                            || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm">
                           {v.tip_posjete_display
                             || TIP_POSJETE_LABELS[v.tip_posjete || visitMeta[v.visit_id]?.tip_posjete || ""]
                             || "—"}
@@ -435,6 +402,9 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                         </TableCell>
                         <TableCell className="text-sm">
                           {v.period_start ? formatDateTimeHR(v.period_start) : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {v.updated_at ? formatDateTimeHR(v.updated_at) : "—"}
                         </TableCell>
                         <TableCell className="text-sm">
                           {v.period_end ? formatDateTimeHR(v.period_end) : "—"}
@@ -510,19 +480,6 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
-                    <SelectItem key={val} value={val}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Vrsta posjete</Label>
-              <Select value={editVrstaPosjete} onValueChange={(v) => v && setEditVrstaPosjete(v)}>
-                <SelectTrigger className="h-8">
-                  <SelectValue>{VRSTA_POSJETE_LABELS[editVrstaPosjete] || editVrstaPosjete}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(VRSTA_POSJETE_LABELS).map(([val, label]) => (
                     <SelectItem key={val} value={val}>{label}</SelectItem>
                   ))}
                 </SelectContent>

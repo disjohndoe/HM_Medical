@@ -313,9 +313,12 @@ class VisitItem(BaseModel):
     status: str
     visit_type: str
     visit_type_display: str | None = None
+    tip_posjete: str | None = None
+    tip_posjete_display: str | None = None
     reason: str | None = None
     period_start: str | None = None
     period_end: str | None = None
+    updated_at: datetime | None = None
     service_provider_code: str | None = None
     practitioner_id: str | None = None
     practitioner_ids: list[str] = []
@@ -342,6 +345,7 @@ class CaseItem(BaseModel):
     onset_date: str
     abatement_date: str | None = None
     note: str | None = None
+    updated_at: datetime | None = None
 
 
 class CasesListResponse(BaseModel):
