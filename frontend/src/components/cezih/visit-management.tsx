@@ -545,7 +545,7 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
               <Label className="text-xs">Povezani slučaj</Label>
               <Select
                 value={editCaseId || NO_CASE}
-                onValueChange={(v) => setEditCaseId(v === NO_CASE ? "" : v)}
+                onValueChange={(v) => setEditCaseId(!v || v === NO_CASE ? "" : v)}
               >
                 <SelectTrigger className="h-8">
                   <SelectValue>
