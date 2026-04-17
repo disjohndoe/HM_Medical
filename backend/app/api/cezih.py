@@ -150,7 +150,7 @@ async def provjera_osiguranja(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.insurance_check(
-        data.mbo,
+        data.patient_id,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
@@ -558,19 +558,20 @@ async def register_foreigner(
     if result.get("success"):
         spol_map = {"male": "M", "female": "Z"}
         dob = date.fromisoformat(data.datum_rodjenja) if data.datum_rodjenja else None
-        # MBO is varchar(9) — foreigners get a longer unique ID instead.
-        # Store MBO only if it fits (9 digits); put CEZIH ID in napomena.
-        cezih_id = result.get("mbo", "")
-        mbo = cezih_id if len(cezih_id) <= 9 else None
-        napomena = f"CEZIH PMIR: {cezih_id}" if cezih_id else "Registriran putem CEZIH PMIR"
+        # PMIR returns CEZIH's jedinstveni-identifikator-pacijenta in the "mbo" key.
+        # Foreigners don't have a Croatian MBO — leave patients.mbo NULL.
+        cezih_id = result.get("mbo") or None
         patient = Patient(
             tenant_id=current_user.tenant_id,
             ime=data.ime,
             prezime=data.prezime,
             datum_rodjenja=dob,
             spol=spol_map.get(data.spol),
-            mbo=mbo,
-            napomena=napomena,
+            mbo=None,
+            cezih_patient_id=cezih_id,
+            broj_putovnice=data.broj_putovnice or None,
+            ehic_broj=data.ehic_broj or None,
+            drzavljanstvo=data.drzavljanstvo or None,
         )
         db.add(patient)
         await db.flush()
@@ -588,13 +589,13 @@ async def register_foreigner(
 @router.get("/cases", response_model=CasesListResponse)
 async def list_cases(
     request: Request,
-    mbo: str = Query(..., description="Patient MBO"),
+    patient_id: UUID = Query(..., description="Local patient UUID"),
     current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
     cases = await cezih.dispatch_retrieve_cases(
-        mbo,
+        patient_id,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
@@ -611,7 +612,7 @@ async def create_case(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_case(
-        data.patient_mbo, current_user.practitioner_id or "",
+        data.patient_id, current_user.practitioner_id or "",
         org_code,
         data.icd_code, data.icd_display, data.onset_date,
         data.verification_status, data.note,
@@ -626,14 +627,14 @@ async def update_case_status(
     request: Request,
     case_id: str,
     data: UpdateCaseStatusRequest,
-    mbo: str = Query(..., description="Patient MBO"),
+    patient_id: UUID = Query(..., description="Local patient UUID"),
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_case(
-        case_id, mbo, current_user.practitioner_id or "",
+        case_id, patient_id, current_user.practitioner_id or "",
         org_code,
         data.action,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
@@ -647,14 +648,14 @@ async def update_case_data(
     request: Request,
     case_id: str,
     data: UpdateCaseDataRequest,
-    mbo: str = Query(..., description="Patient MBO"),
+    patient_id: UUID = Query(..., description="Local patient UUID"),
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_case_data(
-        case_id, mbo, current_user.practitioner_id or "",
+        case_id, patient_id, current_user.practitioner_id or "",
         org_code,
         current_clinical_status=data.current_clinical_status,
         verification_status=data.verification_status,
@@ -675,7 +676,7 @@ async def update_case_data(
 @router.get("/documents", response_model=list[DocumentSearchItem])
 async def search_documents(
     request: Request,
-    mbo: str = Query(None, description="Patient MBO"),
+    patient_id: UUID | None = Query(None, description="Local patient UUID"),
     type: str = Query(None, description="Document type (nalaz, uputnica)"),
     date_from: str = Query(None, description="Date from (YYYY-MM-DD)"),
     date_to: str = Query(None, description="Date to (YYYY-MM-DD)"),
@@ -685,7 +686,7 @@ async def search_documents(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_search_documents(
-        patient_mbo=mbo, document_type=type,
+        patient_id=patient_id, document_type=type,
         date_from=date_from, date_to=date_to, status_filter=status,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
@@ -768,13 +769,13 @@ async def retrieve_document(
 @router.get("/visits", response_model=VisitsListResponse)
 async def list_visits(
     request: Request,
-    mbo: str = Query(...),
+    patient_id: UUID = Query(...),
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
     visits = await cezih.dispatch_list_visits(
-        mbo, db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        patient_id, db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
     return VisitsListResponse(visits=visits)  # type: ignore[arg-type]
@@ -790,7 +791,7 @@ async def create_visit(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_visit(
-        data.patient_mbo, data.nacin_prijema, data.vrsta_posjete, data.tip_posjete, data.reason,
+        data.patient_id, data.nacin_prijema, data.vrsta_posjete, data.tip_posjete, data.reason,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         practitioner_id=current_user.practitioner_id or "",
@@ -803,14 +804,14 @@ async def update_visit(
     request: Request,
     visit_id: str,
     data: UpdateVisitRequest,
-    mbo: str = Query(..., min_length=1, description="Patient MBO"),
+    patient_id: UUID = Query(..., description="Local patient UUID"),
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_visit(
-        visit_id, mbo, data.reason,
+        visit_id, patient_id, data.reason,
         nacin_prijema=data.nacin_prijema,
         vrsta_posjete=data.vrsta_posjete,
         tip_posjete=data.tip_posjete,
@@ -829,14 +830,14 @@ async def visit_action(
     request: Request,
     visit_id: str,
     data: VisitActionRequest,
-    mbo: str = Query(..., min_length=1, description="Patient MBO"),
+    patient_id: UUID = Query(..., description="Local patient UUID"),
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_visit_action(
-        visit_id, data.action, mbo,
+        visit_id, data.action, patient_id,
         period_start=data.period_start,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),

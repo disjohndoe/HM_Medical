@@ -9,7 +9,7 @@ class CezihImportRequest(BaseModel):
 
 
 class InsuranceCheckRequest(BaseModel):
-    mbo: str
+    patient_id: UUID
 
 
 class PatientIdentifier(BaseModel):
@@ -277,7 +277,6 @@ class ForeignerRegistrationResponse(BaseModel):
 
 class CreateVisitRequest(BaseModel):
     patient_id: UUID
-    patient_mbo: str
     nacin_prijema: str = "6"      # 1-10, default: 6=Ostalo
     vrsta_posjete: str = "1"      # 1-3, default: 1=Pacijent prisutan
     tip_posjete: str = "1"        # 1-3, default: 1=Posjeta LOM
@@ -355,7 +354,6 @@ class CasesListResponse(BaseModel):
 
 class CreateCaseRequest(BaseModel):
     patient_id: UUID
-    patient_mbo: str
     icd_code: str
     icd_display: str
     onset_date: str

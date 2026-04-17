@@ -26,6 +26,9 @@ SIGNATURE_TYPE_SYSTEM = "urn:iso-astm:E1762-95:2013"
 SIGNATURE_TYPE_CODE = "1.2.840.10065.1.12.1.1"  # Author's signature
 
 ID_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
+ID_JEDINSTVENI = "http://fhir.cezih.hr/specifikacije/identifikatori/jedinstveni-identifikator-pacijenta"
+ID_EHIC = "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica"
+ID_PUTOVNICA = "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica"
 ID_ORG = "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije"
 ID_PRACTITIONER = "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika"
 ID_CASE_GLOBAL = "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-slucaja"
@@ -47,8 +50,14 @@ CS_SIFRA_OSLOBODJENJA = "http://fhir.cezih.hr/specifikacije/CodeSystem/sifra-osl
 # --- Helper: Logical references (identifier-based, no literal URL) ---
 
 
-def patient_ref(mbo: str) -> dict[str, Any]:
-    return {"type": "Patient", "identifier": {"system": ID_MBO, "value": mbo}}
+def patient_ref(value: str, system: str = ID_MBO) -> dict[str, Any]:
+    """Build a FHIR identifier-based Patient reference.
+
+    Defaults to MBO for Croatian insured patients. For PMIR-registered
+    foreigners pass system=ID_JEDINSTVENI (or ID_EHIC / ID_PUTOVNICA)
+    with the matching identifier value.
+    """
+    return {"type": "Patient", "identifier": {"system": system, "value": value}}
 
 
 def org_ref(org_code: str) -> dict[str, Any]:
@@ -683,6 +692,7 @@ VISIT_ACTION_MAP: dict[str, dict[str, str]] = {
 def build_encounter_create(
     *,
     patient_mbo: str,
+    identifier_system: str = ID_MBO,
     nacin_prijema: str = "6",
     vrsta_posjete: str = "1",
     tip_posjete: str = "1",
@@ -713,7 +723,7 @@ def build_encounter_create(
             "code": nacin_prijema,
             "display": NACIN_PRIJEMA_MAP.get(nacin_prijema, nacin_prijema),
         },
-        "subject": patient_ref(patient_mbo),
+        "subject": patient_ref(patient_mbo, identifier_system),
         "type": [],
     }
     if vrsta_posjete:
@@ -742,6 +752,7 @@ def build_encounter_update(
     *,
     encounter_id: str,
     patient_mbo: str,
+    identifier_system: str = ID_MBO,
     nacin_prijema: str = "6",
     vrsta_posjete: str = "1",
     tip_posjete: str = "1",
@@ -776,7 +787,7 @@ def build_encounter_update(
             "display": NACIN_PRIJEMA_MAP.get(nacin_prijema, nacin_prijema),
         },
         "type": [],
-        "subject": patient_ref(patient_mbo),
+        "subject": patient_ref(patient_mbo, identifier_system),
         "period": {"start": period_start if period_start else _now_iso()},
     }
     if vrsta_posjete:
@@ -921,6 +932,7 @@ def build_encounter_reopen(
 def build_condition_create(
     *,
     patient_mbo: str,
+    identifier_system: str = ID_MBO,
     icd_code: str,
     icd_display: str = "",
     onset_date: str,
@@ -944,7 +956,7 @@ def build_condition_create(
         "code": {
             "coding": [{"system": CS_ICD10_HR, "code": icd_code, "display": icd_display}],
         },
-        "subject": patient_ref(patient_mbo),
+        "subject": patient_ref(patient_mbo, identifier_system),
         "onsetDateTime": onset_date,
         "asserter": practitioner_ref(practitioner_id),
     }
@@ -969,6 +981,7 @@ def build_condition_status_update(
     *,
     case_identifier: str,
     patient_mbo: str,
+    identifier_system: str = ID_MBO,
     clinical_status: str | None = None,
     abatement_date: str | None = None,
 ) -> dict[str, Any]:
@@ -987,7 +1000,7 @@ def build_condition_status_update(
     condition: dict[str, Any] = {
         "resourceType": "Condition",
         "identifier": [{"system": ID_CASE_GLOBAL, "value": case_identifier}],
-        "subject": patient_ref(patient_mbo),
+        "subject": patient_ref(patient_mbo, identifier_system),
     }
 
     if clinical_status:
@@ -1005,6 +1018,7 @@ def build_condition_data_update(
     *,
     case_identifier: str,
     patient_mbo: str,
+    identifier_system: str = ID_MBO,
     current_clinical_status: str | None = None,
     verification_status: str | None = None,
     icd_code: str | None = None,
@@ -1027,7 +1041,7 @@ def build_condition_data_update(
     condition: dict[str, Any] = {
         "resourceType": "Condition",
         "identifier": [{"system": ID_CASE_GLOBAL, "value": case_identifier}],
-        "subject": patient_ref(patient_mbo),
+        "subject": patient_ref(patient_mbo, identifier_system),
     }
 
     # Must echo current clinicalStatus (cannot change it via data update).

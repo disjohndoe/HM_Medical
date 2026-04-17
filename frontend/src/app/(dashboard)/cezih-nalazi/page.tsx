@@ -44,7 +44,7 @@ export default function CezihNalaziPage() {
     (r) => isCezihEligible.has(r.tip) && !r.cezih_sent,
   )
 
-  const [sendTarget, setSendTarget] = useState<{ patientId: string; patientMbo: string | null; recordId: string } | null>(null)
+  const [sendTarget, setSendTarget] = useState<{ patientId: string; hasCezihIdentifier: boolean; recordId: string } | null>(null)
 
   const { sorted, sortKey, sortDir, toggleSort } = useTableSort(records, {
     defaultKey: "datum",
@@ -149,12 +149,12 @@ export default function CezihNalaziPage() {
                     <Button
                       size="sm"
                       className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={!r.patient_mbo}
-                      title={!r.patient_mbo ? "Pacijent nema MBO — potreban za CEZIH" : undefined}
+                      disabled={!r.patient_has_cezih_identifier}
+                      title={!r.patient_has_cezih_identifier ? "Pacijent nema CEZIH identifikator — potreban za CEZIH" : undefined}
                       onClick={() =>
                         setSendTarget({
                           patientId: r.patient_id,
-                          patientMbo: r.patient_mbo,
+                          hasCezihIdentifier: !!r.patient_has_cezih_identifier,
                           recordId: r.id,
                         })
                       }
@@ -184,7 +184,7 @@ export default function CezihNalaziPage() {
           open={!!sendTarget}
           onOpenChange={(open) => !open && setSendTarget(null)}
           patientId={sendTarget.patientId}
-          patientMbo={sendTarget.patientMbo}
+          hasCezihIdentifier={sendTarget.hasCezihIdentifier}
           onlyRecordId={sendTarget.recordId}
         />
       )}

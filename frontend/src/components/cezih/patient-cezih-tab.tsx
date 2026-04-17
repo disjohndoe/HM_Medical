@@ -33,10 +33,10 @@ import { formatDateTimeHR } from "@/lib/utils"
 
 interface PatientCezihTabProps {
   patientId: string
-  patientMbo: string | null
+  hasCezihIdentifier: boolean
 }
 
-export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps) {
+export function PatientCezihTab({ patientId, hasCezihIdentifier }: PatientCezihTabProps) {
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
   const insuranceCheck = useInsuranceCheck()
   const cancelDocument = useCancelDocument()
@@ -78,11 +78,11 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
   })
 
   function handleCheckInsurance() {
-    if (!patientMbo) {
-      toast.error("Pacijent nema MBO")
+    if (!hasCezihIdentifier) {
+      toast.error("Pacijent nema CEZIH identifikator")
       return
     }
-    insuranceCheck.mutate(patientMbo, {
+    insuranceCheck.mutate(patientId, {
       onSuccess: () => toast.success("Osiguranje provjereno"),
       onError: (err: Error) => toast.error(err.message || "Greška pri provjeri osiguranja"),
     })
@@ -140,7 +140,7 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
                   size="sm"
                   variant="outline"
                   onClick={handleCheckInsurance}
-                  disabled={insuranceCheck.isPending || !patientMbo}
+                  disabled={insuranceCheck.isPending || !hasCezihIdentifier}
                 >
                   {insuranceCheck.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
                   Provjeri osiguranje
@@ -168,7 +168,7 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
               size="sm"
               variant="outline"
               onClick={handleCheckInsurance}
-              disabled={insuranceCheck.isPending || !patientMbo}
+              disabled={insuranceCheck.isPending || !hasCezihIdentifier}
             >
               <Shield className="mr-2 h-3 w-3" />
               Provjeri osiguranje
@@ -186,21 +186,21 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
         </TabsList>
 
         <TabsContent value="posjete">
-          {patientMbo ? (
-            <VisitManagement patientId={patientId} patientMbo={patientMbo} onNavigateToCase={() => setCezihSubTab("slucajevi")} />
+          {hasCezihIdentifier ? (
+            <VisitManagement patientId={patientId} onNavigateToCase={() => setCezihSubTab("slucajevi")} />
           ) : (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              Pacijent nema MBO — posjete nisu dostupne
+              Pacijent nema CEZIH identifikator — posjete nisu dostupne
             </p>
           )}
         </TabsContent>
 
         <TabsContent value="slucajevi">
-          {patientMbo ? (
-            <CaseManagement patientId={patientId} patientMbo={patientMbo} />
+          {hasCezihIdentifier ? (
+            <CaseManagement patientId={patientId} />
           ) : (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              Pacijent nema MBO — slučajevi nisu dostupni
+              Pacijent nema CEZIH identifikator — slučajevi nisu dostupni
             </p>
           )}
         </TabsContent>

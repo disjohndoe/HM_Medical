@@ -91,6 +91,10 @@ export interface Patient {
   spol: string | null;
   oib: string | null;
   mbo: string | null;
+  broj_putovnice: string | null;
+  ehic_broj: string | null;
+  cezih_patient_id: string | null;
+  drzavljanstvo: string | null;
   adresa: string | null;
   grad: string | null;
   postanski_broj: string | null;
@@ -105,6 +109,10 @@ export interface Patient {
   updated_at: string;
   cezih_insurance_status: string | null;
   cezih_insurance_checked_at: string | null;
+}
+
+export function hasCezihIdentifier(p: Pick<Patient, "mbo" | "cezih_patient_id" | "ehic_broj" | "broj_putovnice">): boolean {
+  return Boolean(p.mbo || p.cezih_patient_id || p.ehic_broj || p.broj_putovnice);
 }
 
 export interface PatientCreate {
@@ -316,6 +324,7 @@ export interface MedicalRecord {
   patient_ime: string | null;
   patient_prezime: string | null;
   patient_mbo: string | null;
+  patient_has_cezih_identifier?: boolean;
   tenant_id: string;
   created_at: string;
   updated_at: string;
@@ -772,7 +781,6 @@ export interface CasesListResponse {
 
 export interface CreateCaseRequest {
   patient_id: string;
-  patient_mbo: string;
   icd_code: string;
   icd_display: string;
   onset_date: string;
@@ -842,7 +850,6 @@ export interface VisitResponse {
 
 export interface CreateVisitRequest {
   patient_id: string;
-  patient_mbo: string;
   nacin_prijema?: string;   // 1-10, default: "6" (Ostalo)
   vrsta_posjete?: string;   // 1-3, default: "1" (Pacijent prisutan)
   tip_posjete?: string;     // 1-3, default: "1" (Posjeta LOM)

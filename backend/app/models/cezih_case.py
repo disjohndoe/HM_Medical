@@ -26,7 +26,7 @@ class CezihCase(BaseTenantModel):
     patient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True,
     )
-    patient_mbo: Mapped[str] = mapped_column(String(20), nullable=False)
+    patient_mbo: Mapped[str] = mapped_column(String(50), nullable=False)
     icd_code: Mapped[str] = mapped_column(String(20), nullable=False)
     icd_display: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     clinical_status: Mapped[str | None] = mapped_column(

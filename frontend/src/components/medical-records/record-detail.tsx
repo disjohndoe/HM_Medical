@@ -34,11 +34,11 @@ interface RecordDetailProps {
   onOpenChange: (open: boolean) => void
   record: MedicalRecord
   patientId: string
-  patientMbo?: string | null
+  hasCezihIdentifier?: boolean
   onEdit: () => void
 }
 
-export function RecordDetail({ open, onOpenChange, record, patientId, patientMbo, onEdit }: RecordDetailProps) {
+export function RecordDetail({ open, onOpenChange, record, patientId, hasCezihIdentifier = false, onEdit }: RecordDetailProps) {
   const cancelDocument = useCancelDocument()
   const replaceDocument = useReplaceDocument()
   const { canPerformCezihOps, canEditMedicalRecord, canUseHzzo } = usePermissions()
@@ -266,8 +266,8 @@ export function RecordDetail({ open, onOpenChange, record, patientId, patientMbo
             {canPerformCezihOps && cezihEligible && (cezihState === "lokalno" || cezihState === "ceka_slanje") && (
               <Button
                 onClick={() => setSendNalazOpen(true)}
-                disabled={!patientMbo}
-                title={!patientMbo ? "Pacijent nema MBO — potreban za CEZIH" : undefined}
+                disabled={!hasCezihIdentifier}
+                title={!hasCezihIdentifier ? "Pacijent nema CEZIH identifikator — potreban za CEZIH" : undefined}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <Send className="mr-2 h-4 w-4" />
@@ -358,7 +358,7 @@ export function RecordDetail({ open, onOpenChange, record, patientId, patientMbo
       open={sendNalazOpen}
       onOpenChange={setSendNalazOpen}
       patientId={patientId}
-      patientMbo={patientMbo ?? null}
+      hasCezihIdentifier={hasCezihIdentifier}
       onlyRecordId={record.id}
     />
   </>

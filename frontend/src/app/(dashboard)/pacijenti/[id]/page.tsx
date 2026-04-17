@@ -23,6 +23,7 @@ import { RecordForm } from "@/components/medical-records/record-form"
 import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { useQueryClient } from "@tanstack/react-query"
 import { usePatient } from "@/lib/hooks/use-patients"
+import { hasCezihIdentifier } from "@/lib/types"
 import { useExportPatientData } from "@/lib/hooks/use-patient-rights"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
@@ -104,8 +105,8 @@ export default function PacijentDetailPage() {
               size="lg"
               className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
               onClick={() => {
-                if (!patient.mbo) {
-                  toast.error("Pacijent nema MBO — posjete nisu dostupne")
+                if (!hasCezihIdentifier(patient)) {
+                  toast.error("Pacijent nema CEZIH identifikator — posjete nisu dostupne")
                   return
                 }
                 setActiveTab("cezih")
@@ -157,7 +158,7 @@ export default function PacijentDetailPage() {
           {ekartonOpen && (
             <EkartonView
               patientId={id}
-              patientMbo={patient.mbo}
+              hasCezihIdentifier={hasCezihIdentifier(patient)}
               alergije={patient.alergije}
             />
           )}
@@ -207,6 +208,26 @@ export default function PacijentDetailPage() {
                   <dt className="text-sm text-muted-foreground">MBO</dt>
                   <dd className="font-medium">{patient.mbo || "—"}</dd>
                 </div>
+                {(patient.drzavljanstvo || patient.broj_putovnice || patient.ehic_broj || patient.cezih_patient_id) && (
+                  <>
+                    <div>
+                      <dt className="text-sm text-muted-foreground">Državljanstvo</dt>
+                      <dd className="font-medium">{patient.drzavljanstvo || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm text-muted-foreground">Putovnica</dt>
+                      <dd className="font-medium font-mono">{patient.broj_putovnice || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm text-muted-foreground">EHIC</dt>
+                      <dd className="font-medium font-mono">{patient.ehic_broj || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm text-muted-foreground">CEZIH ID</dt>
+                      <dd className="font-medium font-mono text-xs">{patient.cezih_patient_id || "—"}</dd>
+                    </div>
+                  </>
+                )}
               </dl>
             </CardContent>
           </Card>
@@ -286,7 +307,7 @@ export default function PacijentDetailPage() {
 
         {canViewMedicalRecords && (
           <TabsContent value="nalazi">
-            <RecordList patientId={id} patientMbo={patient.mbo} />
+            <RecordList patientId={id} hasCezihIdentifier={hasCezihIdentifier(patient)} />
           </TabsContent>
         )}
 
@@ -323,7 +344,7 @@ export default function PacijentDetailPage() {
 
         {canViewCezih && (
           <TabsContent value="cezih">
-            <PatientCezihTab patientId={id} patientMbo={patient.mbo} />
+            <PatientCezihTab patientId={id} hasCezihIdentifier={hasCezihIdentifier(patient)} />
           </TabsContent>
         )}
       </Tabs>
@@ -338,7 +359,7 @@ export default function PacijentDetailPage() {
         open={sendNalazOpen}
         onOpenChange={setSendNalazOpen}
         patientId={id}
-        patientMbo={patient.mbo}
+        hasCezihIdentifier={hasCezihIdentifier(patient)}
       />
     </div>
   )

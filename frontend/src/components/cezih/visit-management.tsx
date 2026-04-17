@@ -90,13 +90,12 @@ const VISIT_ACTIONS = [
 
 interface VisitManagementProps {
   patientId: string
-  patientMbo: string
   onNavigateToCase?: () => void
 }
 
-export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: VisitManagementProps) {
+export function VisitManagement({ patientId, onNavigateToCase }: VisitManagementProps) {
   const { tenant } = useAuth()
-  const { data: visitsData, isLoading } = useListVisits(patientMbo)
+  const { data: visitsData, isLoading } = useListVisits(patientId)
   const createVisit = useCreateVisit()
   const updateVisit = useUpdateVisit()
   const visitAction = useVisitAction()
@@ -124,7 +123,7 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
 
   const visits = visitsData?.visits ?? []
   const myOrgCode = tenant?.sifra_ustanove || ""
-  const { data: casesData } = useRetrieveCases(patientMbo)
+  const { data: casesData } = useRetrieveCases(patientId)
   const activeCases = (casesData?.cases ?? []).filter((c) => c.clinical_status === "active")
 
   const isExternalVisit = (v: VisitItem) =>
@@ -155,7 +154,7 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
   const handleCreate = () => {
     createVisit.mutate(
       {
-        patient_id: patientId, patient_mbo: patientMbo,
+        patient_id: patientId,
         nacin_prijema: nacinPrijema,
         tip_posjete: tipPosjete,
         reason: reason || undefined,
@@ -183,7 +182,7 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
   const handleAction = (visitId: string, action: string) => {
     const visit = visits.find((v) => v.visit_id === visitId)
     visitAction.mutate(
-      { visitId, action, patientMbo, periodStart: visit?.period_start },
+      { visitId, action, patientId, periodStart: visit?.period_start },
       {
         onSuccess: () => {
           const label = VISIT_ACTIONS.find((a) => a.value === action)?.label || action
@@ -205,7 +204,7 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
         diagnosis_case_id: editCaseId || undefined,
         additional_practitioner_id: editPractitionerId || undefined,
         period_start: editPeriodStart,
-        patientMbo,
+        patientId,
       },
       {
         onSuccess: (res) => {

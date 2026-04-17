@@ -29,7 +29,7 @@ class CezihVisit(BaseTenantModel):
     patient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True,
     )
-    patient_mbo: Mapped[str] = mapped_column(String(20), nullable=False)
+    patient_mbo: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="in-progress",
     )

@@ -39,12 +39,21 @@ def _join_record_query(base):
             Patient.ime.label("patient_ime"),
             Patient.prezime.label("patient_prezime"),
             Patient.mbo.label("patient_mbo"),
+            Patient.cezih_patient_id.label("patient_cezih_patient_id"),
+            Patient.ehic_broj.label("patient_ehic_broj"),
+            Patient.broj_putovnice.label("patient_broj_putovnice"),
         )
     )
 
 
 def _record_row_to_dict(row) -> dict:
     rec = row[0]
+    patient_has_cezih = bool(
+        row.patient_mbo
+        or row.patient_cezih_patient_id
+        or row.patient_ehic_broj
+        or row.patient_broj_putovnice
+    )
     return {
         "id": rec.id,
         "tenant_id": rec.tenant_id,
@@ -67,6 +76,7 @@ def _record_row_to_dict(row) -> dict:
         "patient_ime": row.patient_ime,
         "patient_prezime": row.patient_prezime,
         "patient_mbo": row.patient_mbo,
+        "patient_has_cezih_identifier": patient_has_cezih,
         "created_at": rec.created_at,
         "updated_at": rec.updated_at,
     }

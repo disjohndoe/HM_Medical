@@ -48,6 +48,23 @@ _IDENTIFIER_LABEL_MAP = {
 }
 
 
+def resolve_cezih_identifier(patient) -> tuple[str, str]:
+    """Return (system_uri, value) for CEZIH FHIR identifier queries.
+
+    Priority: MBO (Croatian insured) > jedinstveni-id (PMIR-registered foreigner)
+    > EHIC > putovnica. Raises CezihError if the patient carries none of these.
+    """
+    if patient.mbo:
+        return (SYS_MBO, patient.mbo)
+    if getattr(patient, "cezih_patient_id", None):
+        return (SYS_JEDINSTVENI, patient.cezih_patient_id)
+    if getattr(patient, "ehic_broj", None):
+        return (SYS_EUROPSKA, patient.ehic_broj)
+    if getattr(patient, "broj_putovnice", None):
+        return (SYS_PUTOVNICA, patient.broj_putovnice)
+    raise CezihError("Pacijent nema CEZIH identifikator (MBO, CEZIH ID, EHIC ili putovnica)")
+
+
 async def search_patient_by_identifier(
     client: httpx.AsyncClient,
     identifier_system: str,
@@ -190,21 +207,31 @@ async def fetch_patient_demographics(client: httpx.AsyncClient, mbo: str) -> dic
     }
 
 
-async def check_insurance(client: httpx.AsyncClient, mbo: str) -> dict:
-    """Patient demographics lookup by MBO (ITI-78 PDQm).
+async def check_insurance(
+    client: httpx.AsyncClient,
+    system_uri: str,
+    value: str,
+) -> dict:
+    """Patient demographics lookup (ITI-78 PDQm).
 
-    GET /patient-registry-services/api/v1/Patient?identifier={SYS_MBO}|{mbo}
+    GET /patient-registry-services/api/v1/Patient?identifier={system_uri}|{value}
+
+    For Croatian insured patients pass (SYS_MBO, mbo). For foreigners use the
+    jedinstveni-id / EHIC / putovnica identifier returned by the resolver.
     """
     fhir_client = CezihFhirClient(client)
-    params = {"identifier": f"{SYS_MBO}|{mbo}"}
+    params = {"identifier": f"{system_uri}|{value}"}
 
     response = await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
+    # The legacy "mbo" response key is kept for UI compatibility; it always
+    # carries the identifier value that was queried, regardless of system.
+    queried_value = value
 
     if response.get("resourceType") == "Bundle":
         entries = response.get("entry", [])
         if not entries:
             return {
-                "mbo": mbo,
+                "mbo": queried_value,
                 "ime": "",
                 "prezime": "",
                 "datum_rodjenja": "",
@@ -217,18 +244,16 @@ async def check_insurance(client: httpx.AsyncClient, mbo: str) -> dict:
         patient = FHIRPatient.model_validate(entries[0].get("resource", {}))
         family, given = _extract_name(patient)
 
-        # Extract OIB from identifiers
         oib = ""
         for ident in patient.identifier:
             if ident.system and ident.system.endswith("/OIB") and ident.value:
                 oib = ident.value
 
-        # Map FHIR gender to Croatian
         spol_map = {"male": "M", "female": "Ž", "other": "Ostalo", "unknown": "Nepoznato"}
         spol = spol_map.get(patient.gender or "", "")
 
         return {
-            "mbo": mbo,
+            "mbo": queried_value,
             "ime": given,
             "prezime": family,
             "datum_rodjenja": patient.birthDate or "",
@@ -348,8 +373,8 @@ async def _build_document_bundle(
         "subject": {
             "type": "Patient",
             "identifier": {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
-                "value": patient_data.get("mbo", ""),
+                "system": patient_data.get("identifier_system") or SYS_MBO,
+                "value": patient_data.get("identifier_value") or patient_data.get("mbo", ""),
             },
             "display": patient_display,
         },
@@ -560,7 +585,8 @@ async def send_enalaz(
 async def search_documents(
     client: httpx.AsyncClient,
     *,
-    patient_mbo: str | None = None,
+    patient_system: str | None = None,
+    patient_value: str | None = None,
     document_type: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -568,13 +594,13 @@ async def search_documents(
 ) -> list[dict]:
     """Search clinical documents (ITI-67 MHD — flexible parameters for TC21).
 
-    Supports search by patient, document type, date range, and status.
+    Supports search by patient (system+value), document type, date range, status.
     """
     fhir_client = CezihFhirClient(client)
     params: dict = {}
 
-    if patient_mbo:
-        params["patient.identifier"] = f"http://fhir.cezih.hr/specifikacije/identifikatori/MBO|{patient_mbo}"
+    if patient_system and patient_value:
+        params["patient.identifier"] = f"{patient_system}|{patient_value}"
     if document_type:
         params["type"] = f"http://fhir.cezih.hr/specifikacije/vrste-dokumenata|{document_type}"
     if date_from:
@@ -1149,14 +1175,19 @@ def _extract_cezih_patient_identifier(response: dict) -> str:
 # ============================================================
 
 
-async def list_visits(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]:
+async def list_visits(
+    client: httpx.AsyncClient,
+    system_uri: str,
+    value: str,
+) -> list[dict]:
     """List encounters/visits for a patient (QEDm Encounter query).
 
-    GET /ihe-qedm-services/api/v1/Encounter?patient.identifier={SYS_MBO}|{mbo}
+    GET /ihe-qedm-services/api/v1/Encounter?patient.identifier={system_uri}|{value}
     """
     fhir_client = CezihFhirClient(client)
+    patient_mbo = value  # kept as dict-key for back-compat with UI/mirror rows
     params = {
-        "patient.identifier": f"http://fhir.cezih.hr/specifikacije/identifikatori/MBO|{patient_mbo}",
+        "patient.identifier": f"{system_uri}|{value}",
     }
     response = await fhir_client.get("ihe-qedm-services/api/v1/Encounter", params=params)
 
@@ -1234,11 +1265,15 @@ async def list_visits(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]
     return visits
 
 
-async def retrieve_cases(client: httpx.AsyncClient, patient_mbo: str) -> list[dict]:
+async def retrieve_cases(
+    client: httpx.AsyncClient,
+    system_uri: str,
+    value: str,
+) -> list[dict]:
     """Retrieve existing cases for a patient (TC15, QEDm)."""
     fhir_client = CezihFhirClient(client)
     params = {
-        "patient.identifier": f"http://fhir.cezih.hr/specifikacije/identifikatori/MBO|{patient_mbo}",
+        "patient.identifier": f"{system_uri}|{value}",
     }
     response = await fhir_client.get("ihe-qedm-services/api/v1/Condition", params=params)
 
@@ -1283,6 +1318,8 @@ async def create_case(
     verification_status: str = "confirmed",
     note_text: str | None = None,
     source_oid: str | None = None,
+    *,
+    identifier_system: str | None = None,
 ) -> dict:
     """Create a case via FHIR messaging (TC16, code 2.1).
 
@@ -1291,9 +1328,12 @@ async def create_case(
     transition with current roles") on cases that are still "unconfirmed".
     Users can override via the 2.6 data-update flow.
     """
+    from app.services.cezih.message_builder import ID_MBO
     fhir_client = CezihFhirClient(client)
     condition = build_condition_create(
-        patient_mbo=patient_mbo, icd_code=icd_code, icd_display=icd_display,
+        patient_mbo=patient_mbo,
+        identifier_system=identifier_system or ID_MBO,
+        icd_code=icd_code, icd_display=icd_display,
         onset_date=onset_date, practitioner_id=practitioner_id,
         verification_status=verification_status, note_text=note_text,
     )
@@ -1327,6 +1367,7 @@ async def create_recurring_case(
     verification_status: str = "confirmed",
     note_text: str | None = None,
     source_oid: str | None = None,
+    identifier_system: str | None = None,
 ) -> dict:
     """Create recurring case via FHIR messaging (code 2.2).
 
@@ -1334,9 +1375,12 @@ async def create_recurring_case(
     Requires: ICD code + verificationStatus + onset[x], identifier FORBIDDEN
     (server assigns new global identifier).
     """
+    from app.services.cezih.message_builder import ID_MBO
     fhir_client = CezihFhirClient(client)
     condition = build_condition_create(
-        patient_mbo=patient_mbo, icd_code=icd_code, icd_display=icd_display,
+        patient_mbo=patient_mbo,
+        identifier_system=identifier_system or ID_MBO,
+        icd_code=icd_code, icd_display=icd_display,
         onset_date=onset_date, practitioner_id=practitioner_id,
         verification_status=verification_status, note_text=note_text,
     )
@@ -1366,6 +1410,8 @@ async def update_case(
     org_code: str,
     action: str,
     source_oid: str | None = None,
+    *,
+    identifier_system: str | None = None,
 ) -> dict:
     """Update a case via FHIR messaging (TC17, codes 2.2-2.7).
 
@@ -1399,8 +1445,10 @@ async def update_case(
         rules = CASE_EVENT_PROFILE.get(event_code)
         if rules is None:
             raise CezihError(f"No CASE_EVENT_PROFILE rules for event code {event_code}")
+        from app.services.cezih.message_builder import ID_MBO
         condition = build_condition_status_update(
             case_identifier=case_identifier, patient_mbo=patient_mbo,
+            identifier_system=identifier_system or ID_MBO,
             clinical_status=rules["cs_value"] if rules["cs"] else None,
             abatement_date=(
                 datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
@@ -1437,15 +1485,18 @@ async def update_case_data(
     abatement_date: str | None = None,
     note_text: str | None = None,
     source_oid: str | None = None,
+    identifier_system: str | None = None,
 ) -> dict:
     """Update case metadata via FHIR messaging (code 2.6).
 
     Updates data fields WITHOUT changing clinicalStatus.
     """
+    from app.services.cezih.message_builder import ID_MBO
     fhir_client = CezihFhirClient(client)
     condition = build_condition_data_update(
         case_identifier=case_identifier,
         patient_mbo=patient_mbo,
+        identifier_system=identifier_system or ID_MBO,
         current_clinical_status=current_clinical_status,
         verification_status=verification_status,
         icd_code=icd_code, icd_display=icd_display,
@@ -1493,6 +1544,7 @@ async def replace_document(
     if not original_document_oid and patient_data.get("mbo"):
         original_document_oid = await _lookup_document_oid(
             fhir_client, original_reference_id, patient_data["mbo"],
+            identifier_system=patient_data.get("identifier_system") or SYS_MBO,
         )
 
     if original_document_oid:
@@ -1552,6 +1604,7 @@ async def _lookup_document_oid(
     fhir_client: "CezihFhirClient",
     reference_id: str,
     patient_mbo: str,
+    identifier_system: str = SYS_MBO,
 ) -> str:
     """Look up a document's OID from CEZIH via ITI-67 search.
 
@@ -1563,7 +1616,7 @@ async def _lookup_document_oid(
 
     try:
         params = {
-            "patient.identifier": f"{SYS_MBO}|{patient_mbo}",
+            "patient.identifier": f"{identifier_system}|{patient_mbo}",
             "status": "current",
         }
         response = await fhir_client.get("doc-mhd-svc/api/v1/DocumentReference", params=params)

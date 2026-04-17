@@ -44,10 +44,10 @@ const PAGE_SIZE = 20
 
 interface RecordListProps {
   patientId: string
-  patientMbo?: string | null
+  hasCezihIdentifier?: boolean
 }
 
-export function RecordList({ patientId, patientMbo }: RecordListProps) {
+export function RecordList({ patientId, hasCezihIdentifier = false }: RecordListProps) {
   const [tipFilter, setTipFilter] = useState<string>("")
   const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
@@ -248,7 +248,7 @@ export function RecordList({ patientId, patientMbo }: RecordListProps) {
         open={sendNalazOpen}
         onOpenChange={setSendNalazOpen}
         patientId={patientId}
-        patientMbo={patientMbo ?? null}
+        hasCezihIdentifier={hasCezihIdentifier}
         onlyRecordId={sendRecordId}
       />
     </div>

@@ -150,51 +150,64 @@ async def import_patient_from_cezih(
     }
 
 
-async def _persist_insurance_to_patient(
-    db: AsyncSession, tenant_id: UUID, mbo: str, status_osiguranja: str,
-) -> UUID | None:
-    """Update patient's cached insurance status. Returns patient ID for audit."""
+async def _persist_insurance_to_patient_by_id(
+    db: AsyncSession, patient_id: UUID, status_osiguranja: str,
+) -> None:
+    """Update patient's cached insurance status by patient UUID."""
     from app.models.patient import Patient
 
-    result = await db.execute(
-        select(Patient).where(Patient.tenant_id == tenant_id, Patient.mbo == mbo)
-    )
-    patient = result.scalar_one_or_none()
+    patient = await db.get(Patient, patient_id)
     if patient:
         patient.cezih_insurance_status = status_osiguranja
         patient.cezih_insurance_checked_at = datetime.now(UTC)
         await db.flush()
-        return patient.id
-    return None
 
 
 async def insurance_check(
-    mbo: str,
+    patient_id: UUID,
     *,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
 ) -> dict:
+    """Check CEZIH insurance/demographics for a local patient.
+
+    Resolves the best CEZIH identifier (MBO > jedinstveni-id > EHIC > passport)
+    from the patient record and runs PDQm. Works for Croatian-insured and
+    PMIR-registered foreigners alike.
+    """
     _require_audit_params(db, user_id, tenant_id)
 
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
     try:
-        result = await real_service.check_insurance(http_client, mbo)
+        system_uri, value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    try:
+        result = await real_service.check_insurance(http_client, system_uri, value)
     except CezihError as e:
         logger.error("CEZIH insurance check failed: %s", e.message)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
 
-    patient_id = None
-    if db and tenant_id:
-        patient_id = await _persist_insurance_to_patient(
-            db, tenant_id, mbo, result.get("status_osiguranja", ""),
-        )
+    await _persist_insurance_to_patient_by_id(
+        db, patient_id, result.get("status_osiguranja", ""),
+    )
 
     await _write_audit(
         db, tenant_id, user_id,
         action="insurance_check",
         resource_id=patient_id,
-        details={"mbo": mbo, "result": result.get("status_osiguranja")},
+        details={
+            "identifier_system": system_uri,
+            "identifier_value": value,
+            "result": result.get("status_osiguranja"),
+        },
     )
 
     return result
@@ -233,14 +246,15 @@ async def send_enalaz(
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
 
-    if not patient.mbo:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Pacijent nema MBO broj. MBO je obavezan za slanje nalaza na CEZIH.",
-        )
+    try:
+        identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
     patient_data = {
-        "mbo": patient.mbo,
+        "mbo": identifier_value,  # legacy key — holds whichever identifier was resolved
+        "identifier_system": identifier_system,
+        "identifier_value": identifier_value,
         "ime": patient.ime,
         "prezime": patient.prezime,
     }
@@ -326,14 +340,15 @@ async def send_erecept(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Pacijent nije pronađen.",
         )
-    if not patient.mbo:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Pacijent nema MBO broj. MBO je obavezan za slanje e-Recepta na CEZIH.",
-        )
+    try:
+        identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
     patient_data = {
-        "mbo": patient.mbo,
+        "mbo": identifier_value,
+        "identifier_system": identifier_system,
+        "identifier_value": identifier_value,
         "ime": patient.ime,
         "prezime": patient.prezime,
     }
@@ -643,21 +658,34 @@ _LOCAL_MIRROR_WINDOW_MINUTES = 10
 async def _lookup_patient_id(
     db: AsyncSession, tenant_id: UUID, patient_mbo: str,
 ) -> UUID | None:
+    """Look up local Patient.id by any CEZIH identifier value.
+
+    `patient_mbo` is now a misnomer — it holds whatever identifier value was used
+    for the CEZIH call (MBO for Croatian, jedinstveni-id / EHIC / passport for
+    foreigners). Try each column to find the owner.
+    """
     from app.models.patient import Patient
+    from sqlalchemy import or_
 
     result = await db.execute(
         select(Patient.id).where(
             Patient.tenant_id == tenant_id,
-            Patient.mbo == patient_mbo,
+            or_(
+                Patient.mbo == patient_mbo,
+                Patient.cezih_patient_id == patient_mbo,
+                Patient.ehic_broj == patient_mbo,
+                Patient.broj_putovnice == patient_mbo,
+            ),
         )
     )
     return result.scalar_one_or_none()
 
 
-async def _persist_local_case(
+async def _persist_local_case_by_patient_id(
     db: AsyncSession | None,
     tenant_id: UUID | None,
-    patient_mbo: str,
+    patient_id: UUID,
+    identifier_value: str,
     local_case_id: str,
     cezih_case_id: str,
     icd_code: str,
@@ -669,19 +697,11 @@ async def _persist_local_case(
     if not db or not tenant_id:
         return
     try:
-        patient_id = await _lookup_patient_id(db, tenant_id, patient_mbo)
-        if patient_id is None:
-            logger.warning(
-                "Cannot mirror CEZIH case locally: patient with MBO %s not found in tenant %s",
-                patient_mbo, tenant_id,
-            )
-            return
         from app.models.cezih_case import CezihCase
-
         db.add(CezihCase(
             tenant_id=tenant_id,
             patient_id=patient_id,
-            patient_mbo=patient_mbo,
+            patient_mbo=identifier_value,
             local_case_id=local_case_id,
             cezih_case_id=cezih_case_id or None,
             icd_code=icd_code,
@@ -696,10 +716,11 @@ async def _persist_local_case(
         logger.exception("Failed to persist local CezihCase mirror (non-fatal)")
 
 
-async def _persist_local_visit(
+async def _persist_local_visit_by_patient_id(
     db: AsyncSession | None,
     tenant_id: UUID | None,
-    patient_mbo: str,
+    patient_id: UUID,
+    identifier_value: str,
     cezih_visit_id: str,
     status_str: str,
     admission_type: str | None,
@@ -709,19 +730,11 @@ async def _persist_local_visit(
     if not db or not tenant_id:
         return
     try:
-        patient_id = await _lookup_patient_id(db, tenant_id, patient_mbo)
-        if patient_id is None:
-            logger.warning(
-                "Cannot mirror CEZIH visit locally: patient with MBO %s not found in tenant %s",
-                patient_mbo, tenant_id,
-            )
-            return
         from app.models.cezih_visit import CezihVisit
-
         db.add(CezihVisit(
             tenant_id=tenant_id,
             patient_id=patient_id,
-            patient_mbo=patient_mbo,
+            patient_mbo=identifier_value,
             cezih_visit_id=cezih_visit_id or None,
             status=status_str or "in-progress",
             admission_type=admission_type,
@@ -734,8 +747,8 @@ async def _persist_local_visit(
         logger.exception("Failed to persist local CezihVisit mirror (non-fatal)")
 
 
-async def _fetch_fresh_local_cases(
-    db: AsyncSession | None, tenant_id: UUID | None, patient_mbo: str,
+async def _fetch_fresh_local_cases_by_patient(
+    db: AsyncSession | None, tenant_id: UUID | None, patient_id: UUID,
 ) -> list[dict]:
     if not db or not tenant_id:
         return []
@@ -748,7 +761,7 @@ async def _fetch_fresh_local_cases(
         result = await db.execute(
             select(CezihCase).where(
                 CezihCase.tenant_id == tenant_id,
-                CezihCase.patient_mbo == patient_mbo,
+                CezihCase.patient_id == patient_id,
                 CezihCase.created_at >= cutoff,
             ).order_by(CezihCase.created_at.desc())
         )
@@ -780,8 +793,8 @@ _TIP_POSJETE_LABELS = {
 }
 
 
-async def _fetch_fresh_local_visits(
-    db: AsyncSession | None, tenant_id: UUID | None, patient_mbo: str,
+async def _fetch_fresh_local_visits_by_patient(
+    db: AsyncSession | None, tenant_id: UUID | None, patient_id: UUID,
 ) -> list[dict]:
     """Fetch local CezihVisit mirror rows.
 
@@ -802,7 +815,7 @@ async def _fetch_fresh_local_visits(
         result = await db.execute(
             select(CezihVisit).where(
                 CezihVisit.tenant_id == tenant_id,
-                CezihVisit.patient_mbo == patient_mbo,
+                CezihVisit.patient_id == patient_id,
             ).order_by(CezihVisit.created_at.desc())
         )
         rows = result.scalars().all()
@@ -1052,25 +1065,39 @@ async def _update_local_visit(
 
 
 async def dispatch_retrieve_cases(
-    patient_mbo: str,
+    patient_id: UUID,
     *,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
 ) -> list[dict]:
     _require_audit_params(db, user_id, tenant_id)
+
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
     try:
-        result = await real_service.retrieve_cases(http_client, patient_mbo)
+        system_uri, value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    try:
+        result = await real_service.retrieve_cases(http_client, system_uri, value)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    await _write_audit(db, tenant_id, user_id, action="case_retrieve", details={"mbo": patient_mbo})
-    local = await _fetch_fresh_local_cases(db, tenant_id, patient_mbo)
+    await _write_audit(
+        db, tenant_id, user_id, action="case_retrieve",
+        details={"patient_id": str(patient_id), "identifier_system": system_uri},
+    )
+    local = await _fetch_fresh_local_cases_by_patient(db, tenant_id, patient_id)
     return _merge_with_local(result, local, id_key="case_id")
 
 
 async def dispatch_create_case(
-    patient_mbo: str,
+    patient_id: UUID,
     practitioner_id: str,
     org_code: str,
     icd_code: str,
@@ -1079,27 +1106,39 @@ async def dispatch_create_case(
     verification_status: str = "unconfirmed",
     note_text: str | None = None,
     *,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
     _require_audit_params(db, user_id, tenant_id)
+
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
+    try:
+        identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         result = await real_service.create_case(
-            http_client, patient_mbo, practitioner_id, org_code,
+            http_client, identifier_value, practitioner_id, org_code,
             icd_code, icd_display, onset_date, verification_status, note_text,
             source_oid=source_oid,
+            identifier_system=identifier_system,
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
         db, tenant_id, user_id, action="case_create",
-        details={"mbo": patient_mbo, "icd": icd_code},
+        details={"patient_id": str(patient_id), "icd": icd_code},
     )
-    await _persist_local_case(
-        db, tenant_id, patient_mbo,
+    await _persist_local_case_by_patient_id(
+        db, tenant_id, patient_id, identifier_value,
         local_case_id=result.get("local_case_id") or "",
         cezih_case_id=result.get("cezih_case_id") or "",
         icd_code=icd_code, icd_display=icd_display,
@@ -1112,50 +1151,62 @@ async def dispatch_create_case(
 
 async def dispatch_update_case(
     case_id: str,
-    patient_mbo: str,
+    patient_id: UUID,
     practitioner_id: str,
     org_code: str,
     action: str,
     *,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
     _require_audit_params(db, user_id, tenant_id)
+
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+    try:
+        identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         if action == "create_recurring":
             # 2.2 Ponavljajući creates a NEW case inheriting the parent's ICD.
             # Look up parent via QEDm since we don't persist cases locally.
             from datetime import UTC, datetime
-            existing = await real_service.retrieve_cases(http_client, patient_mbo)
+            existing = await real_service.retrieve_cases(http_client, identifier_system, identifier_value)
             parent = next((c for c in existing if c.get("case_id") == case_id), None)
             if parent is None:
                 raise CezihError(f"Roditeljski slučaj {case_id} nije pronađen za pacijenta.")
             result = await real_service.create_recurring_case(
-                http_client, patient_mbo, practitioner_id, org_code,
+                http_client, identifier_value, practitioner_id, org_code,
                 icd_code=parent.get("icd_code") or "",
                 icd_display=parent.get("icd_display") or "",
                 onset_date=datetime.now(UTC).strftime("%Y-%m-%d"),
                 verification_status=parent.get("verification_status") or "confirmed",
                 source_oid=source_oid,
+                identifier_system=identifier_system,
             )
         else:
             result = await real_service.update_case(
-                http_client, case_id, patient_mbo, practitioner_id, org_code, action,
+                http_client, case_id, identifier_value, practitioner_id, org_code, action,
                 source_oid=source_oid,
+                identifier_system=identifier_system,
             )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
         db, tenant_id, user_id, action=f"case_{action}",
-        details={"case_id": case_id, "action": action},
+        details={"case_id": case_id, "action": action, "patient_id": str(patient_id)},
     )
     if action == "create_recurring":
         new_cezih_id = result.get("cezih_case_id") or ""
-        await _persist_local_case(
-            db, tenant_id, patient_mbo,
+        await _persist_local_case_by_patient_id(
+            db, tenant_id, patient_id, identifier_value,
             local_case_id=result.get("local_case_id") or "",
             cezih_case_id=new_cezih_id,
             icd_code=result.get("icd_code") or "",
@@ -1182,7 +1233,7 @@ async def dispatch_update_case(
 
 async def dispatch_update_case_data(
     case_id: str,
-    patient_mbo: str,
+    patient_id: UUID,
     practitioner_id: str,
     org_code: str,
     *,
@@ -1193,22 +1244,33 @@ async def dispatch_update_case_data(
     onset_date: str | None = None,
     abatement_date: str | None = None,
     note_text: str | None = None,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
     _require_audit_params(db, user_id, tenant_id)
+
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+    try:
+        identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         result = await real_service.update_case_data(
-            http_client, case_id, patient_mbo, practitioner_id, org_code,
+            http_client, case_id, identifier_value, practitioner_id, org_code,
             current_clinical_status=current_clinical_status,
             verification_status=verification_status,
             icd_code=icd_code, icd_display=icd_display,
             onset_date=onset_date, abatement_date=abatement_date,
             note_text=note_text,
             source_oid=source_oid,
+            identifier_system=identifier_system,
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
@@ -1233,27 +1295,45 @@ async def dispatch_update_case_data(
 
 async def dispatch_search_documents(
     *,
-    patient_mbo: str | None = None,
+    patient_id: UUID | None = None,
     document_type: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     status_filter: str | None = None,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
 ) -> list[dict]:
     _require_audit_params(db, user_id, tenant_id)
+
+    patient_system: str | None = None
+    patient_value: str | None = None
+    if patient_id is not None:
+        from app.models.patient import Patient
+        patient = await db.get(Patient, patient_id)
+        if not patient or patient.tenant_id != tenant_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+        try:
+            patient_system, patient_value = real_service.resolve_cezih_identifier(patient)
+        except CezihError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         result = await real_service.search_documents(
-            http_client, patient_mbo=patient_mbo, document_type=document_type,
+            http_client,
+            patient_system=patient_system, patient_value=patient_value,
+            document_type=document_type,
             date_from=date_from, date_to=date_to, status_filter=status_filter,
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
         db, tenant_id, user_id, action="document_search",
-        details={"mbo": patient_mbo or "", "type": document_type or ""},
+        details={
+            "patient_id": str(patient_id) if patient_id else "",
+            "type": document_type or "",
+        },
     )
     return result
 
@@ -1308,8 +1388,14 @@ async def dispatch_replace_document(
             if not patient_data and record.patient_id:
                 patient = await db.get(Patient, record.patient_id)
                 if patient:
+                    try:
+                        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+                    except CezihError as e:
+                        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
                     patient_data = {
-                        "mbo": patient.mbo,
+                        "mbo": id_val,
+                        "identifier_system": id_sys,
+                        "identifier_value": id_val,
                         "ime": patient.ime,
                         "prezime": patient.prezime,
                     }
@@ -1378,7 +1464,16 @@ async def dispatch_cancel_document(
             if record.patient_id:
                 patient = await db.get(Patient, record.patient_id)
                 if patient:
-                    patient_data = {"mbo": patient.mbo, "ime": patient.ime, "prezime": patient.prezime}
+                    try:
+                        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+                    except CezihError as e:
+                        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+                    patient_data = {
+                        "mbo": id_val,
+                        "identifier_system": id_sys,
+                        "identifier_value": id_val,
+                        "ime": patient.ime, "prezime": patient.prezime,
+                    }
             encounter_id = record.cezih_encounter_id or ""
             case_id = record.cezih_case_id or ""
             if not practitioner_id and record.doktor_id:
@@ -1449,21 +1544,32 @@ async def dispatch_retrieve_document(
 
 
 async def dispatch_create_visit(
-    patient_mbo: str,
+    patient_id: UUID,
     nacin_prijema: str = "6",
     vrsta_posjete: str = "1",
     tip_posjete: str = "1",
     reason: str | None = None,
     *,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
     practitioner_id: str | None = None,
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
     _require_audit_params(db, user_id, tenant_id)
+
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
+    try:
+        identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
@@ -1474,7 +1580,8 @@ async def dispatch_create_visit(
         if not practitioner_id:
             raise CezihError("HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.")
         encounter = build_encounter_create(
-            patient_mbo=patient_mbo, nacin_prijema=nacin_prijema,
+            patient_mbo=identifier_value, identifier_system=identifier_system,
+            nacin_prijema=nacin_prijema,
             vrsta_posjete=vrsta_posjete, tip_posjete=tip_posjete,
             reason=reason, practitioner_id=practitioner_id, org_code=org_code or "",
         )
@@ -1489,14 +1596,14 @@ async def dispatch_create_visit(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
         db, tenant_id, user_id, action="visit_create",
-        details={"mbo": patient_mbo, "nacin_prijema": nacin_prijema},
+        details={"patient_id": str(patient_id), "nacin_prijema": nacin_prijema},
     )
     resp = _parse_visit_response(result)
     resp["nacin_prijema"] = nacin_prijema
     resp["vrsta_posjete"] = vrsta_posjete
     resp["tip_posjete"] = tip_posjete
-    await _persist_local_visit(
-        db, tenant_id, patient_mbo,
+    await _persist_local_visit_by_patient_id(
+        db, tenant_id, patient_id, identifier_value,
         cezih_visit_id=resp.get("visit_id") or "",
         status_str=resp.get("status") or "in-progress",
         admission_type=nacin_prijema,
@@ -1528,7 +1635,7 @@ def _parse_visit_response(result: dict) -> dict:
 
 async def dispatch_update_visit(
     visit_id: str,
-    patient_mbo: str,
+    patient_id: UUID,
     reason: str | None = None,
     *,
     nacin_prijema: str | None = None,
@@ -1537,15 +1644,25 @@ async def dispatch_update_visit(
     diagnosis_case_id: str | None = None,
     additional_practitioner_id: str | None = None,
     period_start: str | None = None,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
     practitioner_id: str | None = None,
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
     _require_audit_params(db, user_id, tenant_id)
+
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+    try:
+        identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
@@ -1556,7 +1673,8 @@ async def dispatch_update_visit(
             raise CezihError("HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.")
         encounter = build_encounter_update(
             encounter_id=visit_id,
-            patient_mbo=patient_mbo,
+            patient_mbo=identifier_value,
+            identifier_system=identifier_system,
             nacin_prijema=nacin_prijema or "6",
             vrsta_posjete=vrsta_posjete or "1",
             tip_posjete=tip_posjete or "1",
@@ -1578,7 +1696,7 @@ async def dispatch_update_visit(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
         db, tenant_id, user_id, action="visit_update",
-        details={"visit_id": visit_id},
+        details={"visit_id": visit_id, "patient_id": str(patient_id)},
     )
     resp = _parse_visit_response(result)
     if nacin_prijema:
@@ -1589,7 +1707,7 @@ async def dispatch_update_visit(
         resp["tip_posjete"] = tip_posjete
     await _update_local_visit(
         db, tenant_id, visit_id,
-        patient_mbo=patient_mbo,
+        patient_mbo=identifier_value,
         tip_posjete=tip_posjete,
         admission_type=nacin_prijema,
         reason=reason,
@@ -1600,19 +1718,29 @@ async def dispatch_update_visit(
 async def dispatch_visit_action(
     visit_id: str,
     action: str,
-    patient_mbo: str,
+    patient_id: UUID,
     *,
     nacin_prijema: str = "6",
     period_start: str | None = None,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
     practitioner_id: str | None = None,
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
     _require_audit_params(db, user_id, tenant_id)
+
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+    try:
+        _sys, identifier_value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
@@ -1651,7 +1779,7 @@ async def dispatch_visit_action(
                 )
             encounter = builder_fn(
                 encounter_id=visit_id,
-                patient_mbo=patient_mbo,
+                patient_mbo=identifier_value,
                 nacin_prijema=nacin_prijema,
                 practitioner_id=practitioner_id,
                 org_code=org_code or "",
@@ -1682,37 +1810,51 @@ async def dispatch_visit_action(
     if action == "close":
         await _update_local_visit(
             db, tenant_id, visit_id,
-            patient_mbo=patient_mbo,
+            patient_mbo=identifier_value,
             status_str="finished", set_period_end=True,
         )
     elif action == "reopen":
         await _update_local_visit(
             db, tenant_id, visit_id,
-            patient_mbo=patient_mbo,
+            patient_mbo=identifier_value,
             status_str="in-progress", clear_period_end=True,
         )
     elif action == "storno":
         await _update_local_visit(
             db, tenant_id, visit_id,
-            patient_mbo=patient_mbo,
+            patient_mbo=identifier_value,
             status_str="entered-in-error",
         )
     return parsed
 
 
 async def dispatch_list_visits(
-    patient_mbo: str,
+    patient_id: UUID,
     *,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
     http_client=None,
 ) -> list[dict]:
     _require_audit_params(db, user_id, tenant_id)
+
+    from app.models.patient import Patient
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
     try:
-        result = await real_service.list_visits(http_client, patient_mbo)
+        system_uri, value = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    try:
+        result = await real_service.list_visits(http_client, system_uri, value)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-    await _write_audit(db, tenant_id, user_id, action="visit_list", details={"mbo": patient_mbo})
-    local = await _fetch_fresh_local_visits(db, tenant_id, patient_mbo)
+    await _write_audit(
+        db, tenant_id, user_id, action="visit_list",
+        details={"patient_id": str(patient_id), "identifier_system": system_uri},
+    )
+    local = await _fetch_fresh_local_visits_by_patient(db, tenant_id, patient_id)
     return _merge_visits_with_local(result, local)

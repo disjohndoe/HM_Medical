@@ -33,11 +33,11 @@ interface SendNalazDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   patientId: string
-  patientMbo?: string | null
+  hasCezihIdentifier?: boolean
   onlyRecordId?: string
 }
 
-export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo, onlyRecordId }: SendNalazDialogProps) {
+export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentifier = false, onlyRecordId }: SendNalazDialogProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
   const [progress, setProgress] = useState({ current: 0, total: 0 })
@@ -51,8 +51,8 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo, onl
 
   // Load patient visits and cases for linking
   // API returns list of dicts: {visit_id, status, period_start, visit_type_display, ...}
-  const { data: visitsData } = useListVisits(patientMbo || "")
-  const { data: casesData } = useRetrieveCases(patientMbo || "")
+  const { data: visitsData } = useListVisits(hasCezihIdentifier ? patientId : "")
+  const { data: casesData } = useRetrieveCases(hasCezihIdentifier ? patientId : "")
 
   type VisitItem = { visit_id: string; status: string; period_start?: string; visit_type_display?: string; service_provider_code?: string | null }
   type CaseItem = { case_id: string; clinical_status: string; icd_code?: string; icd_display?: string }
@@ -181,7 +181,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo, onl
 
         <div className="space-y-3 py-2">
           {/* Visit and Case selection (required by CEZIH) */}
-          {patientMbo && eligibleRecords.length > 0 && (
+          {hasCezihIdentifier && eligibleRecords.length > 0 && (
             <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
               <p className="text-xs font-medium text-muted-foreground">CEZIH kontekst (obavezno)</p>
               <div className="grid grid-cols-2 gap-2">
@@ -315,16 +315,16 @@ export function SendNalazDialog({ open, onOpenChange, patientId, patientMbo, onl
         <DialogFooter>
           <Button
             onClick={handleSend}
-            disabled={selectedIds.size === 0 || sending || !patientMbo || !selectedEncounterId || !selectedCaseId}
-            title={!patientMbo ? "Pacijent nema MBO — potreban za CEZIH" : (!selectedEncounterId || !selectedCaseId) ? "Odaberite posjetu i slučaj" : undefined}
+            disabled={selectedIds.size === 0 || sending || !hasCezihIdentifier || !selectedEncounterId || !selectedCaseId}
+            title={!hasCezihIdentifier ? "Pacijent nema CEZIH identifikator — potreban za CEZIH" : (!selectedEncounterId || !selectedCaseId) ? "Odaberite posjetu i slučaj" : undefined}
           >
             {sending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Send className="mr-2 h-4 w-4" />
             )}
-            {!patientMbo
-              ? "MBO nije dostupan"
+            {!hasCezihIdentifier
+              ? "CEZIH identifikator nedostupan"
               : sending
                 ? `Slanje ${progress.current}/${progress.total}...`
                 : `Pošalji${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}

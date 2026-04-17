@@ -86,15 +86,15 @@ function matchesIcdFilter(code: string, prefixStr: string): boolean {
 
 interface EkartonViewProps {
   patientId: string
-  patientMbo: string | null
+  hasCezihIdentifier: boolean
   alergije: string | null
 }
 
-export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProps) {
+export function EkartonView({ patientId, hasCezihIdentifier, alergije }: EkartonViewProps) {
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
-  const casesQuery = useRetrieveCases(patientMbo ?? "")
-  const visitsQuery = useListVisits(patientMbo ?? "")
-  const docsQuery = useDocumentSearch({ mbo: patientMbo ?? undefined })
+  const casesQuery = useRetrieveCases(hasCezihIdentifier ? patientId : "")
+  const visitsQuery = useListVisits(hasCezihIdentifier ? patientId : "")
+  const docsQuery = useDocumentSearch({ patient_id: hasCezihIdentifier ? patientId : undefined })
   const retrieveDoc = useRetrieveDocument()
   const insuranceMutation = useInsuranceCheck()
   const { tipLabelMap } = useRecordTypeMaps()
@@ -114,7 +114,7 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
   // Auto-check insurance on mount only if no fresh cached data (< 30 min)
   const didAutoCheck = useRef(false)
   useEffect(() => {
-    if (didAutoCheck.current || !patientMbo) return
+    if (didAutoCheck.current || !hasCezihIdentifier) return
     const lastChecked = summary?.insurance?.last_checked
     if (lastChecked) {
       const ageMinutes = (Date.now() - new Date(lastChecked).getTime()) / 60000
@@ -126,12 +126,12 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
     // If summary hasn't loaded yet, skip — this effect will re-run when it does
     if (!summary) return
     didAutoCheck.current = true
-    insuranceMutation.mutate(patientMbo)
-  }, [patientMbo, summary?.insurance?.last_checked])
+    insuranceMutation.mutate(patientId)
+  }, [hasCezihIdentifier, patientId, summary?.insurance?.last_checked])
 
   const handleCheckInsurance = () => {
-    if (!patientMbo) return
-    insuranceMutation.mutate(patientMbo)
+    if (!hasCezihIdentifier) return
+    insuranceMutation.mutate(patientId)
   }
 
   const handleDownloadPdf = (referenceId: string, contentUrl?: string) => {
@@ -204,7 +204,7 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
             <div className="flex items-center gap-2 flex-wrap">
               <Badge className="bg-red-100 text-red-800">Greška</Badge>
               <span className="text-sm text-muted-foreground">{insError.message}</span>
-              <Button size="sm" variant="outline" onClick={handleCheckInsurance} disabled={!patientMbo}>
+              <Button size="sm" variant="outline" onClick={handleCheckInsurance} disabled={!hasCezihIdentifier}>
                 Pokušaj ponovo
               </Button>
             </div>
@@ -245,7 +245,7 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Nije provjereno</span>
-              <Button size="sm" variant="outline" onClick={handleCheckInsurance} disabled={insPending || !patientMbo}>
+              <Button size="sm" variant="outline" onClick={handleCheckInsurance} disabled={insPending || !hasCezihIdentifier}>
                 Provjeri
               </Button>
             </div>
@@ -304,8 +304,8 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
             <div className="flex justify-center py-2">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : !patientMbo ? (
-            <p className="text-sm text-muted-foreground">Nema MBO — dohvat nije moguć</p>
+          ) : !hasCezihIdentifier ? (
+            <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
           ) : filteredCases.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {icdFilter && activeCases.length > 0 ? "Nema dijagnoza za odabrano područje" : "Nema aktivnih dijagnoza"}
@@ -345,8 +345,8 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
             <div className="flex justify-center py-2">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : !patientMbo ? (
-            <p className="text-sm text-muted-foreground">Nema MBO — dohvat nije moguć</p>
+          ) : !hasCezihIdentifier ? (
+            <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
           ) : activeVisits.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nema aktivnih posjeta</p>
           ) : (
@@ -393,8 +393,8 @@ export function EkartonView({ patientId, patientMbo, alergije }: EkartonViewProp
             <div className="flex justify-center py-2">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : !patientMbo ? (
-            <p className="text-sm text-muted-foreground">Nema MBO — dohvat nije moguć</p>
+          ) : !hasCezihIdentifier ? (
+            <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
           ) : documents.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nema CEZIH dokumenata</p>
           ) : (

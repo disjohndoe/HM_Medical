@@ -52,6 +52,10 @@ class PatientRead(BaseModel):
     spol: str | None
     oib: str | None
     mbo: str | None
+    broj_putovnice: str | None = None
+    ehic_broj: str | None = None
+    cezih_patient_id: str | None = None
+    drzavljanstvo: str | None = None
     adresa: str | None
     grad: str | None
     postanski_broj: str | None

@@ -60,6 +60,7 @@ class MedicalRecordRead(BaseModel):
     patient_ime: str | None = None
     patient_prezime: str | None = None
     patient_mbo: str | None = None
+    patient_has_cezih_identifier: bool = False
     tenant_id: UUID
     created_at: datetime
     updated_at: datetime

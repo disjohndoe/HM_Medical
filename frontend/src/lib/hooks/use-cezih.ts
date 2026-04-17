@@ -114,8 +114,8 @@ export function useCezihConnectionDisplay() {
 export function useInsuranceCheck() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (mbo: string) =>
-      api.post<InsuranceCheckResponse>("/cezih/provjera-osiguranja", { mbo }),
+    mutationFn: (patientId: string) =>
+      api.post<InsuranceCheckResponse>("/cezih/provjera-osiguranja", { patient_id: patientId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
@@ -345,12 +345,12 @@ export function useForeignerSearch(system: string, value: string) {
 // TC12-14: Visit Management
 // ============================================================
 
-export function useListVisits(mbo: string) {
+export function useListVisits(patientId: string) {
   return useQuery({
-    queryKey: ["cezih", "visits", mbo],
+    queryKey: ["cezih", "visits", patientId],
     queryFn: () =>
-      api.get<VisitsListResponse>(`/cezih/visits?mbo=${encodeURIComponent(mbo)}`),
-    enabled: !!mbo,
+      api.get<VisitsListResponse>(`/cezih/visits?patient_id=${encodeURIComponent(patientId)}`),
+    enabled: !!patientId,
   })
 }
 
@@ -365,10 +365,10 @@ export function useCreateVisit() {
       // seconds. Insert optimistically so the Posjete table sees it right
       // away. Do NOT invalidate ["cezih","visits"] — that would trigger a
       // refetch that blows away the optimistic row before CEZIH catches up.
-      const queryKey = ["cezih", "visits", vars.patient_mbo]
+      const queryKey = ["cezih", "visits", vars.patient_id]
       const newVisit: VisitItem = {
         visit_id: resp.visit_id,
-        patient_mbo: vars.patient_mbo,
+        patient_mbo: vars.patient_id,
         status: resp.status || "in-progress",
         visit_type: resp.nacin_prijema || vars.nacin_prijema || "6",
         visit_type_display: null,
@@ -400,19 +400,19 @@ export function useUpdateVisit() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ visitId, reason, nacin_prijema, vrsta_posjete, tip_posjete,
-      diagnosis_case_id, additional_practitioner_id, period_start, patientMbo }: {
+      diagnosis_case_id, additional_practitioner_id, period_start, patientId }: {
       visitId: string; reason?: string; nacin_prijema?: string;
       vrsta_posjete?: string; tip_posjete?: string;
       diagnosis_case_id?: string; additional_practitioner_id?: string;
-      period_start?: string; patientMbo: string
+      period_start?: string; patientId: string
     }) =>
-      api.patch<VisitResponse>(`/cezih/visits/${visitId}?mbo=${encodeURIComponent(patientMbo)}`, {
+      api.patch<VisitResponse>(`/cezih/visits/${visitId}?patient_id=${encodeURIComponent(patientId)}`, {
         reason, nacin_prijema, vrsta_posjete, tip_posjete,
         diagnosis_case_id, additional_practitioner_id, period_start,
       }),
     onSuccess: (_resp, vars) => {
       // Optimistic merge — see useCreateVisit comment.
-      const queryKey = ["cezih", "visits", vars.patientMbo]
+      const queryKey = ["cezih", "visits", vars.patientId]
       qc.setQueryData<VisitsListResponse>(queryKey, (old) => {
         if (!old) return old
         return {
@@ -445,7 +445,7 @@ export function useUpdateVisit() {
         }
       })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientMbo] })
+      qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
     },
   })
 }
@@ -453,11 +453,11 @@ export function useUpdateVisit() {
 export function useVisitAction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ visitId, action, patientMbo, periodStart }: { visitId: string; action: string; patientMbo: string; periodStart?: string | null }) =>
-      api.post<VisitResponse>(`/cezih/visits/${visitId}/action?mbo=${encodeURIComponent(patientMbo)}`, { action, period_start: periodStart || undefined }),
+    mutationFn: ({ visitId, action, patientId, periodStart }: { visitId: string; action: string; patientId: string; periodStart?: string | null }) =>
+      api.post<VisitResponse>(`/cezih/visits/${visitId}/action?patient_id=${encodeURIComponent(patientId)}`, { action, period_start: periodStart || undefined }),
     onSuccess: (_resp, vars) => {
       // Optimistic status flip — see useCreateVisit comment.
-      const queryKey = ["cezih", "visits", vars.patientMbo]
+      const queryKey = ["cezih", "visits", vars.patientId]
       const newStatus =
         vars.action === "close" ? "finished"
         : vars.action === "reopen" ? "in-progress"
@@ -486,7 +486,7 @@ export function useVisitAction() {
         })
       }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientMbo] })
+      qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
     },
   })
 }
@@ -496,12 +496,12 @@ export function useVisitAction() {
 // TC15-17: Case Management
 // ============================================================
 
-export function useRetrieveCases(mbo: string) {
+export function useRetrieveCases(patientId: string) {
   return useQuery({
-    queryKey: ["cezih", "cases", mbo],
+    queryKey: ["cezih", "cases", patientId],
     queryFn: () =>
-      api.get<CasesListResponse>(`/cezih/cases?mbo=${encodeURIComponent(mbo)}`),
-    enabled: !!mbo,
+      api.get<CasesListResponse>(`/cezih/cases?patient_id=${encodeURIComponent(patientId)}`),
+    enabled: !!patientId,
   })
 }
 
@@ -515,7 +515,7 @@ export function useCreateCase() {
       // eventually consistent — a newly-created case is usually not yet visible
       // via QEDm GET /Condition for several seconds. Insert optimistically so
       // the table + e-Nalaz case dropdown see it immediately.
-      const queryKey = ["cezih", "cases", vars.patient_mbo]
+      const queryKey = ["cezih", "cases", vars.patient_id]
       const newCase: CaseItem = {
         case_id: resp.cezih_case_id || resp.local_case_id,
         icd_code: vars.icd_code,
@@ -553,10 +553,10 @@ const CASE_ACTION_TO_STATUS: Record<string, string> = {
 export function useUpdateCaseStatus() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ caseId, mbo, action }: { caseId: string; mbo: string; action: string }) =>
-      api.put<CaseActionResponse>(`/cezih/cases/${caseId}/status?mbo=${encodeURIComponent(mbo)}`, { action }),
+    mutationFn: ({ caseId, patientId, action }: { caseId: string; patientId: string; action: string }) =>
+      api.put<CaseActionResponse>(`/cezih/cases/${caseId}/status?patient_id=${encodeURIComponent(patientId)}`, { action }),
     onSuccess: (resp, vars) => {
-      const queryKey = ["cezih", "cases", vars.mbo]
+      const queryKey = ["cezih", "cases", vars.patientId]
       qc.setQueryData<CasesListResponse>(queryKey, (old) => {
         if (!old) return old
         if (vars.action === "create_recurring") {
@@ -602,15 +602,15 @@ export function useUpdateCaseStatus() {
 export function useUpdateCaseData() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ caseId, mbo, ...data }: {
-      caseId: string; mbo: string;
+    mutationFn: ({ caseId, patientId, ...data }: {
+      caseId: string; patientId: string;
       current_clinical_status?: string; verification_status?: string;
       icd_code?: string; icd_display?: string;
       onset_date?: string; abatement_date?: string; note?: string;
     }) =>
-      api.put<CaseActionResponse>(`/cezih/cases/${caseId}/data?mbo=${encodeURIComponent(mbo)}`, data),
+      api.put<CaseActionResponse>(`/cezih/cases/${caseId}/data?patient_id=${encodeURIComponent(patientId)}`, data),
     onSuccess: (_resp, vars) => {
-      const queryKey = ["cezih", "cases", vars.mbo]
+      const queryKey = ["cezih", "cases", vars.patientId]
       qc.setQueryData<CasesListResponse>(queryKey, (old) => {
         if (!old) return old
         return {
@@ -640,10 +640,10 @@ export function useUpdateCaseData() {
 // ============================================================
 
 export function useDocumentSearch(params: {
-  mbo?: string; type?: string; date_from?: string; date_to?: string; status?: string;
+  patient_id?: string; type?: string; date_from?: string; date_to?: string; status?: string;
 }) {
   const searchParams = new URLSearchParams()
-  if (params.mbo) searchParams.set("mbo", params.mbo)
+  if (params.patient_id) searchParams.set("patient_id", params.patient_id)
   if (params.type) searchParams.set("type", params.type)
   if (params.date_from) searchParams.set("date_from", params.date_from)
   if (params.date_to) searchParams.set("date_to", params.date_to)
@@ -654,7 +654,7 @@ export function useDocumentSearch(params: {
     queryKey: ["cezih", "documents", params],
     queryFn: () =>
       api.get<DocumentSearchItem[]>(`/cezih/documents${qs ? `?${qs}` : ""}`),
-    enabled: !!(params.mbo || params.type),
+    enabled: !!(params.patient_id || params.type),
   })
 }
 

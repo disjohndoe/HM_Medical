@@ -94,10 +94,9 @@ const CASE_ACTIONS = [
 
 interface CaseManagementProps {
   patientId: string
-  patientMbo: string
 }
 
-export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
+export function CaseManagement({ patientId }: CaseManagementProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const [icdQuery, setIcdQuery] = useState("")
   const [selectedIcd, setSelectedIcd] = useState<{ code: string; display: string } | null>(null)
@@ -117,7 +116,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   const [editAbatementDate, setEditAbatementDate] = useState("")
 
 
-  const casesQuery = useRetrieveCases(patientMbo)
+  const casesQuery = useRetrieveCases(patientId)
   const createCase = useCreateCase()
   const updateStatus = useUpdateCaseStatus()
   const updateData = useUpdateCaseData()
@@ -132,7 +131,6 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
     createCase.mutate(
       {
         patient_id: patientId,
-        patient_mbo: patientMbo,
         icd_code: selectedIcd.code,
         icd_display: selectedIcd.display,
         onset_date: onsetDate,
@@ -156,7 +154,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
   const handleAction = (caseId: string, action: string) => {
     const actionLabel = CASE_ACTIONS.find((a) => a.value === action)?.label || action
     updateStatus.mutate(
-      { caseId, mbo: patientMbo, action },
+      { caseId, patientId, action },
       {
         onSuccess: () => toast.success(`${actionLabel} — uspješno`),
         onError: (err) => toast.error(err.message),
@@ -188,7 +186,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
     updateData.mutate(
       {
         caseId,
-        mbo: patientMbo,
+        patientId,
         current_clinical_status: clinicalStatus,
         verification_status: editVerification || undefined,
         icd_code: editSelectedIcd?.code || undefined,
@@ -257,7 +255,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
           Upravljanje slučajevima
         </CardTitle>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger render={<Button size="sm" disabled={!patientMbo} />}>
+          <DialogTrigger render={<Button size="sm" />}>
             <Plus className="h-4 w-4 mr-1" />
             Novi slučaj
           </DialogTrigger>
@@ -395,9 +393,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
           </div>
         ) : cases.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
-            {patientMbo
-              ? "Nema pronađenih slučajeva za ovog pacijenta."
-              : "Pacijent nema MBO — unesite MBO za pretragu slučajeva."}
+            Nema pronađenih slučajeva za ovog pacijenta.
           </p>
         ) : (
           <div className="space-y-3">
