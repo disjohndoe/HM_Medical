@@ -1030,8 +1030,9 @@ def build_condition_data_update(
         "subject": patient_ref(patient_mbo),
     }
 
-    # Must echo current clinicalStatus (cannot change it via data update)
-    if current_clinical_status:
+    # Must echo current clinicalStatus (cannot change it via data update).
+    # FHIR invariant con-5: clinicalStatus SHALL NOT be present if verificationStatus=entered-in-error.
+    if current_clinical_status and verification_status != "entered-in-error":
         condition["clinicalStatus"] = {
             "coding": [{"system": CS_CONDITION_CLINICAL, "code": current_clinical_status}],
         }
