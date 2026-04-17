@@ -84,6 +84,7 @@ export function PerformedList({ patientId }: PerformedListProps) {
     handleSubmit,
     reset,
     control,
+    setValue,
     formState: { errors },
   } = useForm<PerformedFormData>({
     resolver: standardSchemaResolver(performedSchema),
@@ -91,6 +92,12 @@ export function PerformedList({ patientId }: PerformedListProps) {
 
   const procedureId = useWatch({ control, name: "procedure_id" })
   const selectedProcedure = procedures.find((p) => p.id === procedureId)
+
+  useEffect(() => {
+    if (selectedProcedure) {
+      setValue("cijena_eur", selectedProcedure.cijena_cents / 100, { shouldValidate: true })
+    }
+  }, [selectedProcedure, setValue])
 
   useEffect(() => {
     setSelectedIds(new Set())
