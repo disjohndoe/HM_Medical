@@ -27,6 +27,13 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   useListVisits,
   useCreateVisit,
   useUpdateVisit,
@@ -456,93 +463,101 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
               </Table>
             </div>
 
-            {/* Edit form — shown below table when editing a visit */}
-            {editVisitId && (
-              <div className="rounded-lg border p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Izmjena posjete: <span className="font-mono text-xs text-muted-foreground">{editVisitId}</span></span>
-                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={cancelEdit}>×</Button>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Način prijema</Label>
-                    <Select value={editNacinPrijema} onValueChange={(v) => v && setEditNacinPrijema(v)}>
-                      <SelectTrigger className="h-8">
-                        <SelectValue>{NACIN_PRIJEMA_LABELS[editNacinPrijema] || editNacinPrijema}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
-                          <SelectItem key={val} value={val}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Vrsta posjete</Label>
-                    <Select value={editVrstaPosjete} onValueChange={(v) => v && setEditVrstaPosjete(v)}>
-                      <SelectTrigger className="h-8">
-                        <SelectValue>{VRSTA_POSJETE_LABELS[editVrstaPosjete] || editVrstaPosjete}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(VRSTA_POSJETE_LABELS).map(([val, label]) => (
-                          <SelectItem key={val} value={val}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Tip posjete</Label>
-                    <Select value={editTipPosjete} onValueChange={(v) => v && setEditTipPosjete(v)}>
-                      <SelectTrigger className="h-8">
-                        <SelectValue>{TIP_POSJETE_LABELS[editTipPosjete] || editTipPosjete}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(TIP_POSJETE_LABELS).map(([val, label]) => (
-                          <SelectItem key={val} value={val}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Razlog</Label>
-                    <Input
-                      className="h-8 text-sm"
-                      placeholder="Razlog posjete"
-                      value={editReason}
-                      onChange={(e) => setEditReason(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Dodatni liječnik (HZJZ broj)</Label>
-                    <Input
-                      className="h-8 text-sm"
-                      placeholder="HZJZ broj (opcionalno)"
-                      value={editPractitionerId}
-                      onChange={(e) => setEditPractitionerId(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Povezani slučaj (ID)</Label>
-                    <Input
-                      className="h-8 text-sm"
-                      placeholder="ID slučaja (opcionalno)"
-                      value={editCaseId}
-                      onChange={(e) => setEditCaseId(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button size="sm" variant="outline" onClick={cancelEdit}>Odustani</Button>
-                  <Button size="sm" onClick={() => handleEdit(editVisitId)} disabled={updateVisit.isPending}>
-                    {updateVisit.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
-                    Spremi izmjene
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </CardContent>
+
+      <Dialog open={!!editVisitId} onOpenChange={(open) => { if (!open) cancelEdit() }}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>
+              Izmjena posjete
+              {editVisitId && (
+                <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{editVisitId}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Način prijema</Label>
+              <Select value={editNacinPrijema} onValueChange={(v) => v && setEditNacinPrijema(v)}>
+                <SelectTrigger className="h-8">
+                  <SelectValue>{NACIN_PRIJEMA_LABELS[editNacinPrijema] || editNacinPrijema}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Vrsta posjete</Label>
+              <Select value={editVrstaPosjete} onValueChange={(v) => v && setEditVrstaPosjete(v)}>
+                <SelectTrigger className="h-8">
+                  <SelectValue>{VRSTA_POSJETE_LABELS[editVrstaPosjete] || editVrstaPosjete}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(VRSTA_POSJETE_LABELS).map(([val, label]) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Tip posjete</Label>
+              <Select value={editTipPosjete} onValueChange={(v) => v && setEditTipPosjete(v)}>
+                <SelectTrigger className="h-8">
+                  <SelectValue>{TIP_POSJETE_LABELS[editTipPosjete] || editTipPosjete}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(TIP_POSJETE_LABELS).map(([val, label]) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Razlog</Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="Razlog posjete"
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Dodatni liječnik (HZJZ broj)</Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="HZJZ broj (opcionalno)"
+                value={editPractitionerId}
+                onChange={(e) => setEditPractitionerId(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Povezani slučaj (ID)</Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="ID slučaja (opcionalno)"
+                value={editCaseId}
+                onChange={(e) => setEditCaseId(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={cancelEdit}>Odustani</Button>
+            <Button
+              size="sm"
+              onClick={() => editVisitId && handleEdit(editVisitId)}
+              disabled={updateVisit.isPending || !editVisitId}
+            >
+              {updateVisit.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+              Spremi izmjene
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
