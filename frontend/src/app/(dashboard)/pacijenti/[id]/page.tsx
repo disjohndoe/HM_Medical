@@ -119,9 +119,16 @@ export default function PacijentDetailPage() {
               className={`h-12 text-base ${ekartonOpen ? "bg-sky-600 hover:bg-sky-700" : "bg-sky-500 hover:bg-sky-600"} text-white`}
               onClick={() => {
                 if (!ekartonOpen) {
+                  // Refresh the patient summary that drives EkartonView, plus
+                  // documents (MHD). We deliberately do NOT invalidate
+                  // ["cezih","visits"] or ["cezih","cases"] — those queries
+                  // carry optimistic `_local: true` rows from recent
+                  // create/update/action mutations, and CEZIH's QEDm read
+                  // side is eventually consistent. Blowing them away here
+                  // would wipe optimistic rows before CEZIH catches up and
+                  // look like "my visit/case disappeared". The shared cache
+                  // is already fresh enough for e-Karton's needs.
                   queryClient.invalidateQueries({ queryKey: ["cezih", "patient", id] })
-                  queryClient.invalidateQueries({ queryKey: ["cezih", "visits"] })
-                  queryClient.invalidateQueries({ queryKey: ["cezih", "cases"] })
                   queryClient.invalidateQueries({ queryKey: ["cezih", "documents"] })
                 }
                 setEkartonOpen((prev) => !prev)
