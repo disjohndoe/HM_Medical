@@ -34,6 +34,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import {
   useListVisits,
   useCreateVisit,
@@ -134,13 +136,29 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
   const isExternalVisit = (v: VisitItem) =>
     !!myOrgCode && !!v.service_provider_code && v.service_provider_code !== myOrgCode
 
-  const sortedVisits = [...visits].sort((a, b) => {
-    const aExt = isExternalVisit(a) ? 1 : 0
-    const bExt = isExternalVisit(b) ? 1 : 0
-    if (aExt !== bExt) return aExt - bExt
-    const aDate = a.period_start || ""
-    const bDate = b.period_start || ""
-    return bDate.localeCompare(aDate)
+  const { sorted: sortedVisits, sortKey: vSortKey, sortDir: vSortDir, toggleSort: toggleVSort } = useTableSort(visits, {
+    defaultKey: "period_start",
+    defaultDir: "desc",
+    primaryBucket: (v: VisitItem) => (isExternalVisit(v) ? 1 : 0),
+    keyAccessors: {
+      izvor: (v: VisitItem) => (isExternalVisit(v) ? 1 : 0),
+      status: (v: VisitItem) => VISIT_STATUS_LABELS[v.status] || v.status,
+      nacin_prijema: (v: VisitItem) =>
+        v.visit_type_display
+          || NACIN_PRIJEMA_LABELS[v.visit_type || visitMeta[v.visit_id]?.nacin_prijema || ""]
+          || v.visit_type
+          || "",
+      vrsta_posjete: (v: VisitItem) =>
+        v.vrsta_posjete_display
+          || VRSTA_POSJETE_LABELS[v.vrsta_posjete || visitMeta[v.visit_id]?.vrsta_posjete || ""]
+          || "",
+      tip_posjete: (v: VisitItem) =>
+        v.tip_posjete_display
+          || TIP_POSJETE_LABELS[v.tip_posjete || visitMeta[v.visit_id]?.tip_posjete || ""]
+          || "",
+      razlog: (v: VisitItem) => v.reason || "",
+      period_end: (v: VisitItem) => v.period_end || null,
+    },
   })
 
   const handleCreate = () => {
@@ -347,14 +365,14 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[100px]">Izvor</TableHead>
-                    <TableHead className="w-[100px]">Status</TableHead>
-                    <TableHead>Način prijema</TableHead>
-                    <TableHead>Vrsta posjete</TableHead>
-                    <TableHead>Tip posjete</TableHead>
-                    <TableHead>Razlog</TableHead>
-                    <TableHead>Početak</TableHead>
-                    <TableHead>Kraj</TableHead>
+                    <SortableTableHead columnKey="izvor" label="Izvor" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="w-[100px]" />
+                    <SortableTableHead columnKey="status" label="Status" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="w-[100px]" />
+                    <SortableTableHead columnKey="nacin_prijema" label="Način prijema" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
+                    <SortableTableHead columnKey="vrsta_posjete" label="Vrsta posjete" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
+                    <SortableTableHead columnKey="tip_posjete" label="Tip posjete" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
+                    <SortableTableHead columnKey="razlog" label="Razlog" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
+                    <SortableTableHead columnKey="period_start" label="Početak" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
+                    <SortableTableHead columnKey="period_end" label="Kraj" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
                     <TableHead className="w-[140px] text-right">Akcije</TableHead>
                   </TableRow>
                 </TableHeader>

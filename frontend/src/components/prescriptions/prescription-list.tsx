@@ -21,6 +21,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
 import { PrescriptionForm } from "./prescription-form"
@@ -67,6 +69,16 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
 
   const prescriptions = data?.items ?? []
   const viewPrescription = viewId ? prescriptions.find((p) => p.id === viewId) ?? null : null
+
+  const { sorted: sortedPrescriptions, sortKey: rxSortKey, sortDir: rxSortDir, toggleSort: toggleRxSort } = useTableSort(prescriptions, {
+    defaultKey: "created_at",
+    defaultDir: "desc",
+    keyAccessors: {
+      lijekovi: (p: Prescription) => p.lijekovi.map((l) => l.naziv).join(", "),
+      doktor: (p: Prescription) => `${p.doktor_prezime ?? ""} ${p.doktor_ime ?? ""}`.trim(),
+      status: (p: Prescription) => (p.cezih_storno ? 2 : p.cezih_sent ? 1 : 0),
+    },
+  })
 
   if (isLoading) {
     return <LoadingSpinner text="Učitavanje..." />
@@ -119,15 +131,15 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Datum</TableHead>
-              <TableHead>Lijekovi</TableHead>
-              <TableHead className="hidden lg:table-cell">Doktor</TableHead>
-              <TableHead>Status</TableHead>
+              <SortableTableHead columnKey="created_at" label="Datum" currentKey={rxSortKey} currentDir={rxSortDir} onSort={toggleRxSort} />
+              <SortableTableHead columnKey="lijekovi" label="Lijekovi" currentKey={rxSortKey} currentDir={rxSortDir} onSort={toggleRxSort} />
+              <SortableTableHead columnKey="doktor" label="Doktor" currentKey={rxSortKey} currentDir={rxSortDir} onSort={toggleRxSort} className="hidden lg:table-cell" />
+              <SortableTableHead columnKey="status" label="Status" currentKey={rxSortKey} currentDir={rxSortDir} onSort={toggleRxSort} />
               <TableHead className="text-right">Akcije</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {prescriptions.map((p) => {
+            {sortedPrescriptions.map((p) => {
               const drugNames = p.lijekovi.map((l) => l.naziv).join(", ")
               const isDraft = !p.cezih_sent
               return (

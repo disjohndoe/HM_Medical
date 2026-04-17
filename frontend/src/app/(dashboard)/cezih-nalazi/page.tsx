@@ -19,6 +19,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
@@ -43,6 +45,17 @@ export default function CezihNalaziPage() {
   )
 
   const [sendTarget, setSendTarget] = useState<{ patientId: string; patientMbo: string | null; recordId: string } | null>(null)
+
+  const { sorted, sortKey, sortDir, toggleSort } = useTableSort(records, {
+    defaultKey: "datum",
+    defaultDir: "desc",
+    keyAccessors: {
+      pacijent: (r) => `${r.patient_prezime ?? ""} ${r.patient_ime ?? ""}`.trim(),
+      tip: (r) => tipLabelMap[r.tip] || r.tip,
+      dijagnoza: (r) => r.dijagnoza_tekst || r.dijagnoza_mkb || "",
+      doktor: (r) => `${r.doktor_prezime ?? ""} ${r.doktor_ime ?? ""}`.trim(),
+    },
+  })
 
   if (!canPerformCezihOps) {
     return (
@@ -92,16 +105,16 @@ export default function CezihNalaziPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Pacijent</TableHead>
-                <TableHead>Datum</TableHead>
-                <TableHead>Tip</TableHead>
-                <TableHead className="hidden md:table-cell">Dijagnoza</TableHead>
-                <TableHead className="hidden lg:table-cell">Doktor</TableHead>
+                <SortableTableHead columnKey="pacijent" label="Pacijent" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortableTableHead columnKey="datum" label="Datum" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortableTableHead columnKey="tip" label="Tip" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortableTableHead columnKey="dijagnoza" label="Dijagnoza" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden md:table-cell" />
+                <SortableTableHead columnKey="doktor" label="Doktor" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden lg:table-cell" />
                 <TableHead className="w-32 text-right">Akcija</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {records.map((r) => (
+              {sorted.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>
                     <Link

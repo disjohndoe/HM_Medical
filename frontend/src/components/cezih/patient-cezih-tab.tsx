@@ -16,6 +16,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
@@ -46,6 +48,33 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
   const [nalazStornoTarget, setNalazStornoTarget] = useState<string | null>(null)
   const [editTarget, setEditTarget] = useState<{ recordId: string; referenceId: string } | null>(null)
   const { data: editRecord } = useMedicalRecord(editTarget?.recordId ?? "")
+
+  const enalazRows = (summary?.e_nalaz_history ?? []).map((item) => {
+    const sentMs = item.cezih_sent_at ? new Date(item.cezih_sent_at).getTime() : 0
+    const updatedMs = item.updated_at ? new Date(item.updated_at).getTime() : 0
+    const wasEdited = sentMs > 0 && updatedMs > sentMs + 60_000
+    return { ...item, _wasEdited: wasEdited, _editedMs: wasEdited ? updatedMs : 0 }
+  })
+
+  const {
+    sorted: sortedENalazi,
+    sortKey: nSortKey,
+    sortDir: nSortDir,
+    toggleSort: toggleNSort,
+  } = useTableSort(enalazRows, {
+    defaultKey: "datum",
+    defaultDir: "desc",
+    keyAccessors: {
+      datum_izmjene: (r) => (r._wasEdited ? r._editedMs : null),
+      tip: (r) => tipLabelMap[r.tip] || r.tip,
+      referenca: (r) => {
+        const n = Number(r.reference_id)
+        return Number.isFinite(n) ? n : r.reference_id || null
+      },
+      potpis: (r) => (r.cezih_signed ? 1 : 0),
+      status: (r) => (r.cezih_storno ? 1 : 0),
+    },
+  })
 
   function handleCheckInsurance() {
     if (!patientMbo) {
@@ -192,20 +221,18 @@ export function PatientCezihTab({ patientId, patientMbo }: PatientCezihTabProps)
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Datum kreiranja</TableHead>
-                      <TableHead className="hidden sm:table-cell">Datum izmjene</TableHead>
-                      <TableHead>Tip</TableHead>
-                      <TableHead className="hidden sm:table-cell">Referenca</TableHead>
-                      <TableHead className="hidden md:table-cell">Potpis</TableHead>
-                      <TableHead>Status</TableHead>
+                      <SortableTableHead columnKey="datum" label="Datum kreiranja" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
+                      <SortableTableHead columnKey="datum_izmjene" label="Datum izmjene" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
+                      <SortableTableHead columnKey="tip" label="Tip" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
+                      <SortableTableHead columnKey="referenca" label="Referenca" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
+                      <SortableTableHead columnKey="potpis" label="Potpis" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden md:table-cell" />
+                      <SortableTableHead columnKey="status" label="Status" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
                       <TableHead className="text-right">Akcije</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {summary.e_nalaz_history.map((item) => {
-                      const sentMs = item.cezih_sent_at ? new Date(item.cezih_sent_at).getTime() : 0
-                      const updatedMs = item.updated_at ? new Date(item.updated_at).getTime() : 0
-                      const wasEdited = sentMs > 0 && updatedMs > sentMs + 60_000
+                    {sortedENalazi.map((item) => {
+                      const wasEdited = item._wasEdited
                       return (
                       <TableRow key={item.record_id}>
                         <TableCell className="text-sm">{formatDateTimeHR(item.datum)}</TableCell>

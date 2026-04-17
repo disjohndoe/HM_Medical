@@ -34,6 +34,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
 import {
@@ -133,6 +135,17 @@ export function PerformedList({ patientId }: PerformedListProps) {
 
   const selectedTotal = selectedProcedures.reduce((sum, p) => sum + p.cijena_cents, 0)
 
+  const { sorted: sortedItems, sortKey: pSortKey, sortDir: pSortDir, toggleSort: togglePSort } = useTableSort(items, {
+    defaultKey: "datum",
+    defaultDir: "desc",
+    keyAccessors: {
+      postupak: (p) => `${p.procedure_sifra ?? ""} ${p.procedure_naziv ?? ""}`.trim(),
+      doktor: (p) => `${p.doktor_prezime ?? ""} ${p.doktor_ime ?? ""}`.trim(),
+      cijena: (p) => p.cijena_cents,
+      napomena: (p) => p.napomena || "",
+    },
+  })
+
   if (isLoading) {
     return <LoadingSpinner text="Učitavanje..." />
   }
@@ -188,15 +201,15 @@ export function PerformedList({ patientId }: PerformedListProps) {
                   onCheckedChange={toggleAll}
                 />
               </TableHead>
-              <TableHead>Datum</TableHead>
-              <TableHead>Postupak</TableHead>
-              <TableHead className="hidden md:table-cell">Doktor</TableHead>
-              <TableHead className="hidden sm:table-cell text-right">Cijena</TableHead>
-              <TableHead className="hidden lg:table-cell">Napomena</TableHead>
+              <SortableTableHead columnKey="datum" label="Datum" currentKey={pSortKey} currentDir={pSortDir} onSort={togglePSort} />
+              <SortableTableHead columnKey="postupak" label="Postupak" currentKey={pSortKey} currentDir={pSortDir} onSort={togglePSort} />
+              <SortableTableHead columnKey="doktor" label="Doktor" currentKey={pSortKey} currentDir={pSortDir} onSort={togglePSort} className="hidden md:table-cell" />
+              <SortableTableHead columnKey="cijena" label="Cijena" currentKey={pSortKey} currentDir={pSortDir} onSort={togglePSort} className="hidden sm:table-cell text-right" />
+              <SortableTableHead columnKey="napomena" label="Napomena" currentKey={pSortKey} currentDir={pSortDir} onSort={togglePSort} className="hidden lg:table-cell" />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((p) => (
+            {sortedItems.map((p) => (
               <TableRow key={p.id} data-state={selectedIds.has(p.id) ? "selected" : undefined}>
                 <TableCell>
                   <Checkbox

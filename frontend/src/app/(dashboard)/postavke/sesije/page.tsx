@@ -14,6 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import {
@@ -33,6 +35,15 @@ export default function SesijePage() {
   const revokeSession = useRevokeSession()
   const revokeOthers = useRevokeOtherSessions()
   const cleanup = useCleanupTokens()
+
+  const { sorted: sortedSessions, sortKey: sSortKey, sortDir: sSortDir, toggleSort: toggleSSort } = useTableSort(sessions, {
+    defaultKey: "created_at",
+    defaultDir: "desc",
+    keyAccessors: {
+      korisnik: (s) => `${s.user_prezime ?? ""} ${s.user_ime ?? ""}`.trim(),
+      email: (s) => s.user_email,
+    },
+  })
 
   const handleRevoke = (sessionId: string) => {
     if (!confirm("Ukinuti ovu sesiju? Korisnik će biti odjavljen.")) return
@@ -147,15 +158,15 @@ export default function SesijePage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Korisnik</TableHead>
-                  <TableHead className="hidden sm:table-cell">Email</TableHead>
-                  <TableHead className="hidden md:table-cell">Prijavljen</TableHead>
-                  <TableHead className="hidden lg:table-cell">Ističe</TableHead>
+                  <SortableTableHead columnKey="korisnik" label="Korisnik" currentKey={sSortKey} currentDir={sSortDir} onSort={toggleSSort} />
+                  <SortableTableHead columnKey="email" label="Email" currentKey={sSortKey} currentDir={sSortDir} onSort={toggleSSort} className="hidden sm:table-cell" />
+                  <SortableTableHead columnKey="created_at" label="Prijavljen" currentKey={sSortKey} currentDir={sSortDir} onSort={toggleSSort} className="hidden md:table-cell" />
+                  <SortableTableHead columnKey="expires_at" label="Ističe" currentKey={sSortKey} currentDir={sSortDir} onSort={toggleSSort} className="hidden lg:table-cell" />
                   <TableHead className="text-right">Akcije</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sessions.map((session) => {
+                {sortedSessions.map((session) => {
                   const isCurrentUser = session.user_id === user?.id
                   return (
                     <TableRow key={session.id}>

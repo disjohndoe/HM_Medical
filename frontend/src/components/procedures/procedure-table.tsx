@@ -12,6 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { PROCEDURE_KATEGORIJA } from "@/lib/constants"
 import { formatCurrencyEUR } from "@/lib/utils"
 import type { Procedure } from "@/lib/types"
@@ -23,6 +25,16 @@ interface ProcedureTableProps {
 }
 
 export function ProcedureTable({ procedures, onEdit, onDelete }: ProcedureTableProps) {
+  const { sorted, sortKey, sortDir, toggleSort } = useTableSort(procedures, {
+    defaultKey: "naziv",
+    defaultDir: "asc",
+    keyAccessors: {
+      kategorija: (p: Procedure) => PROCEDURE_KATEGORIJA[p.kategorija] || p.kategorija,
+      cijena: (p: Procedure) => p.cijena_cents,
+      trajanje: (p: Procedure) => p.trajanje_minuta,
+    },
+  })
+
   if (procedures.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
@@ -35,17 +47,17 @@ export function ProcedureTable({ procedures, onEdit, onDelete }: ProcedureTableP
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Šifra</TableHead>
-          <TableHead>Naziv</TableHead>
-          <TableHead className="hidden md:table-cell">Kategorija</TableHead>
-          <TableHead className="hidden sm:table-cell text-right">Cijena</TableHead>
-          <TableHead className="hidden lg:table-cell text-right">Trajanje</TableHead>
+          <SortableTableHead columnKey="sifra" label="Šifra" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+          <SortableTableHead columnKey="naziv" label="Naziv" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+          <SortableTableHead columnKey="kategorija" label="Kategorija" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden md:table-cell" />
+          <SortableTableHead columnKey="cijena" label="Cijena" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden sm:table-cell text-right" />
+          <SortableTableHead columnKey="trajanje" label="Trajanje" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden lg:table-cell text-right" />
           <TableHead className="hidden md:table-cell">Status</TableHead>
           <TableHead className="text-right">Akcije</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {procedures.map((p) => (
+        {sorted.map((p) => (
           <TableRow key={p.id}>
             <TableCell className="font-mono text-xs">{p.sifra}</TableCell>
             <TableCell className="font-medium">{p.naziv}</TableCell>

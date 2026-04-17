@@ -21,6 +21,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
@@ -50,6 +52,17 @@ export function BiljeskaList({ patientId }: BiljeskaListProps) {
   const { data, isLoading } = useBiljeske(patientId, kategorijaFilter || undefined, page * PAGE_SIZE, PAGE_SIZE)
   const deleteMutation = useDeleteBiljeska()
   const biljeske = data?.items ?? []
+
+  const { sorted: sortedBiljeske, sortKey: bSortKey, sortDir: bSortDir, toggleSort: toggleBSort } = useTableSort(biljeske, {
+    defaultKey: "datum",
+    defaultDir: "desc",
+    primaryBucket: (b: Biljeska) => (b.is_pinned ? 0 : 1),
+    keyAccessors: {
+      naslov: (b: Biljeska) => b.naslov,
+      kategorija: (b: Biljeska) => BILJESKA_KATEGORIJA[b.kategorija] || b.kategorija,
+      doktor: (b: Biljeska) => `${b.doktor_prezime ?? ""} ${b.doktor_ime ?? ""}`.trim(),
+    },
+  })
 
   function handleEdit(biljeska: Biljeska) {
     setViewBiljeska(null)
@@ -104,15 +117,15 @@ export function BiljeskaList({ patientId }: BiljeskaListProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[100px]">Datum</TableHead>
-              <TableHead>Naslov</TableHead>
-              <TableHead className="hidden sm:table-cell">Kategorija</TableHead>
-              <TableHead className="hidden lg:table-cell">Doktor</TableHead>
+              <SortableTableHead columnKey="datum" label="Datum" currentKey={bSortKey} currentDir={bSortDir} onSort={toggleBSort} className="w-[100px]" />
+              <SortableTableHead columnKey="naslov" label="Naslov" currentKey={bSortKey} currentDir={bSortDir} onSort={toggleBSort} />
+              <SortableTableHead columnKey="kategorija" label="Kategorija" currentKey={bSortKey} currentDir={bSortDir} onSort={toggleBSort} className="hidden sm:table-cell" />
+              <SortableTableHead columnKey="doktor" label="Doktor" currentKey={bSortKey} currentDir={bSortDir} onSort={toggleBSort} className="hidden lg:table-cell" />
               <TableHead className="text-right">Akcije</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {biljeske.map((b) => (
+            {sortedBiljeske.map((b) => (
               <TableRow key={b.id}>
                 <TableCell>
                   <div className="flex items-center gap-1">

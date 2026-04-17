@@ -31,6 +31,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { PatientSelector, type SelectedPatient } from "@/components/cezih/patient-selector"
 import {
@@ -55,6 +57,11 @@ export function DocumentSearch() {
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
     status: statusFilter || undefined,
+  })
+
+  const { sorted: sortedDocs, sortKey: dSortKey, sortDir: dSortDir, toggleSort: toggleDSort } = useTableSort(documents, {
+    defaultKey: "datum_izdavanja",
+    defaultDir: "desc",
   })
 
   const retrieveDoc = useRetrieveDocument()
@@ -229,17 +236,17 @@ export function DocumentSearch() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="hidden sm:table-cell">ID</TableHead>
-                  <TableHead>Datum</TableHead>
-                  <TableHead>Svrha</TableHead>
-                  <TableHead className="hidden md:table-cell">Izdavatelj</TableHead>
-                  <TableHead className="hidden lg:table-cell">Specijalist</TableHead>
-                  <TableHead>Status</TableHead>
+                  <SortableTableHead columnKey="id" label="ID" currentKey={dSortKey} currentDir={dSortDir} onSort={toggleDSort} className="hidden sm:table-cell" />
+                  <SortableTableHead columnKey="datum_izdavanja" label="Datum" currentKey={dSortKey} currentDir={dSortDir} onSort={toggleDSort} />
+                  <SortableTableHead columnKey="svrha" label="Svrha" currentKey={dSortKey} currentDir={dSortDir} onSort={toggleDSort} />
+                  <SortableTableHead columnKey="izdavatelj" label="Izdavatelj" currentKey={dSortKey} currentDir={dSortDir} onSort={toggleDSort} className="hidden md:table-cell" />
+                  <SortableTableHead columnKey="specijalist" label="Specijalist" currentKey={dSortKey} currentDir={dSortDir} onSort={toggleDSort} className="hidden lg:table-cell" />
+                  <SortableTableHead columnKey="status" label="Status" currentKey={dSortKey} currentDir={dSortDir} onSort={toggleDSort} />
                   <TableHead className="text-right">Akcije</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {documents.map((doc) => (
+                {sortedDocs.map((doc) => (
                   <TableRow key={doc.id}>
                     <TableCell className="hidden sm:table-cell font-mono text-xs">
                       {doc.id}

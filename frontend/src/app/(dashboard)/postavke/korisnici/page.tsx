@@ -15,6 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
@@ -44,6 +46,17 @@ export default function KorisniciPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null)
 
   const users = usersData?.items ?? []
+
+  const { sorted: sortedUsers, sortKey: uSortKey, sortDir: uSortDir, toggleSort: toggleUSort } = useTableSort(users, {
+    defaultKey: "last_login_at",
+    defaultDir: "desc",
+    keyAccessors: {
+      ime_prezime: (u) => `${u.prezime ?? ""} ${u.ime ?? ""}`.trim(),
+      uloga: (u) => u.role,
+      status: (u) => (u.is_active ? 0 : 1),
+      kartica: (u) => u.card_holder_name || "",
+    },
+  })
 
   const handleCreate = (data: UserFormData) => {
     if (!data.password) return
@@ -139,17 +152,17 @@ export default function KorisniciPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ime i prezime</TableHead>
-                  <TableHead className="hidden sm:table-cell">Email</TableHead>
-                  <TableHead>Uloga</TableHead>
-                  <TableHead className="hidden md:table-cell">Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Kartica</TableHead>
-                  <TableHead className="hidden lg:table-cell">Zadnja prijava</TableHead>
+                  <SortableTableHead columnKey="ime_prezime" label="Ime i prezime" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} />
+                  <SortableTableHead columnKey="email" label="Email" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden sm:table-cell" />
+                  <SortableTableHead columnKey="uloga" label="Uloga" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} />
+                  <SortableTableHead columnKey="status" label="Status" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden md:table-cell" />
+                  <SortableTableHead columnKey="kartica" label="Kartica" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden md:table-cell" />
+                  <SortableTableHead columnKey="last_login_at" label="Zadnja prijava" currentKey={uSortKey} currentDir={uSortDir} onSort={toggleUSort} className="hidden lg:table-cell" />
                   <TableHead className="text-right">Akcije</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((user) => (
+                {sortedUsers.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">
                       {user.titula ? `${user.titula} ` : ""}

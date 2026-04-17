@@ -34,6 +34,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import {
   useRetrieveCases,
   useCreateCase,
@@ -234,6 +236,18 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
 
   const cases = casesQuery.data?.cases || []
 
+  const { sorted: sortedCases, sortKey: cSortKey, sortDir: cSortDir, toggleSort: toggleCSort } = useTableSort<CaseItem>(cases, {
+    defaultKey: "onset_date",
+    defaultDir: "desc",
+    keyAccessors: {
+      status: (c) => CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status,
+      verifikacija: (c) => VERIFICATION_STATUS_LABELS[c.verification_status || ""] || c.verification_status || "",
+      icd_code: (c) => c.icd_code,
+      naziv: (c) => c.icd_display,
+      abatement_date: (c) => c.abatement_date || null,
+    },
+  })
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -390,17 +404,17 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[100px]">Status</TableHead>
-                    <TableHead className="w-[100px]">Verifikacija</TableHead>
-                    <TableHead>MKB šifra</TableHead>
-                    <TableHead>Naziv</TableHead>
-                    <TableHead>Početak</TableHead>
-                    <TableHead>Završetak</TableHead>
+                    <SortableTableHead columnKey="status" label="Status" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="w-[100px]" />
+                    <SortableTableHead columnKey="verifikacija" label="Verifikacija" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="w-[100px]" />
+                    <SortableTableHead columnKey="icd_code" label="MKB šifra" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
+                    <SortableTableHead columnKey="naziv" label="Naziv" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
+                    <SortableTableHead columnKey="onset_date" label="Početak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
+                    <SortableTableHead columnKey="abatement_date" label="Završetak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
                     <TableHead className="w-[180px] text-right">Akcije</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {cases.map((c) => {
+                  {sortedCases.map((c) => {
                     const actions = getAvailableActions(c)
                     return (
                       <TableRow key={c.case_id}>

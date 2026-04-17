@@ -25,6 +25,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
 import { RecordForm } from "./record-form"
@@ -66,6 +68,17 @@ export function RecordList({ patientId, patientMbo }: RecordListProps) {
   )
   const records = (data?.items ?? []).filter((r) => isCezihEligible.has(r.tip))
 
+  const { sorted, sortKey, sortDir, toggleSort } = useTableSort(records, {
+    defaultKey: "datum",
+    defaultDir: "desc",
+    keyAccessors: {
+      tip: (r: MedicalRecord) => tipLabelMap[r.tip] || r.tip,
+      dijagnoza: (r: MedicalRecord) => r.dijagnoza_tekst || r.dijagnoza_mkb || "",
+      doktor: (r: MedicalRecord) => `${r.doktor_prezime ?? ""} ${r.doktor_ime ?? ""}`.trim(),
+      status: (r: MedicalRecord) => (r.cezih_sent ? 1 : 0),
+    },
+  })
+
   if (isLoading) {
     return <LoadingSpinner text="Učitavanje..." />
   }
@@ -103,17 +116,29 @@ export function RecordList({ patientId, patientMbo }: RecordListProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Datum</TableHead>
-              <TableHead>Tip</TableHead>
-              <TableHead className="hidden md:table-cell">Dijagnoza</TableHead>
-              <TableHead className="hidden lg:table-cell">Doktor</TableHead>
-              <TableHead>
+              <SortableTableHead columnKey="datum" label="Datum" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+              <SortableTableHead columnKey="tip" label="Tip" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+              <SortableTableHead columnKey="dijagnoza" label="Dijagnoza" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden md:table-cell" />
+              <SortableTableHead columnKey="doktor" label="Doktor" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden lg:table-cell" />
+              <TableHead
+                role="button"
+                tabIndex={0}
+                onClick={() => toggleSort("status")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    toggleSort("status")
+                  }
+                }}
+                className="cursor-pointer select-none hover:bg-muted/50"
+              >
                 <div className="flex items-center gap-1">
                   <span>Status e-Nalaza</span>
                   <Popover>
                     <PopoverTrigger
                       aria-label="Objašnjenje statusa e-Nalaza"
                       className="text-muted-foreground hover:text-foreground"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <Info className="h-3.5 w-3.5" />
                     </PopoverTrigger>
@@ -127,7 +152,7 @@ export function RecordList({ patientId, patientMbo }: RecordListProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {records.map((r) => (
+            {sorted.map((r) => (
               <TableRow key={r.id}>
                 <TableCell>{formatDateHR(r.datum)}</TableCell>
                 <TableCell>
