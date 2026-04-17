@@ -481,9 +481,11 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                   <SelectValue>{VERIFICATION_STATUS_LABELS[editVerification] || editVerification}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(VERIFICATION_STATUS_LABELS).map(([val, label]) => (
-                    <SelectItem key={val} value={val}>{label}</SelectItem>
-                  ))}
+                  {Object.entries(VERIFICATION_STATUS_LABELS)
+                    .filter(([v]) => v !== "entered-in-error")
+                    .map(([val, label]) => (
+                      <SelectItem key={val} value={val}>{label}</SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
