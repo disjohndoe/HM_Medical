@@ -194,15 +194,17 @@ export default function PacijentDetailPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="pregled">Pregled</TabsTrigger>
-          <TabsTrigger value="postupci">Postupci</TabsTrigger>
-          {canViewMedicalRecords && <TabsTrigger value="nalazi">Nalazi</TabsTrigger>}
-          {canViewMedicalRecords && <TabsTrigger value="biljeske">Bilješke</TabsTrigger>}
-          {canPerformCezihOps && <TabsTrigger value="recepti">Recepti</TabsTrigger>}
-          {canViewDocuments && <TabsTrigger value="dokumenti">Dokumenti</TabsTrigger>}
-          {canViewCezih && <TabsTrigger value="cezih">CEZIH</TabsTrigger>}
-        </TabsList>
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
+          <TabsList>
+            <TabsTrigger value="pregled">Pregled</TabsTrigger>
+            <TabsTrigger value="postupci">Postupci</TabsTrigger>
+            {canViewMedicalRecords && <TabsTrigger value="nalazi">Nalazi</TabsTrigger>}
+            {canViewMedicalRecords && <TabsTrigger value="biljeske">Bilješke</TabsTrigger>}
+            {canPerformCezihOps && <TabsTrigger value="recepti">Recepti</TabsTrigger>}
+            {canViewDocuments && <TabsTrigger value="dokumenti">Dokumenti</TabsTrigger>}
+            {canViewCezih && <TabsTrigger value="cezih">CEZIH</TabsTrigger>}
+          </TabsList>
+        </div>
 
         <TabsContent value="pregled" className="space-y-4">
           {/* Osobni podaci */}
