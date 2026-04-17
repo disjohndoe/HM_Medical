@@ -48,6 +48,36 @@ _IDENTIFIER_LABEL_MAP = {
 }
 
 
+def _require_identifier_system(patient_data: dict) -> str:
+    """Extract identifier_system from patient_data. Raises if missing.
+
+    Prevents silent fallback to MBO for foreign patients. Callers must populate
+    patient_data['identifier_system'] from resolve_cezih_identifier().
+    """
+    system = patient_data.get("identifier_system")
+    if not system:
+        raise CezihError(
+            "patient_data missing 'identifier_system' — caller must pass "
+            "resolve_cezih_identifier() output"
+        )
+    return system
+
+
+def _require_identifier_value(patient_data: dict) -> str:
+    """Extract identifier_value from patient_data. Raises if missing.
+
+    Falls back to patient_data['mbo'] only if it was already populated as a
+    legacy alias (dispatcher writes the resolved identifier into both keys).
+    """
+    value = patient_data.get("identifier_value") or patient_data.get("mbo")
+    if not value:
+        raise CezihError(
+            "patient_data missing 'identifier_value' — caller must pass "
+            "resolve_cezih_identifier() output"
+        )
+    return value
+
+
 def resolve_cezih_identifier(patient) -> tuple[str, str]:
     """Return (system_uri, value) for CEZIH FHIR identifier queries.
 
@@ -378,8 +408,8 @@ async def _build_document_bundle(
         "subject": {
             "type": "Patient",
             "identifier": {
-                "system": patient_data.get("identifier_system") or SYS_MBO,
-                "value": patient_data.get("identifier_value") or patient_data.get("mbo", ""),
+                "system": _require_identifier_system(patient_data),
+                "value": _require_identifier_value(patient_data),
             },
             "display": patient_display,
         },
@@ -1546,10 +1576,10 @@ async def replace_document(
     fhir_client = CezihFhirClient(client)
 
     # Look up document OID from CEZIH if not provided
-    if not original_document_oid and patient_data.get("mbo"):
+    if not original_document_oid and _require_identifier_value(patient_data):
         original_document_oid = await _lookup_document_oid(
-            fhir_client, original_reference_id, patient_data["mbo"],
-            identifier_system=patient_data.get("identifier_system") or SYS_MBO,
+            fhir_client, original_reference_id, _require_identifier_value(patient_data),
+            identifier_system=_require_identifier_system(patient_data),
         )
 
     if original_document_oid:
@@ -1609,7 +1639,7 @@ async def _lookup_document_oid(
     fhir_client: "CezihFhirClient",
     reference_id: str,
     patient_mbo: str,
-    identifier_system: str = SYS_MBO,
+    identifier_system: str,
 ) -> str:
     """Look up a document's OID from CEZIH via ITI-67 search.
 
@@ -1683,9 +1713,10 @@ async def cancel_document(
     fhir_client = CezihFhirClient(client)
 
     # Look up document OID from CEZIH if not provided — CEZIH needs OID for relatesTo
-    if not original_document_oid and patient_data.get("mbo"):
+    if not original_document_oid and _require_identifier_value(patient_data):
         original_document_oid = await _lookup_document_oid(
-            fhir_client, reference_id, patient_data["mbo"],
+            fhir_client, reference_id, _require_identifier_value(patient_data),
+            identifier_system=_require_identifier_system(patient_data),
         )
 
     # Build relatesTo with logical OID reference (CEZIH requires OID, not numeric ID)

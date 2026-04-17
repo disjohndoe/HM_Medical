@@ -163,6 +163,46 @@ async def _persist_insurance_to_patient_by_id(
         await db.flush()
 
 
+async def insurance_check_by_identifier(
+    identifier_type: str,
+    identifier_value: str,
+    *,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
+    http_client=None,
+) -> dict:
+    """Ad-hoc insurance check for a walk-in by MBO, EHIC, or passport.
+
+    Unlike `insurance_check`, this does not require a local patient record —
+    receptionists can verify insurance for a Croatian or foreign walk-in before
+    registering. identifier_type must be one of 'mbo', 'ehic', 'putovnica'.
+    """
+    _require_audit_params(db, user_id, tenant_id)
+    system_uri = real_service._IDENTIFIER_SYSTEM_MAP.get(identifier_type)
+    if not system_uri:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Nepoznati tip identifikatora: {identifier_type}",
+        )
+    try:
+        result = await real_service.check_insurance(http_client, system_uri, identifier_value)
+    except CezihError as e:
+        logger.error("CEZIH ad-hoc insurance check (%s) failed: %s", identifier_type, e.message)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+    await _write_audit(
+        db, tenant_id, user_id,
+        action="insurance_check",
+        details={
+            "identifier_type": identifier_type,
+            "identifier_value": identifier_value,
+            "result": result.get("status_osiguranja"),
+        },
+    )
+    return result
+
+
 async def insurance_check_by_mbo(
     mbo: str,
     *,
@@ -171,24 +211,10 @@ async def insurance_check_by_mbo(
     tenant_id: UUID,
     http_client=None,
 ) -> dict:
-    """Ad-hoc MBO-only insurance check (standalone CEZIH card).
-
-    Unlike `insurance_check`, this does not require a local patient record —
-    it's for receptionists verifying insurance before registering a walk-in.
-    """
-    _require_audit_params(db, user_id, tenant_id)
-    try:
-        result = await real_service.check_insurance(http_client, real_service.SYS_MBO, mbo)
-    except CezihError as e:
-        logger.error("CEZIH insurance check (by MBO) failed: %s", e.message)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
-
-    await _write_audit(
-        db, tenant_id, user_id,
-        action="insurance_check",
-        details={"mbo": mbo, "result": result.get("status_osiguranja")},
+    """Backward-compat wrapper — forwards to insurance_check_by_identifier('mbo', ...)."""
+    return await insurance_check_by_identifier(
+        "mbo", mbo, db=db, user_id=user_id, tenant_id=tenant_id, http_client=http_client,
     )
-    return result
 
 
 async def insurance_check(
