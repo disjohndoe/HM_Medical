@@ -359,10 +359,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
               Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori, Ponovno otvori ili Ponavljajući slučaj. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
             </li>
             <li>
-              <strong>Zatvori</strong> je dostupan samo za slučajeve sa statusom verifikacije <em>Potvrđen</em> — CEZIH odbija zatvaranje nepotvrđenih slučajeva (ERR_HEALTH_ISSUE_2004).
-            </li>
-            <li>
-              CEZIH <strong>ne podržava brisanje slučajeva</strong>. Ako je slučaj pogrešno unesen, izmijenite podatke (2.6) i postavite status verifikacije na <em>Pogreška unosa</em>.
+              <strong>Zatvori</strong> je dostupan samo za slučajeve sa statusom verifikacije <em>Potvrđen</em>.
             </li>
           </ul>
         </div>
