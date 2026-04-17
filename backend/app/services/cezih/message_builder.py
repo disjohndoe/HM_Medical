@@ -590,7 +590,7 @@ async def _add_signature_smartcard(
             result = await agent_manager.sign_jws(
                 tenant_id,
                 data_base64=data_b64,
-                timeout=30.0,
+                timeout=120.0,
             )
 
             if "error" in result:

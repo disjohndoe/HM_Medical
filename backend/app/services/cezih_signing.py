@@ -401,7 +401,7 @@ async def sign_bundle_for_cezih(
             tenant_id,
             data_base64=data_b64,
             algorithm=algorithm,
-            timeout=30.0,
+            timeout=120.0,
         )
     except RuntimeError as e:
         raise CezihSigningError(f"Greška pri potpisivanju putem agenta: {e}") from e
@@ -442,7 +442,7 @@ async def _sign_bundle_cms_fallback(bundle_json_bytes: bytes) -> dict:
         result = await agent_manager.sign_data(
             tenant_id,
             data_base64=data_b64,
-            timeout=30.0,
+            timeout=120.0,
         )
     except RuntimeError as e:
         raise CezihSigningError(f"Greška pri CMS potpisivanju putem agenta: {e}") from e

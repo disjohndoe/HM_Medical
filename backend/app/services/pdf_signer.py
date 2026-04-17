@@ -95,7 +95,7 @@ class AgentPdfSigner(signers.Signer):
             self._tenant_id,
             data_base64=data_b64,
             algorithm=self._agent_algorithm,
-            timeout=30.0,
+            timeout=120.0,
         )
         if "error" in result:
             raise RuntimeError(f"Agent signing failed: {result['error']}")

@@ -182,7 +182,7 @@ class AgentConnectionManager:
         url: str,
         headers: dict[str, str],
         body: str | None = None,
-        timeout: float = 30.0,
+        timeout: float = 120.0,
         card_holder_name: str | None = None,
     ) -> dict:
         """Send an HTTP request through a connected agent and wait for the response.
@@ -228,7 +228,7 @@ class AgentConnectionManager:
         tenant_id: UUID,
         *,
         data_base64: str,
-        timeout: float = 30.0,
+        timeout: float = 120.0,
     ) -> dict:
         """Send data to the agent for JWS signing (NCryptSignHash).
 
@@ -298,7 +298,7 @@ class AgentConnectionManager:
         *,
         data_base64: str,
         algorithm: str = "RS256",
-        timeout: float = 30.0,
+        timeout: float = 120.0,
     ) -> dict:
         """Send raw bytes to agent for signing.
 
@@ -336,7 +336,7 @@ class AgentConnectionManager:
         tenant_id: UUID,
         *,
         data_base64: str,
-        timeout: float = 30.0,
+        timeout: float = 120.0,
     ) -> dict:
         """Send data to the agent for signing with the smart card.
 
