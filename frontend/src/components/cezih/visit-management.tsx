@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -522,10 +523,10 @@ export function VisitManagement({ patientId, patientMbo, onNavigateToCase }: Vis
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-2">
               <Label className="text-xs">Razlog</Label>
-              <Input
-                className="h-8 text-sm"
+              <Textarea
+                className="min-h-24 text-sm"
                 placeholder="Razlog posjete"
                 value={editReason}
                 onChange={(e) => setEditReason(e.target.value)}
