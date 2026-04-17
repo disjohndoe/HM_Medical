@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -426,7 +427,7 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                               size="sm"
                               variant="ghost"
                               className="h-6 text-xs px-2"
-                              onClick={() => editCaseId === c.case_id ? cancelEdit() : startEdit(c)}
+                              onClick={() => startEdit(c)}
                               title="Izmijeni podatke slučaja (2.6)"
                             >
                               <Pencil className="h-3 w-3" />
@@ -457,97 +458,105 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                 </TableBody>
               </Table>
             </div>
-
-            {/* Edit form — shown below table */}
-            {editCaseId && (() => {
-              const c = cases.find((x) => x.case_id === editCaseId)
-              if (!c) return null
-              return (
-                <div className="rounded-lg border p-3 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Izmjena slučaja: <span className="font-mono text-xs text-muted-foreground">{editCaseId}</span></span>
-                    <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={cancelEdit}>×</Button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Status verifikacije</Label>
-                      <Select value={editVerification} onValueChange={(v) => v && setEditVerification(v)}>
-                        <SelectTrigger className="h-8">
-                          <SelectValue>{VERIFICATION_STATUS_LABELS[editVerification] || editVerification}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(VERIFICATION_STATUS_LABELS).map(([val, label]) => (
-                            <SelectItem key={val} value={val}>{label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Datum početka</Label>
-                      <Input type="date" className="h-8 text-sm" value={editOnsetDate} onChange={(e) => setEditOnsetDate(e.target.value)} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Datum završetka</Label>
-                      <Input type="date" className="h-8 text-sm" value={editAbatementDate} onChange={(e) => setEditAbatementDate(e.target.value)} />
-                    </div>
-                    <div className="col-span-3 space-y-1">
-                      <Label className="text-xs">MKB/ICD-10 šifra</Label>
-                      <Input
-                        className="h-8 text-sm"
-                        placeholder="Pretraži po šifri ili nazivu..."
-                        value={editIcdQuery}
-                        onChange={(e) => {
-                          setEditIcdQuery(e.target.value)
-                          setEditSelectedIcd(null)
-                        }}
-                      />
-                      {editIcdSearch.data && editIcdSearch.data.length > 0 && !editSelectedIcd && (
-                        <div className="mt-1 border rounded-md max-h-32 overflow-y-auto">
-                          {editIcdSearch.data.map((item) => (
-                            <button
-                              key={item.code}
-                              className="w-full text-left px-3 py-1.5 hover:bg-accent text-sm"
-                              onClick={() => {
-                                setEditSelectedIcd({ code: item.code, display: item.display })
-                                setEditIcdQuery(`${item.code} — ${item.display}`)
-                              }}
-                            >
-                              <span className="font-mono font-medium">{item.code}</span>{" "}
-                              <span className="text-muted-foreground">{item.display}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {editSelectedIcd && (
-                        <Badge className="mt-1" variant="secondary">
-                          {editSelectedIcd.code} — {editSelectedIcd.display}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="col-span-3 space-y-1">
-                      <Label className="text-xs">Napomena</Label>
-                      <Textarea
-                        value={editNote}
-                        onChange={(e) => setEditNote(e.target.value)}
-                        placeholder="Bilješka o slučaju..."
-                        className="min-h-[50px] text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={cancelEdit}>Odustani</Button>
-                    <Button size="sm" disabled={updateData.isPending} onClick={() => handleEditSave(editCaseId, c.clinical_status)}>
-                      {updateData.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
-                      Spremi izmjene
-                    </Button>
-                  </div>
-                </div>
-              )
-            })()}
           </div>
         )}
 
       </CardContent>
+
+      <Dialog open={!!editCaseId} onOpenChange={(open) => { if (!open) cancelEdit() }}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>
+              Izmjena slučaja
+              {editCaseId && (
+                <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{editCaseId}</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Status verifikacije</Label>
+              <Select value={editVerification} onValueChange={(v) => v && setEditVerification(v)}>
+                <SelectTrigger className="h-8">
+                  <SelectValue>{VERIFICATION_STATUS_LABELS[editVerification] || editVerification}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(VERIFICATION_STATUS_LABELS).map(([val, label]) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Datum početka</Label>
+              <Input type="date" className="h-8 text-sm" value={editOnsetDate} onChange={(e) => setEditOnsetDate(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Datum završetka</Label>
+              <Input type="date" className="h-8 text-sm" value={editAbatementDate} onChange={(e) => setEditAbatementDate(e.target.value)} />
+            </div>
+            <div className="col-span-3 space-y-1">
+              <Label className="text-xs">MKB/ICD-10 šifra</Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="Pretraži po šifri ili nazivu..."
+                value={editIcdQuery}
+                onChange={(e) => {
+                  setEditIcdQuery(e.target.value)
+                  setEditSelectedIcd(null)
+                }}
+              />
+              {editIcdSearch.data && editIcdSearch.data.length > 0 && !editSelectedIcd && (
+                <div className="mt-1 border rounded-md max-h-32 overflow-y-auto">
+                  {editIcdSearch.data.map((item) => (
+                    <button
+                      key={item.code}
+                      className="w-full text-left px-3 py-1.5 hover:bg-accent text-sm"
+                      onClick={() => {
+                        setEditSelectedIcd({ code: item.code, display: item.display })
+                        setEditIcdQuery(`${item.code} — ${item.display}`)
+                      }}
+                    >
+                      <span className="font-mono font-medium">{item.code}</span>{" "}
+                      <span className="text-muted-foreground">{item.display}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {editSelectedIcd && (
+                <Badge className="mt-1" variant="secondary">
+                  {editSelectedIcd.code} — {editSelectedIcd.display}
+                </Badge>
+              )}
+            </div>
+            <div className="col-span-3 space-y-1">
+              <Label className="text-xs">Napomena</Label>
+              <Textarea
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                placeholder="Bilješka o slučaju..."
+                className="min-h-24 text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={cancelEdit}>Odustani</Button>
+            <Button
+              size="sm"
+              disabled={updateData.isPending || !editCaseId}
+              onClick={() => {
+                if (!editCaseId) return
+                const c = cases.find((x) => x.case_id === editCaseId)
+                if (!c) return
+                handleEditSave(editCaseId, c.clinical_status)
+              }}
+            >
+              {updateData.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+              Spremi izmjene
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
