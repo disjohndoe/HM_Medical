@@ -59,6 +59,7 @@ export function useCreateMedicalRecord() {
       api.post<MedicalRecord>("/medical-records", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["medical-records"] })
+      queryClient.invalidateQueries({ queryKey: ["prescriptions"] })
     },
   })
 }
@@ -73,6 +74,7 @@ export function useUpdateMedicalRecord() {
       queryClient.invalidateQueries({
         queryKey: ["medical-records", variables.id],
       })
+      queryClient.invalidateQueries({ queryKey: ["prescriptions"] })
     },
   })
 }
