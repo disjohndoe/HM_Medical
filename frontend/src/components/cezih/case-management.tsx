@@ -70,6 +70,12 @@ const VERIFICATION_STATUS_LABELS: Record<string, string> = {
   "entered-in-error": "Pogreška unosa",
 }
 
+// CEZIH's health-issue-management-verification-status-create ValueSet only accepts
+// unconfirmed / provisional / differential / confirmed. refuted and entered-in-error
+// are rejected at the server. Filter these out of input pickers but keep labels
+// available so we can still render any legacy values that come back from CEZIH.
+const CEZIH_VERIFICATION_STATUSES = ["unconfirmed", "provisional", "differential", "confirmed"] as const
+
 // CEZIH case actions — event codes per Simplifier cezih.hr.condition-management/0.2.1:
 //   2.1=Create, 2.2=Create recurrence, 2.3=Remission, 2.4=Resolve,
 //   2.5=Relapse, 2.6=Data update, 2.7=Delete (NOT shipped — product rule),
@@ -321,11 +327,9 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                     <SelectValue>{VERIFICATION_STATUS_LABELS[verification] || verification}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(VERIFICATION_STATUS_LABELS)
-                      .filter(([v]) => v !== "entered-in-error")
-                      .map(([value, label]) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
-                      ))}
+                    {CEZIH_VERIFICATION_STATUSES.map((value) => (
+                      <SelectItem key={value} value={value}>{VERIFICATION_STATUS_LABELS[value]}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -481,11 +485,9 @@ export function CaseManagement({ patientId, patientMbo }: CaseManagementProps) {
                   <SelectValue>{VERIFICATION_STATUS_LABELS[editVerification] || editVerification}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(VERIFICATION_STATUS_LABELS)
-                    .filter(([v]) => v !== "entered-in-error")
-                    .map(([val, label]) => (
-                      <SelectItem key={val} value={val}>{label}</SelectItem>
-                    ))}
+                  {CEZIH_VERIFICATION_STATUSES.map((val) => (
+                    <SelectItem key={val} value={val}>{VERIFICATION_STATUS_LABELS[val]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
