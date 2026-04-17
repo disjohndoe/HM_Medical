@@ -11,6 +11,7 @@ from app.models.patient import Patient
 from app.models.record_type import RecordType
 from app.models.user import User
 from app.schemas.medical_record import MedicalRecordCreate, MedicalRecordUpdate
+from app.services import prescription_service
 
 
 async def _validate_tip_for_tenant(db: AsyncSession, tenant_id: uuid.UUID, tip: str) -> None:
@@ -154,6 +155,7 @@ async def create_record(
 ) -> dict:
     await _validate_tip_for_tenant(db, tenant_id, data.tip)
 
+    therapy_dump = [t.model_dump() for t in data.preporucena_terapija] if data.preporucena_terapija else None
     record = MedicalRecord(
         tenant_id=tenant_id,
         patient_id=data.patient_id,
@@ -165,10 +167,21 @@ async def create_record(
         dijagnoza_tekst=data.dijagnoza_tekst,
         sadrzaj=data.sadrzaj,
         sensitivity=data.sensitivity,
-        preporucena_terapija=[t.model_dump() for t in data.preporucena_terapija] if data.preporucena_terapija else None,
+        preporucena_terapija=therapy_dump,
     )
     db.add(record)
     await db.flush()
+
+    if therapy_dump:
+        await prescription_service.upsert_draft_from_record(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+            medical_record_id=record.id,
+            doktor_id=doktor_id,
+            therapy_items=therapy_dump,
+            user_id=doktor_id,
+        )
 
     return await get_record(db, tenant_id, record.id)
 
@@ -178,6 +191,7 @@ async def update_record(
     tenant_id: uuid.UUID,
     record_id: uuid.UUID,
     data: MedicalRecordUpdate,
+    user_id: uuid.UUID | None = None,
 ) -> dict:
     record = await db.get(MedicalRecord, record_id)
     if not record or record.tenant_id != tenant_id:
@@ -192,4 +206,17 @@ async def update_record(
         setattr(record, field, value)
 
     await db.flush()
+
+    # Sync linked draft recept when therapy changes and there are items to propagate.
+    if "preporucena_terapija" in update_data and update_data["preporucena_terapija"]:
+        await prescription_service.upsert_draft_from_record(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+            medical_record_id=record.id,
+            doktor_id=record.doktor_id,
+            therapy_items=update_data["preporucena_terapija"],
+            user_id=user_id or record.doktor_id,
+        )
+
     return await get_record(db, tenant_id, record_id)

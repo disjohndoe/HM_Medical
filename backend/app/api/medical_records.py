@@ -228,7 +228,9 @@ async def update_medical_record(
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
-    updated = await medical_record_service.update_record(db, current_user.tenant_id, record_id, data)
+    updated = await medical_record_service.update_record(
+        db, current_user.tenant_id, record_id, data, user_id=current_user.id
+    )
     await audit_service.write_audit(
         db,
         tenant_id=current_user.tenant_id,

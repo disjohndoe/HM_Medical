@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useParams } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { PencilIcon, Upload, FileText, Send, PlusIcon, Loader2, Download, CalendarPlus, Stethoscope } from "lucide-react"
 
@@ -32,15 +32,37 @@ import { toast } from "sonner"
 export default function PacijentDetailPage() {
   const params = useParams()
   const id = params.id as string
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { data: patient, isLoading, error } = usePatient(id)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [ekartonOpen, setEkartonOpen] = useState(false)
   const [sendNalazOpen, setSendNalazOpen] = useState(false)
   const [newRecordOpen, setNewRecordOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState("pregled")
+  const initialTab = searchParams.get("tab") || "pregled"
+  const initialHighlightRecord = searchParams.get("record")
+  const [activeTab, setActiveTab] = useState(initialTab)
+  const [highlightRecordId, setHighlightRecordId] = useState<string | null>(initialHighlightRecord)
   const [cezihSubTab, setCezihSubTab] = useState("posjete")
   const [visitCreateOpen, setVisitCreateOpen] = useState(false)
   const [caseCreateOpen, setCaseCreateOpen] = useState(false)
+
+  // Clear ?record once consumed so refresh/back doesn't re-open the modal forever
+  useEffect(() => {
+    if (initialHighlightRecord) {
+      const url = new URL(window.location.href)
+      url.searchParams.delete("record")
+      url.searchParams.delete("tab")
+      router.replace(url.pathname + (url.search || ""), { scroll: false })
+    }
+    // initialHighlightRecord captured on mount — intentional single-shot effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleOpenNalaz = (recordId: string) => {
+    setHighlightRecordId(recordId)
+    setActiveTab("nalazi")
+  }
   const { canViewMedicalRecords, canViewCezih, canViewDocuments, canUploadDocuments, canEditMedicalRecord, canPerformCezihOps } = usePermissions()
   const exportMutation = useExportPatientData()
   const queryClient = useQueryClient()
@@ -335,7 +357,12 @@ export default function PacijentDetailPage() {
 
         {canViewMedicalRecords && (
           <TabsContent value="nalazi">
-            <RecordList patientId={id} hasCezihIdentifier={hasCezihIdentifier(patient)} />
+            <RecordList
+              patientId={id}
+              hasCezihIdentifier={hasCezihIdentifier(patient)}
+              highlightRecordId={highlightRecordId}
+              onHighlightConsumed={() => setHighlightRecordId(null)}
+            />
           </TabsContent>
         )}
 
@@ -347,7 +374,7 @@ export default function PacijentDetailPage() {
 
         {canPerformCezihOps && (
           <TabsContent value="recepti">
-            <PrescriptionList patientId={id} />
+            <PrescriptionList patientId={id} onOpenNalaz={handleOpenNalaz} />
           </TabsContent>
         )}
 

@@ -560,6 +560,10 @@ export interface Prescription {
   napomena: string | null;
   doktor_ime: string | null;
   doktor_prezime: string | null;
+  medical_record_datum: string | null;
+  medical_record_tip: string | null;
+  medical_record_dijagnoza_tekst: string | null;
+  medical_record_dijagnoza_mkb: string | null;
   tenant_id: string;
   created_at: string;
   updated_at: string;
@@ -569,6 +573,11 @@ export interface PrescriptionCreate {
   patient_id: string;
   medical_record_id?: string | null;
   lijekovi: Omit<PrescriptionLijekEntry, "oblik" | "jacina">[];
+  napomena?: string | null;
+}
+
+export interface PrescriptionUpdate {
+  lijekovi?: PrescriptionLijekEntry[];
   napomena?: string | null;
 }
 

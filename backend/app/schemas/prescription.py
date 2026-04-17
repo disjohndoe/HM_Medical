@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -21,6 +21,11 @@ class PrescriptionCreate(BaseModel):
     napomena: str | None = None
 
 
+class PrescriptionUpdate(BaseModel):
+    lijekovi: list[PrescriptionLijekEntry] | None = None
+    napomena: str | None = None
+
+
 class PrescriptionRead(BaseModel):
     id: UUID
     patient_id: UUID
@@ -35,6 +40,10 @@ class PrescriptionRead(BaseModel):
     napomena: str | None
     doktor_ime: str | None = None
     doktor_prezime: str | None = None
+    medical_record_datum: date | None = None
+    medical_record_tip: str | None = None
+    medical_record_dijagnoza_tekst: str | None = None
+    medical_record_dijagnoza_mkb: str | None = None
     tenant_id: UUID
     created_at: datetime
     updated_at: datetime

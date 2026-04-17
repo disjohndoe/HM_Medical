@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { PlusIcon, PencilIcon, Send, Info, Download, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -47,9 +47,11 @@ const PAGE_SIZE = 20
 interface RecordListProps {
   patientId: string
   hasCezihIdentifier?: boolean
+  highlightRecordId?: string | null
+  onHighlightConsumed?: () => void
 }
 
-export function RecordList({ patientId, hasCezihIdentifier = false }: RecordListProps) {
+export function RecordList({ patientId, hasCezihIdentifier = false, highlightRecordId, onHighlightConsumed }: RecordListProps) {
   const [tipFilter, setTipFilter] = useState<string>("")
   const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
@@ -101,6 +103,16 @@ export function RecordList({ patientId, hasCezihIdentifier = false }: RecordList
     PAGE_SIZE,
   )
   const records = (data?.items ?? []).filter((r) => isCezihEligible.has(r.tip))
+
+  useEffect(() => {
+    if (!highlightRecordId) return
+    const match = records.find((r) => r.id === highlightRecordId)
+    if (match) {
+      setEditRecord(match)
+      onHighlightConsumed?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightRecordId, records.length])
 
   const { sorted, sortKey, sortDir, toggleSort } = useTableSort(records, {
     defaultKey: "datum",

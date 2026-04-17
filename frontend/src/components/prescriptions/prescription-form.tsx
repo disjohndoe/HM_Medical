@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Loader2, Plus, Trash2, Search } from "lucide-react"
 import { toast } from "sonner"
 
@@ -36,9 +36,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { useDrugSearch } from "@/lib/hooks/use-cezih"
-import { useCreatePrescription, useSendPrescription } from "@/lib/hooks/use-prescriptions"
+import {
+  useCreatePrescription,
+  useSendPrescription,
+  useUpdatePrescription,
+} from "@/lib/hooks/use-prescriptions"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import type { LijekItem } from "@/lib/types"
+import type { LijekItem, Prescription } from "@/lib/types"
 
 interface SelectedDrug {
   atk: string
@@ -54,17 +58,43 @@ interface PrescriptionFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   patientId: string
+  prescription?: Prescription | null
 }
 
-export function PrescriptionForm({ open, onOpenChange, patientId }: PrescriptionFormProps) {
+export function PrescriptionForm({ open, onOpenChange, patientId, prescription }: PrescriptionFormProps) {
+  const isEdit = !!prescription
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [selected, setSelected] = useState<SelectedDrug[]>([])
   const [napomena, setNapomena] = useState("")
   const { data: drugs } = useDrugSearch(searchQuery)
   const createPrescription = useCreatePrescription()
+  const updatePrescription = useUpdatePrescription()
   const sendPrescription = useSendPrescription()
   const { canUseHzzo } = usePermissions()
+
+  useEffect(() => {
+    if (open) {
+      if (prescription) {
+        setSelected(
+          prescription.lijekovi.map((l) => ({
+            atk: l.atk,
+            naziv: l.naziv,
+            oblik: l.oblik,
+            jacina: l.jacina,
+            kolicina: l.kolicina,
+            doziranje: l.doziranje,
+            napomena: l.napomena,
+          })),
+        )
+        setNapomena(prescription.napomena ?? "")
+      } else {
+        setSelected([])
+        setNapomena("")
+      }
+      setSearchQuery("")
+    }
+  }, [open, prescription])
 
   const handleAddDrug = (drug: LijekItem) => {
     if (selected.some((s) => s.atk === drug.atk && s.naziv === drug.naziv)) {
@@ -97,11 +127,57 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
     )
   }
 
+  const resetAndClose = () => {
+    setSelected([])
+    setNapomena("")
+    setSearchQuery("")
+    onOpenChange(false)
+  }
+
   const handleSave = (andSend: boolean) => {
     if (selected.length === 0) {
       toast.error("Dodajte barem jedan lijek")
       return
     }
+
+    if (isEdit && prescription) {
+      updatePrescription.mutate(
+        {
+          id: prescription.id,
+          data: {
+            lijekovi: selected.map((d) => ({
+              atk: d.atk,
+              naziv: d.naziv,
+              oblik: d.oblik,
+              jacina: d.jacina,
+              kolicina: d.kolicina,
+              doziranje: d.doziranje,
+              napomena: d.napomena,
+            })),
+            napomena: napomena || null,
+          },
+        },
+        {
+          onSuccess: (updated) => {
+            if (andSend) {
+              sendPrescription.mutate(updated.id, {
+                onSuccess: (res) => {
+                  toast.success(`e-Recept poslan (${res.cezih_recept_id})`)
+                  resetAndClose()
+                },
+                onError: (err) => toast.error(err.message),
+              })
+            } else {
+              toast.success("Recept ažuriran")
+              resetAndClose()
+            }
+          },
+          onError: (err) => toast.error(err.message),
+        },
+      )
+      return
+    }
+
     createPrescription.mutate(
       {
         patient_id: patientId,
@@ -117,9 +193,9 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
         napomena: napomena || null,
       },
       {
-        onSuccess: (prescription) => {
+        onSuccess: (created) => {
           if (andSend) {
-            sendPrescription.mutate(prescription.id, {
+            sendPrescription.mutate(created.id, {
               onSuccess: (res) => {
                 toast.success(`e-Recept poslan (${res.cezih_recept_id})`)
                 resetAndClose()
@@ -136,13 +212,6 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
     )
   }
 
-  const resetAndClose = () => {
-    setSelected([])
-    setNapomena("")
-    setSearchQuery("")
-    onOpenChange(false)
-  }
-
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       setSelected([])
@@ -152,14 +221,15 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
     onOpenChange(open)
   }
 
-  const isPending = createPrescription.isPending || sendPrescription.isPending
+  const isPending =
+    createPrescription.isPending || updatePrescription.isPending || sendPrescription.isPending
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <DialogTitle>Novi recept</DialogTitle>
+            <DialogTitle>{isEdit ? "Uredi recept" : "Novi recept"}</DialogTitle>
           </div>
         </DialogHeader>
 
@@ -289,7 +359,7 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
             disabled={isPending || selected.length === 0}
           >
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Spremi nacrt
+            {isEdit ? "Spremi promjene" : "Spremi nacrt"}
           </Button>
           {canUseHzzo && (
             <Button
@@ -297,7 +367,7 @@ export function PrescriptionForm({ open, onOpenChange, patientId }: Prescription
               disabled={isPending || selected.length === 0}
             >
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Spremi i pošalji
+              {isEdit ? "Spremi i pošalji" : "Spremi i pošalji"}
             </Button>
           )}
         </DialogFooter>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { PlusIcon, EyeIcon, Send, Trash2 } from "lucide-react"
+import { PlusIcon, EyeIcon, PencilIcon, Send, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -29,13 +29,15 @@ import { PrescriptionForm } from "./prescription-form"
 import { PrescriptionDetail } from "./prescription-detail"
 import { usePrescriptions, useSendPrescription, useDeletePrescription } from "@/lib/hooks/use-prescriptions"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { formatDateTimeHR } from "@/lib/utils"
+import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
+import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 import type { Prescription } from "@/lib/types"
 
 const PAGE_SIZE = 20
 
 interface PrescriptionListProps {
   patientId: string
+  onOpenNalaz?: (recordId: string) => void
 }
 
 const STATUS_OPTIONS = [
@@ -51,13 +53,24 @@ function statusBadge(p: Prescription) {
   return <Badge variant="outline" className="text-muted-foreground">Nacrt</Badge>
 }
 
-export function PrescriptionList({ patientId }: PrescriptionListProps) {
+function sourceNalazLabel(p: Prescription, tipLabelMap: Record<string, string>) {
+  const parts: string[] = []
+  if (p.medical_record_tip) parts.push(tipLabelMap[p.medical_record_tip] ?? p.medical_record_tip)
+  const dx = p.medical_record_dijagnoza_tekst?.trim() || p.medical_record_dijagnoza_mkb?.trim()
+  if (dx) parts.push(dx)
+  if (p.medical_record_datum) parts.push(formatDateHR(p.medical_record_datum))
+  return parts.join(" · ")
+}
+
+export function PrescriptionList({ patientId, onOpenNalaz }: PrescriptionListProps) {
   const [statusFilter, setStatusFilter] = useState("")
   const [page, setPage] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
+  const [editPrescription, setEditPrescription] = useState<Prescription | null>(null)
   const [viewId, setViewId] = useState<string | null>(null)
 
   const { canPerformCezihOps, canUseHzzo } = usePermissions()
+  const { tipLabelMap } = useRecordTypeMaps()
   const { data, isLoading } = usePrescriptions(
     patientId,
     statusFilter && statusFilter !== "all" ? statusFilter : undefined,
@@ -142,6 +155,7 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
             {sortedPrescriptions.map((p) => {
               const drugNames = p.lijekovi.map((l) => l.naziv).join(", ")
               const isDraft = !p.cezih_sent
+              const sourceLabel = p.medical_record_id ? sourceNalazLabel(p, tipLabelMap) : ""
               return (
                 <TableRow key={p.id}>
                   <TableCell className="text-sm">{formatDateTimeHR(p.created_at)}</TableCell>
@@ -151,7 +165,22 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
                   <TableCell className="hidden lg:table-cell text-sm">
                     {p.doktor_prezime ? `${p.doktor_ime} ${p.doktor_prezime}` : "—"}
                   </TableCell>
-                  <TableCell>{statusBadge(p)}</TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      {statusBadge(p)}
+                      {p.medical_record_id && sourceLabel && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenNalaz?.(p.medical_record_id!)}
+                          className="block text-left text-xs text-muted-foreground hover:text-foreground hover:underline max-w-[280px] truncate"
+                          title={sourceLabel}
+                          disabled={!onOpenNalaz}
+                        >
+                          Iz nalaza: {sourceLabel}
+                        </button>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Button
@@ -161,6 +190,16 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
                       >
                         <EyeIcon className="h-4 w-4" />
                       </Button>
+                      {isDraft && canPerformCezihOps && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setEditPrescription(p)}
+                          title="Uredi recept"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </Button>
+                      )}
                       {isDraft && canPerformCezihOps && canUseHzzo && (
                           <Button
                             variant="ghost"
@@ -205,6 +244,13 @@ export function PrescriptionList({ patientId }: PrescriptionListProps) {
         open={formOpen}
         onOpenChange={setFormOpen}
         patientId={patientId}
+      />
+
+      <PrescriptionForm
+        open={!!editPrescription}
+        onOpenChange={(open) => !open && setEditPrescription(null)}
+        patientId={patientId}
+        prescription={editPrescription}
       />
 
       {viewPrescription && (

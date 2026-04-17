@@ -7,7 +7,12 @@ from app.core.plan_enforcement import check_cezih_access, check_hzzo_access
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
 from app.models.user import User
-from app.schemas.prescription import PrescriptionCreate, PrescriptionRead, PrescriptionSendResponse
+from app.schemas.prescription import (
+    PrescriptionCreate,
+    PrescriptionRead,
+    PrescriptionSendResponse,
+    PrescriptionUpdate,
+)
 from app.services import prescription_service
 from app.utils.pagination import PaginatedResponse
 
@@ -54,6 +59,18 @@ async def get_prescription(
 ):
     return await prescription_service.get_prescription(
         db, current_user.tenant_id, prescription_id,
+    )
+
+
+@router.patch("/{prescription_id}", response_model=PrescriptionRead)
+async def update_prescription(
+    prescription_id: uuid.UUID,
+    data: PrescriptionUpdate,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await prescription_service.update_prescription(
+        db, current_user.tenant_id, prescription_id, data, current_user.id,
     )
 
 

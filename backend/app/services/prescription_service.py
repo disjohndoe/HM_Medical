@@ -5,18 +5,25 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.medical_record import MedicalRecord
 from app.models.prescription import Prescription
 from app.models.user import User
-from app.schemas.prescription import PrescriptionCreate
+from app.schemas.prescription import PrescriptionCreate, PrescriptionUpdate
+from app.services import audit_service
 from app.services.cezih import dispatcher as cezih
 
 
 def _join_query(base):
     return (
         base.outerjoin(User, Prescription.doktor_id == User.id)
+        .outerjoin(MedicalRecord, Prescription.medical_record_id == MedicalRecord.id)
         .add_columns(
             User.ime.label("doktor_ime"),
             User.prezime.label("doktor_prezime"),
+            MedicalRecord.datum.label("medical_record_datum"),
+            MedicalRecord.tip.label("medical_record_tip"),
+            MedicalRecord.dijagnoza_tekst.label("medical_record_dijagnoza_tekst"),
+            MedicalRecord.dijagnoza_mkb.label("medical_record_dijagnoza_mkb"),
         )
     )
 
@@ -38,6 +45,10 @@ def _row_to_dict(row) -> dict:
         "napomena": rec.napomena,
         "doktor_ime": row.doktor_ime,
         "doktor_prezime": row.doktor_prezime,
+        "medical_record_datum": row.medical_record_datum,
+        "medical_record_tip": row.medical_record_tip,
+        "medical_record_dijagnoza_tekst": row.medical_record_dijagnoza_tekst,
+        "medical_record_dijagnoza_mkb": row.medical_record_dijagnoza_mkb,
         "created_at": rec.created_at,
         "updated_at": rec.updated_at,
     }
@@ -117,6 +128,89 @@ async def create_prescription(
     return _row_to_dict(row)
 
 
+async def update_prescription(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    prescription_id: uuid.UUID,
+    data: PrescriptionUpdate,
+    user_id: uuid.UUID,
+) -> dict:
+    result = await db.execute(
+        select(Prescription).where(
+            Prescription.id == prescription_id,
+            Prescription.tenant_id == tenant_id,
+        )
+    )
+    prescription = result.scalar_one_or_none()
+    if not prescription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recept nije pronađen")
+    if prescription.cezih_sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Poslan recept se ne može uređivati — koristite storno",
+        )
+
+    update_payload = data.model_dump(exclude_unset=True)
+    lijekovi_changed = False
+
+    if "lijekovi" in update_payload and update_payload["lijekovi"] is not None:
+        if len(update_payload["lijekovi"]) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Recept mora sadržavati barem jedan lijek",
+            )
+        prescription.lijekovi = update_payload["lijekovi"]
+        lijekovi_changed = True
+
+    if "napomena" in update_payload:
+        prescription.napomena = update_payload["napomena"]
+
+    await db.flush()
+
+    # Reverse sync: if lijekovi changed AND recept is linked to an unsent nalaz,
+    # rewrite the nalaz's preporucena_terapija from the new recept lijekovi.
+    if lijekovi_changed and prescription.medical_record_id:
+        nalaz = await db.get(MedicalRecord, prescription.medical_record_id)
+        if nalaz and nalaz.tenant_id == tenant_id and not nalaz.cezih_sent:
+            nalaz.preporucena_terapija = [
+                {
+                    "atk": l.get("atk", ""),
+                    "naziv": l.get("naziv", ""),
+                    "jacina": l.get("jacina", ""),
+                    "oblik": l.get("oblik", ""),
+                    "doziranje": l.get("doziranje", ""),
+                    "napomena": l.get("napomena", ""),
+                }
+                for l in prescription.lijekovi
+            ]
+            await db.flush()
+            await audit_service.write_audit(
+                db,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="medical_record_therapy_sync_from_prescription",
+                resource_type="medical_record",
+                resource_id=nalaz.id,
+                details={"prescription_id": str(prescription.id)},
+            )
+
+    await audit_service.write_audit(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        action="prescription_update",
+        resource_type="prescription",
+        resource_id=prescription.id,
+        details={"lijekovi_changed": lijekovi_changed},
+    )
+
+    base = select(Prescription).where(Prescription.id == prescription.id)
+    query = _join_query(base)
+    result = await db.execute(query)
+    row = result.one()
+    return _row_to_dict(row)
+
+
 async def delete_prescription(
     db: AsyncSession,
     tenant_id: uuid.UUID,
@@ -138,6 +232,97 @@ async def delete_prescription(
         )
     await db.delete(prescription)
     await db.commit()
+
+
+async def upsert_draft_from_record(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    medical_record_id: uuid.UUID,
+    doktor_id: uuid.UUID,
+    therapy_items: list[dict],
+    user_id: uuid.UUID,
+) -> Prescription | None:
+    """Create or sync a draft Prescription from a nalaz's preporucena_terapija.
+
+    If a draft (cezih_sent=False, cezih_storno=False) linked to this nalaz exists,
+    overwrite its lijekovi. Otherwise insert a new draft. If only sent/stornirani
+    prescriptions are linked, do nothing — sent recepts are immutable on CEZIH side.
+    """
+    if not therapy_items:
+        return None
+
+    lijekovi = [
+        {
+            "atk": t.get("atk", ""),
+            "naziv": t.get("naziv", ""),
+            "oblik": t.get("oblik", ""),
+            "jacina": t.get("jacina", ""),
+            "kolicina": 1,
+            "doziranje": t.get("doziranje", ""),
+            "napomena": t.get("napomena", ""),
+        }
+        for t in therapy_items
+    ]
+
+    existing = await db.execute(
+        select(Prescription)
+        .where(
+            Prescription.tenant_id == tenant_id,
+            Prescription.medical_record_id == medical_record_id,
+            Prescription.cezih_sent == False,  # noqa: E712
+            Prescription.cezih_storno == False,  # noqa: E712
+        )
+        .order_by(Prescription.created_at.desc())
+        .limit(1)
+    )
+    draft = existing.scalar_one_or_none()
+
+    if draft:
+        draft.lijekovi = lijekovi
+        await db.flush()
+        await audit_service.write_audit(
+            db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="prescription_draft_from_record",
+            resource_type="prescription",
+            resource_id=draft.id,
+            details={"medical_record_id": str(medical_record_id), "created": False},
+        )
+        return draft
+
+    # Check whether a sent/stornirani prescription exists for this nalaz — if so, don't auto-spawn new drafts.
+    any_linked = await db.execute(
+        select(func.count())
+        .select_from(Prescription)
+        .where(
+            Prescription.tenant_id == tenant_id,
+            Prescription.medical_record_id == medical_record_id,
+        )
+    )
+    if any_linked.scalar_one() > 0:
+        return None
+
+    new_draft = Prescription(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        doktor_id=doktor_id,
+        medical_record_id=medical_record_id,
+        lijekovi=lijekovi,
+    )
+    db.add(new_draft)
+    await db.flush()
+    await audit_service.write_audit(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        action="prescription_draft_from_record",
+        resource_type="prescription",
+        resource_id=new_draft.id,
+        details={"medical_record_id": str(medical_record_id), "created": True},
+    )
+    return new_draft
 
 
 async def send_to_cezih(

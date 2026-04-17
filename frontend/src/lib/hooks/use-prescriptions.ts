@@ -5,6 +5,7 @@ import type {
   Prescription,
   PrescriptionCreate,
   PrescriptionSendResponse,
+  PrescriptionUpdate,
   PaginatedResponse,
 } from "@/lib/types"
 
@@ -32,6 +33,18 @@ export function useCreatePrescription() {
       api.post<Prescription>("/prescriptions", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prescriptions"] })
+    },
+  })
+}
+
+export function useUpdatePrescription() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: PrescriptionUpdate }) =>
+      api.patch<Prescription>(`/prescriptions/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prescriptions"] })
+      qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
   })
 }
