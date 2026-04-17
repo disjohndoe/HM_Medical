@@ -34,16 +34,36 @@ import { formatDateTimeHR } from "@/lib/utils"
 interface PatientCezihTabProps {
   patientId: string
   hasCezihIdentifier: boolean
+  subTab?: string
+  onSubTabChange?: (v: string) => void
+  visitCreateOpen?: boolean
+  onVisitCreateOpenChange?: (open: boolean) => void
+  caseCreateOpen?: boolean
+  onCaseCreateOpenChange?: (open: boolean) => void
 }
 
-export function PatientCezihTab({ patientId, hasCezihIdentifier }: PatientCezihTabProps) {
+export function PatientCezihTab({
+  patientId,
+  hasCezihIdentifier,
+  subTab,
+  onSubTabChange,
+  visitCreateOpen,
+  onVisitCreateOpenChange,
+  caseCreateOpen,
+  onCaseCreateOpenChange,
+}: PatientCezihTabProps) {
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
   const insuranceCheck = useInsuranceCheck()
   const cancelDocument = useCancelDocument()
   const replaceDocument = useReplaceDocument()
   const { canUseHzzo } = usePermissions()
   const { tipLabelMap } = useRecordTypeMaps()
-  const [cezihSubTab, setCezihSubTab] = useState("posjete")
+  const [internalSubTab, setInternalSubTab] = useState("posjete")
+  const cezihSubTab = subTab ?? internalSubTab
+  const setCezihSubTab = (v: string) => {
+    if (onSubTabChange) onSubTabChange(v)
+    else setInternalSubTab(v)
+  }
   const [eReceptOpen, setEReceptOpen] = useState(false)
   const [nalazStornoTarget, setNalazStornoTarget] = useState<string | null>(null)
   const [editTarget, setEditTarget] = useState<{ recordId: string; referenceId: string } | null>(null)
@@ -187,7 +207,12 @@ export function PatientCezihTab({ patientId, hasCezihIdentifier }: PatientCezihT
 
         <TabsContent value="posjete">
           {hasCezihIdentifier ? (
-            <VisitManagement patientId={patientId} onNavigateToCase={() => setCezihSubTab("slucajevi")} />
+            <VisitManagement
+              patientId={patientId}
+              onNavigateToCase={() => setCezihSubTab("slucajevi")}
+              createOpen={visitCreateOpen}
+              onCreateOpenChange={onVisitCreateOpenChange}
+            />
           ) : (
             <p className="text-sm text-muted-foreground py-4 text-center">
               Pacijent nema CEZIH identifikator — posjete nisu dostupne
@@ -197,7 +222,11 @@ export function PatientCezihTab({ patientId, hasCezihIdentifier }: PatientCezihT
 
         <TabsContent value="slucajevi">
           {hasCezihIdentifier ? (
-            <CaseManagement patientId={patientId} />
+            <CaseManagement
+              patientId={patientId}
+              createOpen={caseCreateOpen}
+              onCreateOpenChange={onCaseCreateOpenChange}
+            />
           ) : (
             <p className="text-sm text-muted-foreground py-4 text-center">
               Pacijent nema CEZIH identifikator — slučajevi nisu dostupni

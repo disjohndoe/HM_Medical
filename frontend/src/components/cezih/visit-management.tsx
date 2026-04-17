@@ -91,9 +91,11 @@ const VISIT_ACTIONS = [
 interface VisitManagementProps {
   patientId: string
   onNavigateToCase?: () => void
+  createOpen?: boolean
+  onCreateOpenChange?: (open: boolean) => void
 }
 
-export function VisitManagement({ patientId, onNavigateToCase }: VisitManagementProps) {
+export function VisitManagement({ patientId, onNavigateToCase, createOpen: createOpenProp, onCreateOpenChange }: VisitManagementProps) {
   const { tenant } = useAuth()
   const { data: visitsData, isLoading } = useListVisits(patientId)
   const createVisit = useCreateVisit()
@@ -105,8 +107,13 @@ export function VisitManagement({ patientId, onNavigateToCase }: VisitManagement
   // cache covering the window between a mutation and the next refetch.
   const [visitMeta, setVisitMeta] = useState<Record<string, { nacin_prijema?: string; tip_posjete?: string }>>({})
 
-  // Create form state
-  const [showCreate, setShowCreate] = useState(false)
+  // Create dialog open (controlled via props when provided)
+  const [internalCreateOpen, setInternalCreateOpen] = useState(false)
+  const showCreate = createOpenProp ?? internalCreateOpen
+  const setShowCreate = (open: boolean) => {
+    if (onCreateOpenChange) onCreateOpenChange(open)
+    else setInternalCreateOpen(open)
+  }
   const [nacinPrijema, setNacinPrijema] = useState("6")
   const [tipPosjete, setTipPosjete] = useState("2")
   const [reason, setReason] = useState("")
@@ -268,19 +275,22 @@ export function VisitManagement({ patientId, onNavigateToCase }: VisitManagement
             </span>
           )}
         </div>
-        <Button size="sm" variant="outline" onClick={() => setShowCreate(!showCreate)}>
+        <Button size="sm" variant="outline" onClick={() => setShowCreate(true)}>
           <Plus className="mr-1 h-3.5 w-3.5" />
           Nova posjeta
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
-        {showCreate && (
-          <div className="rounded-lg border p-3 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+        <Dialog open={showCreate} onOpenChange={setShowCreate}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Nova posjeta</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 pt-2">
               <div className="space-y-1">
                 <Label className="text-xs">Način prijema</Label>
                 <Select value={nacinPrijema} onValueChange={(v) => v && setNacinPrijema(v)}>
-                  <SelectTrigger className="h-8">
+                  <SelectTrigger>
                     <SelectValue>{NACIN_PRIJEMA_LABELS[nacinPrijema] || nacinPrijema}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -293,7 +303,7 @@ export function VisitManagement({ patientId, onNavigateToCase }: VisitManagement
               <div className="space-y-1">
                 <Label className="text-xs">Tip posjete</Label>
                 <Select value={tipPosjete} onValueChange={(v) => v && setTipPosjete(v)}>
-                  <SelectTrigger className="h-8">
+                  <SelectTrigger>
                     <SelectValue>{TIP_POSJETE_LABELS[tipPosjete] || tipPosjete}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -306,22 +316,21 @@ export function VisitManagement({ patientId, onNavigateToCase }: VisitManagement
               <div className="space-y-1">
                 <Label className="text-xs">Razlog (opcionalno)</Label>
                 <Input
-                  className="h-8 text-sm"
                   placeholder="Razlog posjete"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2">
+            <DialogFooter>
               <Button size="sm" variant="outline" onClick={() => setShowCreate(false)}>Odustani</Button>
               <Button size="sm" onClick={handleCreate} disabled={createVisit.isPending}>
                 {createVisit.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
                 Kreiraj posjetu
               </Button>
-            </div>
-          </div>
-        )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">

@@ -94,10 +94,17 @@ const CASE_ACTIONS = [
 
 interface CaseManagementProps {
   patientId: string
+  createOpen?: boolean
+  onCreateOpenChange?: (open: boolean) => void
 }
 
-export function CaseManagement({ patientId }: CaseManagementProps) {
-  const [createOpen, setCreateOpen] = useState(false)
+export function CaseManagement({ patientId, createOpen: createOpenProp, onCreateOpenChange }: CaseManagementProps) {
+  const [internalCreateOpen, setInternalCreateOpen] = useState(false)
+  const createOpen = createOpenProp ?? internalCreateOpen
+  const setCreateOpen = (open: boolean) => {
+    if (onCreateOpenChange) onCreateOpenChange(open)
+    else setInternalCreateOpen(open)
+  }
   const [icdQuery, setIcdQuery] = useState("")
   const [selectedIcd, setSelectedIcd] = useState<{ code: string; display: string } | null>(null)
   const [onsetDate, setOnsetDate] = useState(new Date().toISOString().split("T")[0])

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { PencilIcon, Upload, FileText, Send, PlusIcon, Loader2, Download, CalendarPlus } from "lucide-react"
+import { PencilIcon, Upload, FileText, Send, PlusIcon, Loader2, Download, CalendarPlus, Stethoscope } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,6 +38,9 @@ export default function PacijentDetailPage() {
   const [sendNalazOpen, setSendNalazOpen] = useState(false)
   const [newRecordOpen, setNewRecordOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("pregled")
+  const [cezihSubTab, setCezihSubTab] = useState("posjete")
+  const [visitCreateOpen, setVisitCreateOpen] = useState(false)
+  const [caseCreateOpen, setCaseCreateOpen] = useState(false)
   const { canViewMedicalRecords, canViewCezih, canViewDocuments, canUploadDocuments, canEditMedicalRecord, canPerformCezihOps } = usePermissions()
   const exportMutation = useExportPatientData()
   const queryClient = useQueryClient()
@@ -100,61 +103,86 @@ export default function PacijentDetailPage() {
       {/* CEZIH action buttons */}
       {canPerformCezihOps && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Button
-              size="lg"
-              className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
-              onClick={() => {
-                if (!hasCezihIdentifier(patient)) {
-                  toast.error("Pacijent nema CEZIH identifikator — posjete nisu dostupne")
-                  return
-                }
-                setActiveTab("cezih")
-              }}
-            >
-              <CalendarPlus className="mr-2 h-5 w-5" />
-              Nova posjeta
-            </Button>
-            <Button
-              size="lg"
-              className={`h-12 text-base ${ekartonOpen ? "bg-sky-600 hover:bg-sky-700" : "bg-sky-500 hover:bg-sky-600"} text-white`}
-              onClick={() => {
-                if (!ekartonOpen) {
-                  // Refresh the patient summary that drives EkartonView, plus
-                  // documents (MHD). We deliberately do NOT invalidate
-                  // ["cezih","visits"] or ["cezih","cases"] — those queries
-                  // carry optimistic `_local: true` rows from recent
-                  // create/update/action mutations, and CEZIH's QEDm read
-                  // side is eventually consistent. Blowing them away here
-                  // would wipe optimistic rows before CEZIH catches up and
-                  // look like "my visit/case disappeared". The shared cache
-                  // is already fresh enough for e-Karton's needs.
-                  queryClient.invalidateQueries({ queryKey: ["cezih", "patient", id] })
-                  queryClient.invalidateQueries({ queryKey: ["cezih", "documents"] })
-                }
-                setEkartonOpen((prev) => !prev)
-              }}
-            >
-              <FileText className="mr-2 h-5 w-5" />
-              {ekartonOpen ? "Sakrij e-Karton" : "Dohvati e-Karton"}
-            </Button>
-            <Button
-              size="lg"
-              className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
-              onClick={() => setNewRecordOpen(true)}
-            >
-              <PlusIcon className="mr-2 h-5 w-5" />
-              Novi nalaz
-            </Button>
-            <Button
-              size="lg"
-              className="h-12 text-base bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => setSendNalazOpen(true)}
-            >
-              <Send className="mr-2 h-5 w-5" />
-              Pošalji e-Nalaze
-            </Button>
-          </div>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">CEZIH</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <Button
+                  size="lg"
+                  className={`h-12 text-base ${ekartonOpen ? "bg-sky-600 hover:bg-sky-700" : "bg-sky-500 hover:bg-sky-600"} text-white`}
+                  onClick={() => {
+                    if (!ekartonOpen) {
+                      // Refresh the patient summary that drives EkartonView, plus
+                      // documents (MHD). We deliberately do NOT invalidate
+                      // ["cezih","visits"] or ["cezih","cases"] — those queries
+                      // carry optimistic `_local: true` rows from recent
+                      // create/update/action mutations, and CEZIH's QEDm read
+                      // side is eventually consistent. Blowing them away here
+                      // would wipe optimistic rows before CEZIH catches up and
+                      // look like "my visit/case disappeared". The shared cache
+                      // is already fresh enough for e-Karton's needs.
+                      queryClient.invalidateQueries({ queryKey: ["cezih", "patient", id] })
+                      queryClient.invalidateQueries({ queryKey: ["cezih", "documents"] })
+                    }
+                    setEkartonOpen((prev) => !prev)
+                  }}
+                >
+                  <FileText className="mr-2 h-5 w-5" />
+                  {ekartonOpen ? "Sakrij e-Karton" : "Dohvati e-Karton"}
+                </Button>
+                <Button
+                  size="lg"
+                  className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
+                  onClick={() => {
+                    if (!hasCezihIdentifier(patient)) {
+                      toast.error("Pacijent nema CEZIH identifikator — posjete nisu dostupne")
+                      return
+                    }
+                    setActiveTab("cezih")
+                    setCezihSubTab("posjete")
+                    setVisitCreateOpen(true)
+                  }}
+                >
+                  <CalendarPlus className="mr-2 h-5 w-5" />
+                  Nova posjeta
+                </Button>
+                <Button
+                  size="lg"
+                  className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
+                  onClick={() => {
+                    if (!hasCezihIdentifier(patient)) {
+                      toast.error("Pacijent nema CEZIH identifikator — slučajevi nisu dostupni")
+                      return
+                    }
+                    setActiveTab("cezih")
+                    setCezihSubTab("slucajevi")
+                    setCaseCreateOpen(true)
+                  }}
+                >
+                  <Stethoscope className="mr-2 h-5 w-5" />
+                  Novi slučaj
+                </Button>
+                <Button
+                  size="lg"
+                  className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
+                  onClick={() => setNewRecordOpen(true)}
+                >
+                  <PlusIcon className="mr-2 h-5 w-5" />
+                  Novi nalaz
+                </Button>
+                <Button
+                  size="lg"
+                  className="h-12 text-base bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => setSendNalazOpen(true)}
+                >
+                  <Send className="mr-2 h-5 w-5" />
+                  Pošalji e-Nalaze
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
           {ekartonOpen && (
             <EkartonView
               patientId={id}
@@ -344,7 +372,16 @@ export default function PacijentDetailPage() {
 
         {canViewCezih && (
           <TabsContent value="cezih">
-            <PatientCezihTab patientId={id} hasCezihIdentifier={hasCezihIdentifier(patient)} />
+            <PatientCezihTab
+              patientId={id}
+              hasCezihIdentifier={hasCezihIdentifier(patient)}
+              subTab={cezihSubTab}
+              onSubTabChange={setCezihSubTab}
+              visitCreateOpen={visitCreateOpen}
+              onVisitCreateOpenChange={setVisitCreateOpen}
+              caseCreateOpen={caseCreateOpen}
+              onCaseCreateOpenChange={setCaseCreateOpen}
+            />
           </TabsContent>
         )}
       </Tabs>
