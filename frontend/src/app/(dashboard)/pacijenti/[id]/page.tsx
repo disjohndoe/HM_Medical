@@ -194,14 +194,14 @@ export default function PacijentDetailPage() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex h-auto w-full flex-wrap gap-1 group-data-horizontal/tabs:h-auto sm:inline-flex sm:h-8 sm:w-fit sm:flex-nowrap sm:gap-0 sm:group-data-horizontal/tabs:h-8">
-          <TabsTrigger value="pregled" className="h-7 flex-auto sm:h-[calc(100%-1px)] sm:flex-1">Pregled</TabsTrigger>
-          <TabsTrigger value="postupci" className="h-7 flex-auto sm:h-[calc(100%-1px)] sm:flex-1">Postupci</TabsTrigger>
-          {canViewMedicalRecords && <TabsTrigger value="nalazi" className="h-7 flex-auto sm:h-[calc(100%-1px)] sm:flex-1">Nalazi</TabsTrigger>}
-          {canViewMedicalRecords && <TabsTrigger value="biljeske" className="h-7 flex-auto sm:h-[calc(100%-1px)] sm:flex-1">Bilješke</TabsTrigger>}
-          {canPerformCezihOps && <TabsTrigger value="recepti" className="h-7 flex-auto sm:h-[calc(100%-1px)] sm:flex-1">Recepti</TabsTrigger>}
-          {canViewDocuments && <TabsTrigger value="dokumenti" className="h-7 flex-auto sm:h-[calc(100%-1px)] sm:flex-1">Dokumenti</TabsTrigger>}
-          {canViewCezih && <TabsTrigger value="cezih" className="h-7 flex-auto sm:h-[calc(100%-1px)] sm:flex-1">CEZIH</TabsTrigger>}
+        <TabsList className="flex h-auto w-full flex-wrap gap-x-4 gap-y-2 bg-transparent p-0 group-data-horizontal/tabs:h-auto sm:inline-flex sm:h-8 sm:w-fit sm:flex-nowrap sm:gap-0 sm:bg-muted sm:p-[3px] sm:group-data-horizontal/tabs:h-8">
+          <TabsTrigger value="pregled" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Pregled</TabsTrigger>
+          <TabsTrigger value="postupci" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Postupci</TabsTrigger>
+          {canViewMedicalRecords && <TabsTrigger value="nalazi" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Nalazi</TabsTrigger>}
+          {canViewMedicalRecords && <TabsTrigger value="biljeske" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Bilješke</TabsTrigger>}
+          {canPerformCezihOps && <TabsTrigger value="recepti" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Recepti</TabsTrigger>}
+          {canViewDocuments && <TabsTrigger value="dokumenti" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Dokumenti</TabsTrigger>}
+          {canViewCezih && <TabsTrigger value="cezih" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">CEZIH</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="pregled" className="space-y-4">
