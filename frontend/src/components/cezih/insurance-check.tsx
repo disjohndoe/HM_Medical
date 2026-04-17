@@ -7,13 +7,13 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { useInsuranceCheck } from "@/lib/hooks/use-cezih"
+import { useInsuranceCheckByMbo } from "@/lib/hooks/use-cezih"
 import { OSIGURANJE_STATUS } from "@/lib/constants"
 import { formatDateHR } from "@/lib/utils"
 
 export function InsuranceCheck() {
   const [mbo, setMbo] = useState("")
-  const checkInsurance = useInsuranceCheck()
+  const checkInsurance = useInsuranceCheckByMbo()
 
   const handleCheck = () => {
     if (!mbo || mbo.length !== 9 || !/^\d{9}$/.test(mbo)) {

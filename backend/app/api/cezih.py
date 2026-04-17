@@ -2,7 +2,8 @@ import json  # noqa: F401
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import status as http_status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -149,10 +150,21 @@ async def provjera_osiguranja(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    return await cezih.insurance_check(
-        data.patient_id,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
-        http_client=_http_client(request),
+    if data.patient_id is not None:
+        return await cezih.insurance_check(
+            data.patient_id,
+            db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+            http_client=_http_client(request),
+        )
+    if data.mbo:
+        return await cezih.insurance_check_by_mbo(
+            data.mbo,
+            db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+            http_client=_http_client(request),
+        )
+    raise HTTPException(
+        status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Potrebno je proslijediti patient_id ili mbo",
     )
 
 

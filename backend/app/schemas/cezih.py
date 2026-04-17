@@ -9,7 +9,11 @@ class CezihImportRequest(BaseModel):
 
 
 class InsuranceCheckRequest(BaseModel):
-    patient_id: UUID
+    # Ad-hoc MBO lookup (standalone CEZIH card) OR local patient (e-Karton flow).
+    # Exactly one must be set. patient_id resolves the correct CEZIH identifier
+    # (MBO > jedinstveni-id > EHIC > passport) server-side.
+    patient_id: UUID | None = None
+    mbo: str | None = None
 
 
 class PatientIdentifier(BaseModel):

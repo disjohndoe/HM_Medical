@@ -125,6 +125,19 @@ export function useInsuranceCheck() {
   })
 }
 
+/** Ad-hoc MBO-only insurance check (standalone CEZIH tab card). */
+export function useInsuranceCheckByMbo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (mbo: string) =>
+      api.post<InsuranceCheckResponse>("/cezih/provjera-osiguranja", { mbo }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
+    },
+  })
+}
+
 export function useSendENalaz() {
   const queryClient = useQueryClient()
   return useMutation({

@@ -52,7 +52,7 @@ export function DocumentSearch() {
   const [cancelTarget, setCancelTarget] = useState<string | null>(null)
 
   const { data: documents, isLoading, isError, error, refetch } = useDocumentSearch({
-    mbo: selectedPatient?.mbo || undefined,
+    patient_id: selectedPatient?.id || undefined,
     type: docType || undefined,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
