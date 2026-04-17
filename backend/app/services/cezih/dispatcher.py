@@ -686,7 +686,7 @@ async def _persist_local_case(
             cezih_case_id=cezih_case_id or None,
             icd_code=icd_code,
             icd_display=icd_display or "",
-            clinical_status=None,
+            clinical_status="active",
             verification_status=verification_status or "unconfirmed",
             onset_date=onset_date,
             note=note_text,
