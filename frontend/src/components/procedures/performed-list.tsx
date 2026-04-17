@@ -276,7 +276,7 @@ export function PerformedList({ patientId }: PerformedListProps) {
                   const selectedProcedure = procedures.find((p) => p.id === field.value)
                   return (
                     <Select value={field.value ?? ""} onValueChange={field.onChange}>
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger>
                         <SelectValue placeholder="Odaberite postupak">
                           {selectedProcedure
                             ? `[${selectedProcedure.sifra}] ${selectedProcedure.naziv} — ${formatCurrencyEUR(selectedProcedure.cijena_cents / 100)}`
@@ -344,7 +344,7 @@ export function PerformedList({ patientId }: PerformedListProps) {
                       value={field.value ?? ""}
                       onValueChange={(v) => field.onChange(v === "none" ? "" : (v ?? ""))}
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger>
                         <SelectValue placeholder="Bez povezanog nalaza">
                           {(() => {
                             const rid = field.value
