@@ -32,6 +32,9 @@ async def list_patients(
                 Patient.prezime.ilike(pattern),
                 Patient.oib.ilike(pattern),
                 Patient.mbo.ilike(pattern),
+                Patient.broj_putovnice.ilike(pattern),
+                Patient.ehic_broj.ilike(pattern),
+                Patient.cezih_patient_id.ilike(pattern),
                 Patient.telefon.ilike(pattern),
                 Patient.mobitel.ilike(pattern),
             )

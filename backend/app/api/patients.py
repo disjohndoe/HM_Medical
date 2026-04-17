@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.plan_enforcement import check_patient_limit
@@ -58,6 +58,14 @@ async def update_patient(
     current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
     db: AsyncSession = Depends(get_db),
 ):
+    if (
+        data.cezih_patient_id is not None
+        and current_user.role != "admin"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Samo admin može mijenjati CEZIH identifikator pacijenta",
+        )
     return await patient_service.update_patient(db, current_user.tenant_id, patient_id, data)
 
 

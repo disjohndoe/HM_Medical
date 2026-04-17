@@ -1,9 +1,14 @@
+import re
 from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
 from app.utils.croatian import validate_mbo, validate_oib
+
+_PUTOVNICA_RE = re.compile(r"^[A-Za-z0-9]{5,15}$")
+_EHIC_RE = re.compile(r"^[0-9A-Za-z]{20}$")
+_DRZAVLJANSTVO_RE = re.compile(r"^[A-Za-z]{2,3}$")
 
 
 class PatientCreate(BaseModel):
@@ -81,6 +86,10 @@ class PatientUpdate(BaseModel):
     spol: str | None = None
     oib: str | None = None
     mbo: str | None = None
+    broj_putovnice: str | None = None
+    ehic_broj: str | None = None
+    cezih_patient_id: str | None = None
+    drzavljanstvo: str | None = None
     adresa: str | None = None
     grad: str | None = None
     postanski_broj: str | None = None
@@ -97,3 +106,24 @@ class PatientUpdate(BaseModel):
         if v is not None and v.upper() not in ("M", "Z"):
             raise ValueError("Spol mora biti M ili Z")
         return v.upper() if v else None
+
+    @field_validator("broj_putovnice")
+    @classmethod
+    def validate_putovnica(cls, v: str | None) -> str | None:
+        if v is not None and v != "" and not _PUTOVNICA_RE.match(v):
+            raise ValueError("Broj putovnice mora imati 5-15 alfanumeričkih znakova")
+        return v
+
+    @field_validator("ehic_broj")
+    @classmethod
+    def validate_ehic(cls, v: str | None) -> str | None:
+        if v is not None and v != "" and not _EHIC_RE.match(v):
+            raise ValueError("EHIC broj mora imati točno 20 alfanumeričkih znakova")
+        return v
+
+    @field_validator("drzavljanstvo")
+    @classmethod
+    def validate_drzavljanstvo(cls, v: str | None) -> str | None:
+        if v is not None and v != "" and not _DRZAVLJANSTVO_RE.match(v):
+            raise ValueError("Državljanstvo mora biti ISO-3166 kod (2 ili 3 slova)")
+        return v.upper() if v else v
