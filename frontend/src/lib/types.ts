@@ -80,7 +80,7 @@ export interface CezihPatientImport {
   datum_rodjenja: string | null;
   oib: string | null;
   spol: string | null;
-  mbo: string;
+  mbo: string | null;
 }
 
 export interface Patient {
@@ -733,6 +733,7 @@ export interface PatientIdentifierSearchResponse {
   telefon?: string;
   email?: string;
   identifikatori?: PatientIdentifierItem[];
+  local_patient_id?: string | null;
 }
 
 export interface ForeignerRegistrationRequest {

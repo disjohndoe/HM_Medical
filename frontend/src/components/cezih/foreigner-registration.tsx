@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Globe, Loader2, CheckCircle, ExternalLink, Search } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Globe, Loader2, CheckCircle, ExternalLink, Search, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 
@@ -16,7 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useRegisterForeigner, useForeignerSearch } from "@/lib/hooks/use-cezih"
+import {
+  useForeignerSearch,
+  useImportPatientByIdentifier,
+  useRegisterForeigner,
+  type AdhocIdentifierType,
+} from "@/lib/hooks/use-cezih"
 
 const EHIC_REGEX = /^[0-9A-Za-z]{20}$/
 const PASSPORT_REGEX = /^[A-Za-z0-9]{5,15}$/
@@ -29,8 +34,16 @@ export function ForeignerSearch() {
   const [value, setValue] = useState("")
   const [submitted, setSubmitted] = useState("")
   const [submittedSystem, setSubmittedSystem] = useState("")
+  const [importedId, setImportedId] = useState<string | null>(null)
 
   const search = useForeignerSearch(submittedSystem, submitted)
+  const importPatient = useImportPatientByIdentifier()
+
+  useEffect(() => {
+    setImportedId(null)
+    importPatient.reset()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted, submittedSystem])
 
   const handleSearch = () => {
     if (value.length < 5) {
@@ -41,7 +54,29 @@ export function ForeignerSearch() {
     setSubmitted(value)
   }
 
+  const handleImport = () => {
+    if (!submitted || !submittedSystem) return
+    importPatient.mutate(
+      {
+        identifier_type: submittedSystem as AdhocIdentifierType,
+        identifier_value: submitted,
+      },
+      {
+        onSuccess: (data) => {
+          setImportedId(data.id)
+          toast.success(
+            data.already_exists
+              ? "Pacijent već postoji u kartoteci — otvorite postojeći karton."
+              : "Pacijent dodan u kartoteku.",
+          )
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
   const systemLabel = system === "putovnica" ? "Broj putovnice" : "EHIC broj"
+  const existingLocalId = importedId || search.data?.local_patient_id || null
 
   return (
     <Card>
@@ -150,6 +185,36 @@ export function ForeignerSearch() {
                   <span className="text-muted-foreground">CEZIH ID</span>
                   <span className="font-mono text-xs">{search.data.cezih_id}</span>
                 </>
+              )}
+            </div>
+
+            <div className="pt-2 flex items-center gap-2">
+              {existingLocalId ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/pacijenti/${existingLocalId}`}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Otvori karton
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleImport}
+                  disabled={importPatient.isPending}
+                >
+                  {importPatient.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="mr-2 h-4 w-4" />
+                  )}
+                  Dodaj u kartoteku
+                </Button>
+              )}
+              {search.data.local_patient_id && !importedId && (
+                <span className="text-xs text-muted-foreground">
+                  Već u vašoj kartoteci
+                </span>
               )}
             </div>
           </div>

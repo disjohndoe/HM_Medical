@@ -150,6 +150,176 @@ async def import_patient_from_cezih(
     }
 
 
+async def import_patient_by_identifier(
+    identifier_type: str,
+    identifier_value: str,
+    *,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
+    http_client=None,
+) -> dict:
+    """Fetch patient demographics from CEZIH by any identifier and create locally.
+
+    Works for both Croatian insured patients (MBO) and foreigners (EHIC, passport).
+    Populates all identifier columns found in the PDQm response, so e-Karton flows
+    can route subsequent queries through the priority resolver.
+    """
+    _require_audit_params(db, user_id, tenant_id)
+
+    from datetime import date as date_type
+
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models.patient import Patient
+    from app.services.cezih.service import (
+        SYS_EUROPSKA,
+        SYS_JEDINSTVENI,
+        SYS_MBO,
+        SYS_OIB,
+        SYS_PUTOVNICA,
+    )
+
+    try:
+        cezih_data = await real_service.search_patient_by_identifier(
+            http_client, identifier_system=identifier_type, value=identifier_value,
+            tenant_id=tenant_id,
+        )
+    except CezihError as e:
+        logger.error("CEZIH patient import (%s) failed: %s", identifier_type, e.message)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+    # Extract each CEZIH identifier from the response.
+    idents: dict[str, str] = {}
+    for ident in cezih_data.get("identifikatori") or []:
+        sys_uri = ident.get("system")
+        val = ident.get("value")
+        if sys_uri and val:
+            idents[sys_uri] = val
+
+    mbo = idents.get(SYS_MBO)
+    oib = idents.get(SYS_OIB)
+    putovnica = idents.get(SYS_PUTOVNICA)
+    ehic = idents.get(SYS_EUROPSKA)
+    cezih_patient_id = idents.get(SYS_JEDINSTVENI) or (cezih_data.get("cezih_id") or None)
+
+    # Duplicate check across all identifier columns — return 409 with the
+    # existing patient so the UI can link to it instead of silently failing.
+    dup_filters = []
+    if mbo:
+        dup_filters.append(Patient.mbo == mbo)
+    if oib:
+        dup_filters.append(Patient.oib == oib)
+    if putovnica:
+        dup_filters.append(Patient.broj_putovnice == putovnica)
+    if ehic:
+        dup_filters.append(Patient.ehic_broj == ehic)
+    if cezih_patient_id:
+        dup_filters.append(Patient.cezih_patient_id == cezih_patient_id)
+
+    if dup_filters:
+        from sqlalchemy import or_
+        existing = await db.execute(
+            select(Patient).where(
+                Patient.tenant_id == tenant_id,
+                Patient.is_active.is_(True),
+                or_(*dup_filters),
+            ).limit(1),
+        )
+        existing_patient = existing.scalar_one_or_none()
+        if existing_patient:
+            return {
+                "id": str(existing_patient.id),
+                "ime": existing_patient.ime,
+                "prezime": existing_patient.prezime,
+                "datum_rodjenja": existing_patient.datum_rodjenja.isoformat()
+                    if existing_patient.datum_rodjenja else None,
+                "oib": existing_patient.oib,
+                "spol": existing_patient.spol,
+                "mbo": existing_patient.mbo,
+                "broj_putovnice": existing_patient.broj_putovnice,
+                "ehic_broj": existing_patient.ehic_broj,
+                "cezih_patient_id": existing_patient.cezih_patient_id,
+                "already_exists": True,
+            }
+
+    dob = None
+    raw_dob = cezih_data.get("datum_rodjenja")
+    if raw_dob:
+        try:
+            dob = date_type.fromisoformat(raw_dob)
+        except ValueError:
+            pass
+
+    spol_norm = cezih_data.get("spol") or None
+    if spol_norm == "Ž":
+        spol_norm = "Z"  # patient.spol CHECK constraint allows only 'M' | 'Z'
+    elif spol_norm not in ("M", "Z"):
+        spol_norm = None
+
+    addr = cezih_data.get("adresa") or {}
+    drzava = (addr.get("drzava") or "").upper() or None
+
+    patient = Patient(
+        tenant_id=tenant_id,
+        ime=cezih_data.get("ime") or "Nepoznato",
+        prezime=cezih_data.get("prezime") or "Nepoznato",
+        datum_rodjenja=dob,
+        spol=spol_norm,
+        oib=oib,
+        mbo=mbo,
+        broj_putovnice=putovnica,
+        ehic_broj=ehic,
+        cezih_patient_id=cezih_patient_id,
+        drzavljanstvo=drzava if drzava and len(drzava) <= 3 else None,
+        adresa=addr.get("ulica") or None,
+        grad=addr.get("grad") or None,
+        postanski_broj=addr.get("postanski_broj") or None,
+        telefon=cezih_data.get("telefon") or None,
+        email=cezih_data.get("email") or None,
+        cezih_insurance_status="Aktivan" if mbo else None,
+        cezih_insurance_checked_at=datetime.now(UTC) if mbo else None,
+    )
+    db.add(patient)
+
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pacijent s tim podacima već postoji",
+        ) from e
+
+    await db.refresh(patient)
+
+    await _write_audit(
+        db, tenant_id, user_id,
+        action="cezih_patient_import",
+        resource_id=patient.id,
+        details={
+            "identifier_type": identifier_type,
+            "identifier_value": identifier_value,
+            "ime": patient.ime,
+            "prezime": patient.prezime,
+        },
+    )
+
+    return {
+        "id": str(patient.id),
+        "ime": patient.ime,
+        "prezime": patient.prezime,
+        "datum_rodjenja": patient.datum_rodjenja.isoformat() if patient.datum_rodjenja else None,
+        "oib": patient.oib,
+        "spol": patient.spol,
+        "mbo": patient.mbo,
+        "broj_putovnice": patient.broj_putovnice,
+        "ehic_broj": patient.ehic_broj,
+        "cezih_patient_id": patient.cezih_patient_id,
+        "already_exists": False,
+    }
+
+
 async def _persist_insurance_to_patient_by_id(
     db: AsyncSession, patient_id: UUID, status_osiguranja: str,
 ) -> None:

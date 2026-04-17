@@ -1,5 +1,7 @@
 import { useState } from "react"
-import { Search, Loader2 } from "lucide-react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Search, Loader2, UserPlus, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -16,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import {
   useInsuranceCheckByIdentifier,
+  useImportPatientByIdentifier,
   type AdhocIdentifierType,
 } from "@/lib/hooks/use-cezih"
 import { OSIGURANJE_STATUS } from "@/lib/constants"
@@ -54,9 +57,12 @@ const ID_CONFIG: Record<IdType, {
 }
 
 export function InsuranceCheck() {
+  const router = useRouter()
   const [idType, setIdType] = useState<IdType>("mbo")
   const [value, setValue] = useState("")
   const checkInsurance = useInsuranceCheckByIdentifier()
+  const importPatient = useImportPatientByIdentifier()
+  const [importedId, setImportedId] = useState<string | null>(null)
 
   const config = ID_CONFIG[idType]
 
@@ -65,6 +71,8 @@ export function InsuranceCheck() {
       toast.error(config.errorMsg)
       return
     }
+    setImportedId(null)
+    importPatient.reset()
     checkInsurance.mutate(
       { identifier_type: idType, identifier_value: value },
       { onError: (err) => toast.error(err.message) },
@@ -76,12 +84,35 @@ export function InsuranceCheck() {
     setIdType(v)
     setValue("")
     checkInsurance.reset()
+    importPatient.reset()
+    setImportedId(null)
   }
 
   const result = checkInsurance.data
   const statusInfo = result ? OSIGURANJE_STATUS[result.status_osiguranja] : null
   const submittedType: IdType = checkInsurance.variables?.identifier_type ?? "mbo"
+  const submittedValue = checkInsurance.variables?.identifier_value ?? ""
   const submittedLabel = ID_CONFIG[submittedType].label
+
+  const handleImport = () => {
+    if (!submittedValue) return
+    importPatient.mutate(
+      { identifier_type: submittedType, identifier_value: submittedValue },
+      {
+        onSuccess: (data) => {
+          setImportedId(data.id)
+          toast.success(
+            data.already_exists
+              ? "Pacijent već postoji u kartoteci — otvorite postojeći karton."
+              : "Pacijent dodan u kartoteku.",
+          )
+        },
+        onError: (err) => toast.error(err.message),
+      },
+    )
+  }
+
+  const resultHasPatient = !!result && !!result.ime && result.status_osiguranja !== "Nije pronađen"
 
   return (
     <Card>
@@ -157,6 +188,40 @@ export function InsuranceCheck() {
                   {result.osiguravatelj}
                 </div>
               </div>
+
+              {resultHasPatient && (
+                <div className="flex items-center gap-2 pt-1">
+                  {importedId ? (
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/pacijenti/${importedId}`}>
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Otvori karton
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleImport}
+                      disabled={importPatient.isPending}
+                    >
+                      {importPatient.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <UserPlus className="mr-2 h-4 w-4" />
+                      )}
+                      Dodaj u kartoteku
+                    </Button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => router.push("/pacijenti")}
+                    className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                  >
+                    Pretraži kartoteku
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

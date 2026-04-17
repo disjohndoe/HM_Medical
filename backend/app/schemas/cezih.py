@@ -9,6 +9,11 @@ class CezihImportRequest(BaseModel):
     mbo: str
 
 
+class CezihImportByIdentifierRequest(BaseModel):
+    identifier_type: Literal["mbo", "ehic", "putovnica"]
+    identifier_value: str
+
+
 class InsuranceCheckRequest(BaseModel):
     # Three mutually exclusive inputs:
     # - patient_id: local patient → resolver picks MBO/CEZIH-ID/EHIC/putovnica
@@ -59,6 +64,7 @@ class PatientIdentifierSearchResponse(BaseModel):
     telefon: str = ""
     email: str = ""
     identifikatori: list[PatientIdentifier] = []
+    local_patient_id: str | None = None
 
 
 class InsuranceCheckResponse(BaseModel):

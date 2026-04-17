@@ -771,3 +771,30 @@ export function useImportPatientFromCezih() {
     },
   })
 }
+
+/** Import a patient from CEZIH by any identifier (MBO, EHIC, passport).
+ *  Unlike useImportPatientFromCezih, works for foreigners too — stores
+ *  passport/EHIC/CEZIH-ID into the dedicated patient columns. */
+export function useImportPatientByIdentifier() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      identifier_type,
+      identifier_value,
+    }: {
+      identifier_type: AdhocIdentifierType
+      identifier_value: string
+    }) =>
+      api.post<CezihPatientImport & {
+        broj_putovnice: string | null
+        ehic_broj: string | null
+        cezih_patient_id: string | null
+        already_exists: boolean
+      }>("/cezih/import-patient-by-identifier", { identifier_type, identifier_value }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["patients"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "patients", "search"] })
+    },
+  })
+}

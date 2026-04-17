@@ -17,6 +17,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.cezih import (
     CaseActionResponse,
+    CezihImportByIdentifierRequest,
     CezihImportRequest,
     CaseItem,
     CaseResponse,
@@ -137,6 +138,26 @@ async def import_patient_from_cezih(
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.import_patient_from_cezih(
         data.mbo,
+        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
+    )
+
+
+@router.post("/import-patient-by-identifier")
+async def import_patient_by_identifier(
+    request: Request,
+    data: CezihImportByIdentifierRequest,
+    current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch patient from CEZIH by MBO/EHIC/passport and create in local database.
+
+    Unlike /import-patient (MBO-only), this supports foreigners too — their
+    passport/EHIC/CEZIH-ID are persisted into the corresponding columns.
+    """
+    await check_cezih_access(db, current_user.tenant_id)
+    return await cezih.import_patient_by_identifier(
+        data.identifier_type, data.identifier_value,
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
@@ -559,6 +580,47 @@ async def search_patient_by_identifier(
         raise HTTPException(status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)) from e
     except CezihError as e:
         raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    # Enrich with local_patient_id so the UI can choose "Otvori karton" vs
+    # "Dodaj u kartoteku". Match on any of the CEZIH-returned identifiers —
+    # the same patient can be stored under a different column locally.
+    from sqlalchemy import or_
+    from app.models.patient import Patient
+    from app.services.cezih.service import (
+        SYS_EUROPSKA, SYS_JEDINSTVENI, SYS_MBO, SYS_OIB, SYS_PUTOVNICA,
+    )
+
+    filters = []
+    for ident in (result.get("identifikatori") or []):
+        sys_uri = ident.get("system")
+        val = ident.get("value")
+        if not sys_uri or not val:
+            continue
+        if sys_uri == SYS_MBO:
+            filters.append(Patient.mbo == val)
+        elif sys_uri == SYS_OIB:
+            filters.append(Patient.oib == val)
+        elif sys_uri == SYS_PUTOVNICA:
+            filters.append(Patient.broj_putovnice == val)
+        elif sys_uri == SYS_EUROPSKA:
+            filters.append(Patient.ehic_broj == val)
+        elif sys_uri == SYS_JEDINSTVENI:
+            filters.append(Patient.cezih_patient_id == val)
+    if result.get("cezih_id"):
+        filters.append(Patient.cezih_patient_id == result["cezih_id"])
+
+    if filters:
+        lookup = await db.execute(
+            select(Patient.id).where(
+                Patient.tenant_id == current_user.tenant_id,
+                Patient.is_active.is_(True),
+                or_(*filters),
+            ).limit(1),
+        )
+        local_id = lookup.scalar_one_or_none()
+        if local_id:
+            result["local_patient_id"] = str(local_id)
+
     return result
 
 
