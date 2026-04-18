@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Callable
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -311,7 +311,6 @@ async def import_patient_by_identifier(
             pass
 
     spol_norm = cezih_data.get("spol") or None
-    raw_spol = spol_norm
     if spol_norm == "Ž":
         spol_norm = "Z"  # patient.spol CHECK constraint allows only 'M' | 'Z'
     elif spol_norm not in ("M", "Z"):

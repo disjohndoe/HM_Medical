@@ -263,7 +263,7 @@ async def _request_via_agent(
         try:
             error_body = json.loads(body_text) if body_text else {}
             error_msg = error_body.get("error", error_body.get("message", f"HTTP {status_code}"))
-        except:
+        except (json.JSONDecodeError, ValueError, TypeError):
             error_msg = f"HTTP {status_code}"
 
         raise CezihSigningError(

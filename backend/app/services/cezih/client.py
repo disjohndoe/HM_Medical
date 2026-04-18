@@ -4,7 +4,6 @@ import asyncio
 import contextvars
 import logging
 import time
-from typing import cast
 
 import httpx
 

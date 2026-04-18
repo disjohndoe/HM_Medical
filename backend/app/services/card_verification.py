@@ -58,7 +58,7 @@ def get_card_status(tenant_id: UUID, card_holder_name: str | None = None) -> dic
         "agent_connected": any_connected,
         "agents_count": agents_count,
         "card_inserted": any_card_inserted,
-        "card_holder": any_card_holder,
+        "card_holder": card_holder if card_holder else any_card_holder,
         "my_card_inserted": my_card_inserted,
         "vpn_connected": vpn_connected,
         "reader_available": reader_available,

@@ -181,14 +181,14 @@ async def update_prescription(
         if nalaz and nalaz.tenant_id == tenant_id and not nalaz.cezih_sent:
             nalaz.preporucena_terapija = [
                 {
-                    "atk": l.get("atk", ""),
-                    "naziv": l.get("naziv", ""),
-                    "jacina": l.get("jacina", ""),
-                    "oblik": l.get("oblik", ""),
-                    "doziranje": l.get("doziranje", ""),
-                    "napomena": l.get("napomena", ""),
+                    "atk": lijek.get("atk", ""),
+                    "naziv": lijek.get("naziv", ""),
+                    "jacina": lijek.get("jacina", ""),
+                    "oblik": lijek.get("oblik", ""),
+                    "doziranje": lijek.get("doziranje", ""),
+                    "napomena": lijek.get("napomena", ""),
                 }
-                for l in prescription.lijekovi
+                for lijek in prescription.lijekovi
             ]
             await db.flush()
             await audit_service.write_audit(
