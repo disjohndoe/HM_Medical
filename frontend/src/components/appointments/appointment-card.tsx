@@ -47,12 +47,8 @@ export function AppointmentCard({ appointment, onClick, column = 0, totalColumns
         {String(end.getHours()).padStart(2, "0")}:{String(end.getMinutes()).padStart(2, "0")}
         {" "}
         {APPOINTMENT_VRSTA[appointment.vrsta] ?? appointment.vrsta}
+        {showDoctor && appointment.doktor_prezime && ` · dr. ${appointment.doktor_prezime}`}
       </div>
-      {showDoctor && appointment.doktor_prezime && (
-        <div className="text-[10px] opacity-70 truncate">
-          dr. {appointment.doktor_prezime}
-        </div>
-      )}
     </div>
   )
 }
