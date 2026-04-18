@@ -6,8 +6,8 @@ Revises: 037
 from alembic import op
 import sqlalchemy as sa
 
-revision = "038"
-down_revision = "037"
+revision = "038_document_oid"
+down_revision = "037_vrsta_posjete"
 
 
 def upgrade() -> None:
