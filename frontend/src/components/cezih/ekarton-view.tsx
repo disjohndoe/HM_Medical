@@ -331,8 +331,8 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
             <div className="space-y-1.5">
               {filteredCases.map((c) => (
                 <div key={c.case_id} className="flex items-center gap-2 flex-wrap">
-                  <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-blue-100 text-blue-800"}>
-                    {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status || "Aktivan"}
+                  <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100 text-gray-600"}>
+                    {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status || "Nema"}
                   </Badge>
                   <span className="font-mono text-sm">{c.icd_code}</span>
                   <span className="text-sm text-muted-foreground">{c.icd_display}</span>
