@@ -8,6 +8,7 @@ import {
   Download,
   FileSearch,
   FileText,
+  FolderDown,
   Loader2,
   Pill,
   Shield,
@@ -35,6 +36,7 @@ import {
   useDocumentSearch,
   useInsuranceCheck,
 } from "@/lib/hooks/use-cezih"
+import { useDocuments, useImportCezihDocument } from "@/lib/hooks/use-documents"
 import { OSIGURANJE_STATUS, ICD_CHAPTERS } from "@/lib/constants"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
@@ -98,6 +100,12 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
   const retrieveDoc = useRetrieveDocument()
   const insuranceMutation = useInsuranceCheck()
   const { tipLabelMap } = useRecordTypeMaps()
+  const { data: localDocs } = useDocuments(patientId)
+  const importCezih = useImportCezihDocument()
+
+  const savedCezihRefIds = new Set(
+    (localDocs || []).map((d) => d.cezih_reference_id).filter(Boolean)
+  )
 
   // ICD filter — persisted in localStorage
   const [icdFilter, setIcdFilter] = useState(() => {
@@ -418,16 +426,39 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
                       <span className="text-xs text-muted-foreground">{formatDateHR(d.datum_izdavanja)}</span>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 shrink-0"
-                    onClick={() => handleDownloadPdf(d.id, d.content_url)}
-                    disabled={retrieveDoc.isPending}
-                    title="Preuzmi PDF"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex gap-0.5 shrink-0">
+                    {d.content_url && !savedCezihRefIds.has(d.id) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => importCezih.mutate({
+                          patientId,
+                          cezihReferenceId: d.id,
+                          contentUrl: d.content_url!,
+                          naziv: `CEZIH - ${d.svrha || d.id}`,
+                        })}
+                        disabled={importCezih.isPending}
+                        title="Spremi u Dokumenti"
+                      >
+                        {importCezih.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <FolderDown className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => handleDownloadPdf(d.id, d.content_url)}
+                      disabled={retrieveDoc.isPending}
+                      title="Preuzmi PDF"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

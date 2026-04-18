@@ -25,3 +25,4 @@ class Document(BaseTenantModel):
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    cezih_reference_id: Mapped[str | None] = mapped_column(String(100), nullable=True)

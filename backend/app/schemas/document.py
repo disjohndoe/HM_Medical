@@ -12,6 +12,7 @@ class DocumentRead(BaseModel):
     file_size: int
     mime_type: str
     uploaded_by: UUID
+    cezih_reference_id: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -25,4 +26,5 @@ class DocumentUploadResponse(BaseModel):
     file_size: int
     mime_type: str
     uploaded_by: UUID
+    cezih_reference_id: str | None = None
     created_at: datetime

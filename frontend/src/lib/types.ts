@@ -440,6 +440,7 @@ export interface Document {
   file_size: number;
   mime_type: string;
   uploaded_by: string;
+  cezih_reference_id: string | null;
   created_at: string;
 }
 
@@ -451,6 +452,7 @@ export interface DocumentUploadResponse {
   file_size: number;
   mime_type: string;
   uploaded_by: string;
+  cezih_reference_id: string | null;
   created_at: string;
 }
 

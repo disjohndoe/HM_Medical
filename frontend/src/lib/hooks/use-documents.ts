@@ -50,3 +50,26 @@ export function useDeleteDocument() {
     onError: (err: Error) => { toast.error(err.message) },
   })
 }
+
+export function useImportCezihDocument() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (data: {
+      patientId: string
+      cezihReferenceId: string
+      contentUrl: string
+      naziv: string
+    }) =>
+      api.post<DocumentUploadResponse>("/documents/import-cezih", {
+        patient_id: data.patientId,
+        cezih_reference_id: data.cezihReferenceId,
+        content_url: data.contentUrl,
+        naziv: data.naziv,
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["documents", variables.patientId] })
+      toast.success("Dokument spremljen u Dokumenti")
+    },
+    onError: (err: Error) => { toast.error(err.message) },
+  })
+}

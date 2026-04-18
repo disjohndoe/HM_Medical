@@ -2,7 +2,8 @@ import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -165,3 +166,81 @@ async def delete_document(
     # Remove file from disk AFTER DB delete succeeds
     if file_path.exists():
         file_path.unlink(missing_ok=True)
+
+
+class ImportCezihDocumentRequest(BaseModel):
+    patient_id: uuid.UUID
+    cezih_reference_id: str
+    content_url: str
+    naziv: str
+
+
+@router.post("/import-cezih", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
+async def import_cezih_document(
+    request: Request,
+    data: ImportCezihDocumentRequest,
+    current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
+    db: AsyncSession = Depends(get_db),
+):
+    patient = await db.get(Patient, data.patient_id)
+    if not patient or patient.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Pacijent nije pronađen")
+
+    existing = await db.execute(
+        select(Document).where(
+            Document.tenant_id == current_user.tenant_id,
+            Document.cezih_reference_id == data.cezih_reference_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Dokument je već spremljen")
+
+    from app.core.plan_enforcement import check_cezih_access
+    from app.services.cezih import dispatcher as cezih
+
+    await check_cezih_access(db, current_user.tenant_id)
+    content = await cezih.dispatch_retrieve_document(
+        data.cezih_reference_id,
+        document_url=data.content_url,
+        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        http_client=request.app.state.http_client,
+    )
+
+    if not content.startswith(b"%PDF"):
+        from app.services.pdf_generator import cezih_text_to_pdf
+        text = content.decode("utf-8", errors="replace")
+        content = cezih_text_to_pdf(text)
+
+    upload_dir = Path(settings.UPLOAD_DIR) / str(current_user.tenant_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    file_id = uuid.uuid4()
+    file_path = upload_dir / f"{file_id}.pdf"
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    doc = Document(
+        tenant_id=current_user.tenant_id,
+        patient_id=data.patient_id,
+        naziv=sanitize_filename(data.naziv),
+        kategorija="nalaz",
+        file_path=str(file_path),
+        file_size=len(content),
+        mime_type="application/pdf",
+        uploaded_by=current_user.id,
+        cezih_reference_id=data.cezih_reference_id,
+    )
+    db.add(doc)
+    await db.flush()
+
+    return DocumentUploadResponse(
+        id=doc.id,
+        patient_id=doc.patient_id,
+        naziv=doc.naziv,
+        kategorija=doc.kategorija,
+        file_size=doc.file_size,
+        mime_type=doc.mime_type,
+        uploaded_by=doc.uploaded_by,
+        cezih_reference_id=doc.cezih_reference_id,
+        created_at=doc.created_at,
+    )
