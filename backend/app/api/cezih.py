@@ -865,10 +865,23 @@ async def retrieve_document(
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
-    if not content.startswith(b"%PDF"):
+    original_size = len(content)
+    is_pdf = content.startswith(b"%PDF")
+
+    if not is_pdf:
+        # CEZIH returned non-PDF content — likely an error or empty response
+        text_preview = content.decode("utf-8", errors="replace")[:500]
+        logger.warning(
+            "CEZIH document %s: NOT PDF (%d bytes), wrapping as PDF. Content preview: %r",
+            reference_id, original_size, text_preview,
+        )
         from app.services.pdf_generator import cezih_text_to_pdf
         text = content.decode("utf-8", errors="replace")
         content = cezih_text_to_pdf(text)
+        logger.info("Wrapped non-PDF response as PDF: %d -> %d bytes", original_size, len(content))
+    else:
+        logger.info("CEZIH document %s: valid PDF (%d bytes)", reference_id, original_size)
+
     return Response(
         content=content,
         media_type="application/pdf",

@@ -1,0 +1,241 @@
+Poštovani,
+
+u nastavku dostavljam tražene podatke za kreiranje posjete (TC12, event code 1.1):
+
+Endpoint:
+POST https://certws2.cezih.hr:8443/services-router/gateway/encounter-services/api/v1/$process-message
+
+Timestamp: 2026-04-09T15:25:49+02:00
+
+Request:
+{
+  "resourceType": "Bundle",
+  "id": "dd98f94b-24b9-4326-868e-8034552423b1",
+  "type": "message",
+  "timestamp": "2026-04-09T15:25:38.553273+02:00",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:562efc7f-a9b5-4b8f-88d1-3bf0d3ee810b",
+      "resource": {
+        "resourceType": "MessageHeader",
+        "eventCoding": {
+          "system": "http://ent.hr/fhir/CodeSystem/ehe-message-types",
+          "code": "1.1"
+        },
+        "sender": {
+          "type": "Organization",
+          "identifier": {
+            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije",
+            "value": "999001464"
+          }
+        },
+        "author": {
+          "type": "Practitioner",
+          "identifier": {
+            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika",
+            "value": "7659059"
+          }
+        },
+        "source": {
+          "endpoint": "urn:oid:1.2.162.1.999001464"
+        },
+        "focus": [
+          {
+            "reference": "urn:uuid:77c20934-e80b-44e6-9430-f81a44749790"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:77c20934-e80b-44e6-9430-f81a44749790",
+      "resource": {
+        "resourceType": "Encounter",
+        "extension": [
+          {
+            "extension": [
+              {
+                "url": "oznaka",
+                "valueCoding": {
+                  "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/sudjelovanje-u-troskovima",
+                  "code": "N"
+                }
+              },
+              {
+                "url": "sifra-oslobodjenja",
+                "valueCoding": {
+                  "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/sifra-oslobodjenja-od-sudjelovanja-u-troskovima",
+                  "code": "55"
+                }
+              }
+            ],
+            "url": "http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-troskovi-sudjelovanje"
+          }
+        ],
+        "status": "in-progress",
+        "class": {
+          "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/nacin-prijema",
+          "code": "6",
+          "display": "Ostalo"
+        },
+        "subject": {
+          "type": "Patient",
+          "identifier": {
+            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/MBO",
+            "value": "999990260"
+          }
+        },
+        "participant": [
+          {
+            "individual": {
+              "type": "Practitioner",
+              "identifier": {
+                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika",
+                "value": "7659059"
+              }
+            }
+          }
+        ],
+        "period": {
+          "start": "2026-04-09T15:25:38.553125+02:00"
+        },
+        "serviceProvider": {
+          "type": "Organization",
+          "identifier": {
+            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije",
+            "value": "999001464"
+          }
+        }
+      }
+    }
+  ],
+  "signature": {
+    "type": [
+      {
+        "system": "urn:iso-astm:E1762-95:2013",
+        "code": "1.2.840.10065.1.12.1.1"
+      }
+    ],
+    "when": "2026-04-09T15:25:38.657973+02:00",
+    "who": {
+      "type": "Practitioner",
+      "identifier": {
+        "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika",
+        "value": "7659059"
+      }
+    },
+    "data": "eyJraWQiOi..."
+  }
+}
+
+Response (HTTP 400):
+{
+  "resourceType": "Bundle",
+  "type": "message",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "MessageHeader",
+        "eventCoding": {
+          "system": "http://ent.hr/fhir/CodeSystem/ehe-message-types"
+        },
+        "response": {
+          "code": "fatal-error",
+          "details": {
+            "reference": "urn:uuid:99f94a29-2906-4463-a222-a90f84efcc2f"
+          }
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:99f94a29-2906-4463-a222-a90f84efcc2f",
+      "resource": {
+        "resourceType": "OperationOutcome",
+        "issue": [
+          {
+            "severity": "error",
+            "code": "invalid",
+            "details": {
+              "coding": [
+                {
+                  "system": "http://ent.hr/fhir/CodeSystem/message-error-type",
+                  "code": "ERR_DS_1002"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+
+Kako ERR_DS_1002 ne otkriva točan uzrok greške, bilo bi nam od velike pomoći ako nam možete poslati primjer ispravnog zahtjeva za kreiranje posjete (TC12, event code 1.1) koji prolazi validaciju na testnom sustavu, kako bismo mogli usporediti s našim i identificirati problem.
+
+Srdačan pozdrav,
+Hrvoje Matošević
+
+---
+
+Poštovani,
+
+nadovezujem se na prethodni mail. Napravili smo daljnju analizu ERR_DS_1002 greške.
+
+Nakon prelaska na standardni JWS potpis (RFC 7515) s x5c certifikatom u JOSE headeru,
+greška se promijenila iz issue.code="invalid" u issue.code="business-rule".
+To znači da je FORMAT potpisa sada ispravan, ali server odbija potpis iz poslovnog razloga.
+
+Detalji potpisa:
+- Format: JWS compact (RFC 7515), double base64 encoded
+- JOSE header: alg=ES384, kid, jwk (EC koordinate), x5c (puni certifikat)
+- Potpisni certifikat s AKD kartice:
+    OU=SignatureTest
+    Serial: 70806FFCCB5C2586BD356B1251292B408F37C46C
+    SHA-1 hash: B2FFF6B771609C9137D5097158E5717A6DF77AAF
+    Algoritam: ECDSA P-384 (ES384)
+    Izdavač: CN=TESTCERTILIA
+    Vrijedi do: 26.03.2029.
+- Djelatnik: HZJZ 7659059
+- Ustanova: 999001464
+
+Pitanja:
+1. Je li ovaj potpisni certifikat registriran u testnom okruženju za navedenog djelatnika i ustanovu?
+2. Podržava li CEZIH encounter-services ES384 (ECDSA P-384) potpise ili samo RS256 (RSA)?
+3. Ako ES384 nije podržan, kako možemo dobiti RSA potpisni certifikat?
+
+Hvala unaprijed,
+Hrvoje Matošević
+HM Digital d.o.o.
+
+---
+
+Predmet: Prijava za provjeru spremnosti CEZIH integracije — HM DIGITAL (999001464)
+
+Poštovani,
+
+obraćamo Vam se vezano uz provjeru spremnosti CEZIH integracije za privatne zdravstvene ustanove.
+
+Uspješno smo verificirali svih 22 testnih slučajeva na testnom okruženju (pvsek.cezih.hr):
+
+- Autentikacija i potpis: TC1-5 (OAuth2 Keycloak, udaljeni potpis Certilia, mTLS)
+- Registri: TC6 (OID), TC9 (mCSD ITI-90 — organizacije i djelatnici)
+- Kodne liste: TC7 (CodeSystem ITI-96), TC8 (ValueSet $expand ITI-95)
+- Pacijenti: TC10 (PDQm ITI-78), TC11 (PMIR — registracija stranog lica)
+- Posjete: TC12-14 (kreiranje, ažuriranje, zatvaranje)
+- Slučajevi: TC15-17 (dohvat QEDm, kreiranje, remisija)
+- Dokumenti: TC18 (slanje ITI-65), TC19 (zamjena), TC20 (storno), TC21 (pretraga ITI-67), TC22 (dohvat binarnog ITI-68)
+
+Testni podaci:
+- Institucija: 999001464 — HM DIGITAL ordinacija
+- Djelatnik: HZJZ 7659059, TESTNI55 TESTNIPREZIME55
+- Pacijent: MBO 999990260, GORAN PACPRIVATNICI19
+
+Molimo Vas za informaciju o prvom slobodnom terminu za provjeru spremnosti. Također nas zanima:
+
+1. Postoje li službene smjernice ili dokumentacija za pripremu ispita?
+2. Koje dokumente trebamo ponijeti sa sobom?
+
+Stojimo na raspolaganju za bilo koji termin koji Vam odgovara.
+
+Srdačan pozdrav,
+Hrvoje Matošević
+HM DIGITAL d.o.o.

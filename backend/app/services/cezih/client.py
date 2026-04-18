@@ -152,7 +152,15 @@ class CezihFhirClient:
         # Binary response: agent sets body_bytes (base64) and leaves body empty
         if body_bytes and status_code < 400:
             import base64
-            return base64.b64decode(body_bytes)
+            decoded = base64.b64decode(body_bytes)
+            size = len(decoded)
+            is_pdf = decoded.startswith(b"%PDF")
+            preview = decoded[:200] if size > 0 else b""
+            logger.info(
+                "CEZIH binary response: %d bytes, is_pdf=%s, preview=%r",
+                size, is_pdf, preview,
+            )
+            return decoded
 
         try:
             body = _json.loads(body_text) if body_text else {}

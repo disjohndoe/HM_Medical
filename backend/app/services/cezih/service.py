@@ -1928,6 +1928,21 @@ async def retrieve_document(client: httpx.AsyncClient, document_url: str) -> byt
         )
 
     if isinstance(response, bytes):
+        size = len(response)
+        is_pdf = response.startswith(b"%PDF")
+        preview = response[:200] if size > 0 else b""
+        logger.info(
+            "retrieve_document returning bytes: %d bytes, is_pdf=%s, preview=%r",
+            size, is_pdf, preview,
+        )
         return response
     content = response.get("data", b"") if isinstance(response, dict) else b""
-    return content if isinstance(content, bytes) else content.encode("utf-8")
+    final_content = content if isinstance(content, bytes) else content.encode("utf-8")
+    size = len(final_content)
+    is_pdf = final_content.startswith(b"%PDF")
+    preview = final_content[:200] if size > 0 else b""
+    logger.info(
+        "retrieve_document returning extracted: %d bytes, is_pdf=%s, preview=%r",
+        size, is_pdf, preview,
+    )
+    return final_content
