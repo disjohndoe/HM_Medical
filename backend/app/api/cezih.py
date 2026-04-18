@@ -1,4 +1,5 @@
 import json  # noqa: F401
+import logging
 from datetime import UTC, date, datetime
 from uuid import UUID
 
@@ -63,6 +64,8 @@ from app.services.card_verification import get_card_status
 from app.services.cezih import dispatcher as cezih
 
 router = APIRouter(prefix="/cezih", tags=["cezih"])
+
+logger = logging.getLogger(__name__)
 
 
 def _http_client(request: Request):
