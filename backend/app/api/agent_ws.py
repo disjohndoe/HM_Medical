@@ -129,10 +129,12 @@ async def agent_websocket(websocket: WebSocket):
         logger.exception("Agent %s WebSocket error for tenant %s", agent_id[:8], tenant_id)
     finally:
         ping_task.cancel()
-        # Revoke card-required sessions if card was inserted when agent disconnected
-        current_conn = agent_manager.get_by_agent(tenant_id, agent_id)
-        if current_conn and current_conn.card_inserted:
-            await _handle_card_removal(tenant_id, agent_id, current_conn.card_holder)
+        # Do NOT treat a WS disconnect as card removal. A transient network
+        # drop, an agent restart, or (most commonly) the WS read loop stalling
+        # while Windows shows a PIN dialog will all trigger this finally block,
+        # and revoking the doctor's session in those cases breaks valid work
+        # mid-signature. Genuine card removal is reported explicitly via a
+        # `status` message with card_inserted=false (handled above at line 113).
         await agent_manager.disconnect(tenant_id, agent_id)
 
 

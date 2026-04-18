@@ -558,208 +558,199 @@ pub fn spawn_connection_task(
                                                     let _ = write.send(Message::Text(r#"{"type":"pong"}"#.into())).await;
                                                 }
                                                 "sign_request" => {
+                                                    // Signing may prompt for PIN and block >30s — run as a detached task
+                                                    // so the WS read loop keeps responding to Ping frames (uvicorn's
+                                                    // ws_ping_timeout kills the connection otherwise).
                                                     let rid = parsed.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                                    let data_b64 = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                                                    let data_b64 = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                                     info!("Received sign_request {} ({} chars)", &rid[..rid.len().min(8)], data_b64.len());
-
-                                                    // Decode base64 data and sign with smart card
-                                                    let sign_result = {
-                                                        let data_bytes = match base64::engine::general_purpose::STANDARD.decode(data_b64) {
-                                                            Ok(b) => b,
-                                                            Err(e) => {
-                                                                let response = json!({
-                                                                    "type": "sign_response",
-                                                                    "request_id": &rid,
-                                                                    "error": format!("Invalid base64 data: {}", e),
-                                                                });
-                                                                let _ = write.send(Message::Text(response.to_string().into())).await;
-                                                                continue;
+                                                    let tx = outbound_tx.clone();
+                                                    tokio::spawn(async move {
+                                                        let response = match base64::engine::general_purpose::STANDARD.decode(&data_b64) {
+                                                            Err(e) => json!({
+                                                                "type": "sign_response",
+                                                                "request_id": &rid,
+                                                                "error": format!("Invalid base64 data: {}", e),
+                                                            }),
+                                                            Ok(data_bytes) => {
+                                                                let sign_result = tokio::task::spawn_blocking(move || {
+                                                                    crate::signing::sign_with_smartcard(&data_bytes)
+                                                                }).await;
+                                                                match sign_result {
+                                                                    Ok(Ok(result)) => {
+                                                                        info!("Signing successful, sig={} bytes, kid={}", result.signature.len(), &result.kid[..16]);
+                                                                        json!({
+                                                                            "type": "sign_response",
+                                                                            "request_id": &rid,
+                                                                            "signature": base64::engine::general_purpose::STANDARD.encode(&result.signature),
+                                                                            "kid": result.kid,
+                                                                        })
+                                                                    }
+                                                                    Ok(Err(e)) => {
+                                                                        error!("Signing failed: {}", e);
+                                                                        json!({
+                                                                            "type": "sign_response",
+                                                                            "request_id": &rid,
+                                                                            "error": e,
+                                                                        })
+                                                                    }
+                                                                    Err(e) => {
+                                                                        error!("Signing task panicked: {}", e);
+                                                                        json!({
+                                                                            "type": "sign_response",
+                                                                            "request_id": &rid,
+                                                                            "error": format!("Internal error: {}", e),
+                                                                        })
+                                                                    }
+                                                                }
                                                             }
                                                         };
-                                                        // Run signing on blocking thread (CryptoAPI may prompt for PIN)
-                                                        tokio::task::spawn_blocking(move || {
-                                                            crate::signing::sign_with_smartcard(&data_bytes)
-                                                        }).await
-                                                    };
-
-                                                    let response = match sign_result {
-                                                        Ok(Ok(result)) => {
-                                                            info!("Signing successful, sig={} bytes, kid={}", result.signature.len(), &result.kid[..16]);
-                                                            json!({
-                                                                "type": "sign_response",
-                                                                "request_id": &rid,
-                                                                "signature": base64::engine::general_purpose::STANDARD.encode(&result.signature),
-                                                                "kid": result.kid,
-                                                            })
-                                                        }
-                                                        Ok(Err(e)) => {
-                                                            error!("Signing failed: {}", e);
-                                                            json!({
-                                                                "type": "sign_response",
-                                                                "request_id": &rid,
-                                                                "error": e,
-                                                            })
-                                                        }
-                                                        Err(e) => {
-                                                            error!("Signing task panicked: {}", e);
-                                                            json!({
-                                                                "type": "sign_response",
-                                                                "request_id": &rid,
-                                                                "error": format!("Internal error: {}", e),
-                                                            })
-                                                        }
-                                                    };
-                                                    let _ = write.send(Message::Text(response.to_string().into())).await;
+                                                        let _ = tx.send(response.to_string()).await;
+                                                    });
                                                 }
                                                 "sign_jws" => {
-                                                    // JWS signing: receive bundle JSON, build JOSE header + sign
+                                                    // JWS signing: receive bundle JSON, build JOSE header + sign.
+                                                    // Detached task — see sign_request comment for rationale.
                                                     let rid = parsed.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                                    let data_b64 = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                                                    let data_b64 = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                                     info!("Received sign_jws {} ({} chars)", &rid[..rid.len().min(8)], data_b64.len());
-
-                                                    let sign_result = {
-                                                        let data_bytes = match base64::engine::general_purpose::STANDARD.decode(data_b64) {
-                                                            Ok(b) => b,
-                                                            Err(e) => {
-                                                                let response = json!({
-                                                                    "type": "sign_jws_response",
-                                                                    "request_id": &rid,
-                                                                    "error": format!("Invalid base64 data: {}", e),
-                                                                });
-                                                                let _ = write.send(Message::Text(response.to_string().into())).await;
-                                                                continue;
+                                                    let tx = outbound_tx.clone();
+                                                    tokio::spawn(async move {
+                                                        let response = match base64::engine::general_purpose::STANDARD.decode(&data_b64) {
+                                                            Err(e) => json!({
+                                                                "type": "sign_jws_response",
+                                                                "request_id": &rid,
+                                                                "error": format!("Invalid base64 data: {}", e),
+                                                            }),
+                                                            Ok(data_bytes) => {
+                                                                let sign_result = tokio::task::spawn_blocking(move || {
+                                                                    crate::signing::sign_for_jws(&data_bytes)
+                                                                }).await;
+                                                                match sign_result {
+                                                                    Ok(Ok(result)) => {
+                                                                        info!("JWS signing OK: alg={}, jws_b64={} chars, kid={:.16}", result.algorithm, result.jws_base64.len(), result.kid);
+                                                                        json!({
+                                                                            "type": "sign_jws_response",
+                                                                            "request_id": &rid,
+                                                                            "jws_base64": result.jws_base64,
+                                                                            "kid": result.kid,
+                                                                            "algorithm": result.algorithm,
+                                                                        })
+                                                                    }
+                                                                    Ok(Err(e)) => {
+                                                                        warn!("JWS signing failed ({}), trying CMS fallback", e);
+                                                                        json!({
+                                                                            "type": "sign_jws_response",
+                                                                            "request_id": &rid,
+                                                                            "error": e,
+                                                                        })
+                                                                    }
+                                                                    Err(e) => {
+                                                                        error!("JWS signing task panicked: {}", e);
+                                                                        json!({
+                                                                            "type": "sign_jws_response",
+                                                                            "request_id": &rid,
+                                                                            "error": format!("Internal error: {}", e),
+                                                                        })
+                                                                    }
+                                                                }
                                                             }
                                                         };
-                                                        tokio::task::spawn_blocking(move || {
-                                                            crate::signing::sign_for_jws(&data_bytes)
-                                                        }).await
-                                                    };
-
-                                                    let response = match sign_result {
-                                                        Ok(Ok(result)) => {
-                                                            info!("JWS signing OK: alg={}, jws_b64={} chars, kid={:.16}", result.algorithm, result.jws_base64.len(), result.kid);
-                                                            json!({
-                                                                "type": "sign_jws_response",
-                                                                "request_id": &rid,
-                                                                "jws_base64": result.jws_base64,
-                                                                "kid": result.kid,
-                                                                "algorithm": result.algorithm,
-                                                            })
-                                                        }
-                                                        Ok(Err(e)) => {
-                                                            // NCrypt failed — try CMS fallback
-                                                            warn!("JWS signing failed ({}), trying CMS fallback", e);
-                                                            json!({
-                                                                "type": "sign_jws_response",
-                                                                "request_id": &rid,
-                                                                "error": e,
-                                                            })
-                                                        }
-                                                        Err(e) => {
-                                                            error!("JWS signing task panicked: {}", e);
-                                                            json!({
-                                                                "type": "sign_jws_response",
-                                                                "request_id": &rid,
-                                                                "error": format!("Internal error: {}", e),
-                                                            })
-                                                        }
-                                                    };
-                                                    let _ = write.send(Message::Text(response.to_string().into())).await;
+                                                        let _ = tx.send(response.to_string()).await;
+                                                    });
                                                 }
                                                 "get_cert_info" => {
                                                     let rid = parsed.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                                     info!("Received get_cert_info {}", &rid[..rid.len().min(8)]);
-
-                                                    let result = tokio::task::spawn_blocking(|| {
-                                                        crate::signing::get_cert_info()
-                                                    }).await;
-
-                                                    let response = match result {
-                                                        Ok(Ok(info)) => {
-                                                            let cert_b64 = base64::engine::general_purpose::STANDARD.encode(&info.cert_der);
-                                                            info!("Cert info OK: kid={:.16}, alg={}, cert_der={} bytes", info.kid, info.algorithm, info.cert_der.len());
-                                                            json!({
-                                                                "type": "get_cert_info_response",
-                                                                "request_id": &rid,
-                                                                "kid": info.kid,
-                                                                "algorithm": info.algorithm,
-                                                                "cert_der_base64": cert_b64,
-                                                            })
-                                                        }
-                                                        Ok(Err(e)) => {
-                                                            error!("get_cert_info failed: {}", e);
-                                                            json!({
-                                                                "type": "get_cert_info_response",
-                                                                "request_id": &rid,
-                                                                "error": e,
-                                                            })
-                                                        }
-                                                        Err(e) => {
-                                                            error!("get_cert_info task panicked: {}", e);
-                                                            json!({
-                                                                "type": "get_cert_info_response",
-                                                                "request_id": &rid,
-                                                                "error": format!("Internal error: {}", e),
-                                                            })
-                                                        }
-                                                    };
-                                                    let _ = write.send(Message::Text(response.to_string().into())).await;
-                                                }
-                                                "sign_raw" => {
-                                                    let rid = parsed.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                                    let data_b64 = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("");
-                                                    let algorithm = parsed.get("algorithm").and_then(|v| v.as_str()).unwrap_or("RS256");
-                                                    info!("Received sign_raw {} ({} chars, alg={})", &rid[..rid.len().min(8)], data_b64.len(), algorithm);
-
-                                                    let sign_result = {
-                                                        let data_bytes = match base64::engine::general_purpose::STANDARD.decode(data_b64) {
-                                                            Ok(b) => b,
-                                                            Err(e) => {
-                                                                let response = json!({
-                                                                    "type": "sign_raw_response",
+                                                    let tx = outbound_tx.clone();
+                                                    tokio::spawn(async move {
+                                                        let result = tokio::task::spawn_blocking(|| {
+                                                            crate::signing::get_cert_info()
+                                                        }).await;
+                                                        let response = match result {
+                                                            Ok(Ok(info)) => {
+                                                                let cert_b64 = base64::engine::general_purpose::STANDARD.encode(&info.cert_der);
+                                                                info!("Cert info OK: kid={:.16}, alg={}, cert_der={} bytes", info.kid, info.algorithm, info.cert_der.len());
+                                                                json!({
+                                                                    "type": "get_cert_info_response",
                                                                     "request_id": &rid,
-                                                                    "error": format!("Invalid base64 data: {}", e),
-                                                                });
-                                                                let _ = write.send(Message::Text(response.to_string().into())).await;
-                                                                continue;
+                                                                    "kid": info.kid,
+                                                                    "algorithm": info.algorithm,
+                                                                    "cert_der_base64": cert_b64,
+                                                                })
+                                                            }
+                                                            Ok(Err(e)) => {
+                                                                error!("get_cert_info failed: {}", e);
+                                                                json!({
+                                                                    "type": "get_cert_info_response",
+                                                                    "request_id": &rid,
+                                                                    "error": e,
+                                                                })
+                                                            }
+                                                            Err(e) => {
+                                                                error!("get_cert_info task panicked: {}", e);
+                                                                json!({
+                                                                    "type": "get_cert_info_response",
+                                                                    "request_id": &rid,
+                                                                    "error": format!("Internal error: {}", e),
+                                                                })
                                                             }
                                                         };
-                                                        let alg = algorithm.to_string();
-                                                        tokio::task::spawn_blocking(move || {
-                                                            crate::signing::sign_raw(&data_bytes, &alg)
-                                                        }).await
-                                                    };
-
-                                                    let response = match sign_result {
-                                                        Ok(Ok(result)) => {
-                                                            info!("Raw signing OK: alg={}, sig={} bytes, kid={:.16}",
-                                                                  result.algorithm, result.signature.len(), result.kid);
-                                                            json!({
+                                                        let _ = tx.send(response.to_string()).await;
+                                                    });
+                                                }
+                                                "sign_raw" => {
+                                                    // Detached task — see sign_request comment for rationale.
+                                                    let rid = parsed.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                    let data_b64 = parsed.get("data").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                                    let algorithm = parsed.get("algorithm").and_then(|v| v.as_str()).unwrap_or("RS256").to_string();
+                                                    info!("Received sign_raw {} ({} chars, alg={})", &rid[..rid.len().min(8)], data_b64.len(), algorithm);
+                                                    let tx = outbound_tx.clone();
+                                                    tokio::spawn(async move {
+                                                        let response = match base64::engine::general_purpose::STANDARD.decode(&data_b64) {
+                                                            Err(e) => json!({
                                                                 "type": "sign_raw_response",
                                                                 "request_id": &rid,
-                                                                "signature": base64::engine::general_purpose::STANDARD.encode(&result.signature),
-                                                                "kid": result.kid,
-                                                                "algorithm": result.algorithm,
-                                                            })
-                                                        }
-                                                        Ok(Err(e)) => {
-                                                            error!("Raw signing failed: {}", e);
-                                                            json!({
-                                                                "type": "sign_raw_response",
-                                                                "request_id": &rid,
-                                                                "error": e,
-                                                            })
-                                                        }
-                                                        Err(e) => {
-                                                            error!("Raw signing task panicked: {}", e);
-                                                            json!({
-                                                                "type": "sign_raw_response",
-                                                                "request_id": &rid,
-                                                                "error": format!("Internal error: {}", e),
-                                                            })
-                                                        }
-                                                    };
-                                                    let _ = write.send(Message::Text(response.to_string().into())).await;
+                                                                "error": format!("Invalid base64 data: {}", e),
+                                                            }),
+                                                            Ok(data_bytes) => {
+                                                                let alg = algorithm.clone();
+                                                                let sign_result = tokio::task::spawn_blocking(move || {
+                                                                    crate::signing::sign_raw(&data_bytes, &alg)
+                                                                }).await;
+                                                                match sign_result {
+                                                                    Ok(Ok(result)) => {
+                                                                        info!("Raw signing OK: alg={}, sig={} bytes, kid={:.16}",
+                                                                              result.algorithm, result.signature.len(), result.kid);
+                                                                        json!({
+                                                                            "type": "sign_raw_response",
+                                                                            "request_id": &rid,
+                                                                            "signature": base64::engine::general_purpose::STANDARD.encode(&result.signature),
+                                                                            "kid": result.kid,
+                                                                            "algorithm": result.algorithm,
+                                                                        })
+                                                                    }
+                                                                    Ok(Err(e)) => {
+                                                                        error!("Raw signing failed: {}", e);
+                                                                        json!({
+                                                                            "type": "sign_raw_response",
+                                                                            "request_id": &rid,
+                                                                            "error": e,
+                                                                        })
+                                                                    }
+                                                                    Err(e) => {
+                                                                        error!("Raw signing task panicked: {}", e);
+                                                                        json!({
+                                                                            "type": "sign_raw_response",
+                                                                            "request_id": &rid,
+                                                                            "error": format!("Internal error: {}", e),
+                                                                        })
+                                                                    }
+                                                                }
+                                                            }
+                                                        };
+                                                        let _ = tx.send(response.to_string()).await;
+                                                    });
                                                 }
                                                 "http_proxy_request" => {
                                                     let rid = parsed.get("request_id").and_then(|v| v.as_str()).unwrap_or("").to_string();

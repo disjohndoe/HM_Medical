@@ -9,8 +9,10 @@ from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
-# Pending HTTP proxy requests: request_id -> asyncio.Future
-_pending_proxy: dict[str, asyncio.Future] = {}
+# Pending HTTP proxy / sign requests: request_id -> (tenant_id, future).
+# Tenant is tracked so we can fail-fast pending requests when a specific
+# tenant's agent disconnects, rather than making callers wait the full timeout.
+_pending_proxy: dict[str, tuple[UUID, asyncio.Future]] = {}
 
 
 @dataclass
@@ -78,6 +80,13 @@ class AgentConnectionManager:
         # Clean up empty tenant entry
         if not tenant_agents:
             self._connections.pop(tenant_id, None)
+        # Fail any pending sign/proxy requests for this tenant so callers
+        # (visit creation, document send, etc.) error out immediately instead
+        # of waiting the full 120s signing timeout. Without this, a dropped
+        # WS during PIN entry leaves the HTTP handler stuck. In multi-agent
+        # tenants this is coarse (we don't track which agent each request was
+        # sent to) but tenants run one agent per machine today.
+        _fail_pending_for_tenant(tenant_id)
 
     def get_by_agent(self, tenant_id: UUID, agent_id: str) -> AgentConnection | None:
         tenant_agents = self._connections.get(tenant_id)
@@ -203,7 +212,7 @@ class AgentConnectionManager:
         request_id = str(_uuid.uuid4())
         loop = asyncio.get_event_loop()
         future: asyncio.Future = loop.create_future()
-        _pending_proxy[request_id] = future
+        _pending_proxy[request_id] = (tenant_id, future)
 
         message = {
             "type": "http_proxy_request",
@@ -242,7 +251,7 @@ class AgentConnectionManager:
         request_id = str(_uuid.uuid4())
         loop = asyncio.get_event_loop()
         future: asyncio.Future = loop.create_future()
-        _pending_proxy[request_id] = future
+        _pending_proxy[request_id] = (tenant_id, future)
 
         message: dict = {
             "type": "sign_jws",
@@ -276,7 +285,7 @@ class AgentConnectionManager:
         request_id = str(_uuid.uuid4())
         loop = asyncio.get_event_loop()
         future: asyncio.Future = loop.create_future()
-        _pending_proxy[request_id] = future
+        _pending_proxy[request_id] = (tenant_id, future)
 
         message = {
             "type": "get_cert_info",
@@ -313,7 +322,7 @@ class AgentConnectionManager:
         request_id = str(_uuid.uuid4())
         loop = asyncio.get_event_loop()
         future: asyncio.Future = loop.create_future()
-        _pending_proxy[request_id] = future
+        _pending_proxy[request_id] = (tenant_id, future)
 
         message = {
             "type": "sign_raw",
@@ -351,7 +360,7 @@ class AgentConnectionManager:
         request_id = str(_uuid.uuid4())
         loop = asyncio.get_event_loop()
         future: asyncio.Future = loop.create_future()
-        _pending_proxy[request_id] = future  # reuse same pending dict
+        _pending_proxy[request_id] = (tenant_id, future)  # reuse same pending dict
 
         message = {
             "type": "sign_request",
@@ -371,11 +380,27 @@ class AgentConnectionManager:
     @staticmethod
     def resolve_proxy_response(request_id: str, response: dict) -> None:
         """Called when agent sends http_proxy_response or sign_response — resolves the waiting future."""
-        future = _pending_proxy.get(request_id)
-        if future and not future.done():
+        entry = _pending_proxy.get(request_id)
+        if entry is None:
+            logger.warning("No pending proxy request for id %s", request_id[:8])
+            return
+        _tenant_id, future = entry
+        if not future.done():
             future.set_result(response)
         else:
-            logger.warning("No pending proxy request for id %s", request_id[:8])
+            logger.warning("Proxy response for already-resolved id %s", request_id[:8])
+
+
+def _fail_pending_for_tenant(tenant_id: UUID) -> None:
+    """Reject futures tied to this tenant so waiting callers unblock fast."""
+    to_fail = [rid for rid, (t, fut) in _pending_proxy.items() if t == tenant_id and not fut.done()]
+    for rid in to_fail:
+        entry = _pending_proxy.get(rid)
+        if entry is None:
+            continue
+        _t, fut = entry
+        if not fut.done():
+            fut.set_exception(RuntimeError("Agent disconnected before responding"))
 
 
 agent_manager = AgentConnectionManager()
