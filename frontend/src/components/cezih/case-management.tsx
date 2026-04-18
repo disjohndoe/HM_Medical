@@ -219,17 +219,19 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
     //   relapse → remission(2.3), resolve(2.4)
     //   resolved → reopen(2.9)
     //   Delete (2.7) never shipped — product rule.
+    //   Resolve (Zatvori) requires verification_status === "confirmed"
+    const confirmed = c.verification_status === "confirmed"
     const filter = (actions: string[]) =>
       CASE_ACTIONS.filter((a) => actions.includes(a.value))
 
     switch (c.clinical_status) {
       case "active":
       case "recurrence":
-        return filter(["remission", "resolve"])
+        return filter(confirmed ? ["remission", "resolve"] : ["remission"])
       case "remission":
-        return filter(["relapse", "resolve"])
+        return filter(confirmed ? ["relapse", "resolve"] : ["relapse"])
       case "relapse":
-        return filter(["remission", "resolve"])
+        return filter(confirmed ? ["remission", "resolve"] : ["remission"])
       case "resolved":
         return filter(["reopen"])
       case "inactive":
