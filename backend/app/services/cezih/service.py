@@ -185,7 +185,7 @@ async def search_patient_by_identifier(
         addr = patient.address[0]
         lines = addr.get("line") or []
         adresa = {
-            "ulica": lines[0] if lines else "",
+            "ulica": ", ".join(lines) if lines else "",
             "grad": addr.get("city", ""),
             "postanski_broj": addr.get("postalCode", ""),
             "drzava": addr.get("country", ""),

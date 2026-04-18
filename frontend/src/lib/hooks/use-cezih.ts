@@ -373,7 +373,7 @@ export function useForeignerSearch(system: string, value: string) {
         `/cezih/patients/search?system=${encodeURIComponent(system)}&value=${encodeURIComponent(value)}`
       ),
     enabled: system !== "mbo" && value.length >= 5,
-    retry: false,
+    retry: 1,
   })
 }
 

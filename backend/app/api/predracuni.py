@@ -104,8 +104,6 @@ async def create_predracun(
     if not patient or patient.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
 
-    await db.commit()
-
     pdf_bytes = _generate_pdf(tenant, patient, result)
     return _pdf_response(pdf_bytes, result, patient)
 

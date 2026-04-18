@@ -57,8 +57,6 @@ async def export_data(
             resource_id=patient_id,
             details={"format": "zip", "include_files": True},
         )
-        await db.commit()
-
         return StreamingResponse(
             buf,
             media_type="application/zip",
@@ -75,7 +73,6 @@ async def export_data(
         resource_id=patient_id,
         details={"format": "json"},
     )
-    await db.commit()
 
     json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
     return StreamingResponse(

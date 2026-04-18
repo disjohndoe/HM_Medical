@@ -635,7 +635,7 @@ export interface PatientCezihERecept {
 
 export interface PatientCezihSummary {
 
-  insurance: PatientCezihInsurance;
+  insurance: PatientCezihInsurance | null;
   e_nalaz_history: PatientCezihENalaz[];
   e_recept_history: PatientCezihERecept[];
   identifier_label?: string | null;

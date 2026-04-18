@@ -97,7 +97,7 @@ interface VisitManagementProps {
 
 export function VisitManagement({ patientId, onNavigateToCase, createOpen: createOpenProp, onCreateOpenChange }: VisitManagementProps) {
   const { tenant } = useAuth()
-  const { data: visitsData, isLoading } = useListVisits(patientId)
+  const { data: visitsData, isLoading, isError, error: visitsError } = useListVisits(patientId)
   const createVisit = useCreateVisit()
   const updateVisit = useUpdateVisit()
   const visitAction = useVisitAction()
@@ -338,6 +338,10 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
             <Loader2 className="h-4 w-4 animate-spin" />
             Učitavanje posjeta...
           </div>
+        ) : isError ? (
+          <p className="text-sm text-destructive py-4 text-center">
+            Greška pri dohvatu posjeta: {visitsError?.message || "Nepoznata greška"}
+          </p>
         ) : visits.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">Nema posjeta za ovog pacijenta</p>
         ) : (

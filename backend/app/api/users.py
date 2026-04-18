@@ -27,10 +27,11 @@ async def _assert_card_unique(
     db: AsyncSession,
     *,
     user_id: uuid.UUID,
+    tenant_id: uuid.UUID,
     card_holder_name: str | None,
     card_certificate_serial: str | None,
 ) -> None:
-    """Ensure no other active user holds this card (by serial OR normalized name)."""
+    """Ensure no other active user holds this card (by serial OR normalized name) within the same tenant."""
     conditions = []
     if card_certificate_serial:
         conditions.append(User.card_certificate_serial == card_certificate_serial)
@@ -45,6 +46,7 @@ async def _assert_card_unique(
         select(User.id).where(
             or_(*conditions),
             User.id != user_id,
+            User.tenant_id == tenant_id,
             User.is_active.is_(True),
         ).limit(1)
     )
@@ -156,6 +158,7 @@ async def self_bind_card(
     await _assert_card_unique(
         db,
         user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         card_holder_name=conn.card_holder,
         card_certificate_serial=conn.card_serial,
     )
@@ -246,6 +249,7 @@ async def bind_card(
     await _assert_card_unique(
         db,
         user_id=user.id,
+        tenant_id=current_user.tenant_id,
         card_holder_name=data.card_holder_name,
         card_certificate_serial=None,
     )
@@ -296,6 +300,7 @@ async def auto_bind_card(
     await _assert_card_unique(
         db,
         user_id=user.id,
+        tenant_id=current_user.tenant_id,
         card_holder_name=conn.card_holder,
         card_certificate_serial=conn.card_serial,
     )

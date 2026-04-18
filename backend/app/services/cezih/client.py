@@ -155,10 +155,17 @@ class CezihFhirClient:
 
         try:
             body = _json.loads(body_text) if body_text else {}
-        except Exception:
-            # Non-JSON text response — return raw bytes
+        except Exception as json_err:
             if status_code < 400:
-                return body_text.encode("latin-1") if body_text else b""
+                logger.warning(
+                    "CEZIH agent response is not valid JSON (status=%d, len=%d): %s",
+                    status_code, len(body_text), str(json_err)[:200],
+                )
+                return body_text.encode("utf-8") if body_text else b""
+            logger.warning(
+                "CEZIH agent error response not parseable as JSON (status=%d): %.500s",
+                status_code, body_text,
+            )
             body = {}
 
         if status_code >= 400:

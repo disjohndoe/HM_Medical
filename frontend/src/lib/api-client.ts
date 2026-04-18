@@ -84,7 +84,8 @@ async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Pro
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error("Greška u komunikaciji s poslužiteljem. Provjerite mrežnu vezu i pokušajte ponovo.");
+    const endpointName = endpoint.split("/").pop() || endpoint
+    throw new Error(`Greška u komunikaciji s poslužiteljem (${endpointName}). Provjerite mrežnu vezu i pokušajte ponovo.`);
   }
 
   // Only skip refresh for login/register (no session to refresh).

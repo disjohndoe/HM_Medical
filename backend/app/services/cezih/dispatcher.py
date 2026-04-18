@@ -308,9 +308,12 @@ async def import_patient_by_identifier(
             pass
 
     spol_norm = cezih_data.get("spol") or None
+    raw_spol = spol_norm
     if spol_norm == "Ž":
         spol_norm = "Z"  # patient.spol CHECK constraint allows only 'M' | 'Z'
     elif spol_norm not in ("M", "Z"):
+        if spol_norm:
+            logger.info("CEZIH patient gender %r cannot be stored (CHECK M|Z), setting None", spol_norm)
         spol_norm = None
 
     addr = cezih_data.get("adresa") or {}
