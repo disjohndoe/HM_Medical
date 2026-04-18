@@ -17,14 +17,14 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.schemas.cezih import (
     CaseActionResponse,
-    CezihImportByIdentifierRequest,
-    CezihImportRequest,
     CaseItem,
     CaseResponse,
     CasesListResponse,
     CezihActivityItem,
     CezihActivityListResponse,
     CezihDashboardStats,
+    CezihImportByIdentifierRequest,
+    CezihImportRequest,
     CezihStatusResponse,
     CodeSystemItem,
     CreateCaseRequest,
@@ -38,7 +38,6 @@ from app.schemas.cezih import (
     EReceptStornoResponse,
     ForeignerRegistrationRequest,
     ForeignerRegistrationResponse,
-    PatientIdentifierSearchResponse,
     InsuranceCheckRequest,
     InsuranceCheckResponse,
     LijekItem,
@@ -49,6 +48,7 @@ from app.schemas.cezih import (
     PatientCezihERecept,
     PatientCezihInsurance,
     PatientCezihSummary,
+    PatientIdentifierSearchResponse,
     PractitionerItem,
     ReplaceDocumentRequest,
     UpdateCaseDataRequest,
@@ -565,9 +565,11 @@ async def search_patient_by_identifier(
     db: AsyncSession = Depends(get_db),
 ):
     """Search CEZIH patient registry by MBO, passport, or EHIC number."""
-    from fastapi import HTTPException, status as http_status
+    from fastapi import HTTPException
+    from fastapi import status as http_status
+
+    from app.services.cezih.exceptions import CezihAuthError, CezihError
     from app.services.cezih.service import search_patient_by_identifier as _search
-    from app.services.cezih.exceptions import CezihError, CezihAuthError
 
     await check_cezih_access(db, current_user.tenant_id)
     try:
@@ -586,9 +588,14 @@ async def search_patient_by_identifier(
     # "Dodaj u kartoteku". Match on any of the CEZIH-returned identifiers —
     # the same patient can be stored under a different column locally.
     from sqlalchemy import or_
+
     from app.models.patient import Patient
     from app.services.cezih.service import (
-        SYS_EUROPSKA, SYS_JEDINSTVENI, SYS_MBO, SYS_OIB, SYS_PUTOVNICA,
+        SYS_EUROPSKA,
+        SYS_JEDINSTVENI,
+        SYS_MBO,
+        SYS_OIB,
+        SYS_PUTOVNICA,
     )
 
     filters = []

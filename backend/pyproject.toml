@@ -47,3 +47,17 @@ select = ["E", "F", "I", "N", "UP"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "asn1crypto.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "jcs"
+ignore_missing_imports = true

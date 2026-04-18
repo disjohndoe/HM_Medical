@@ -205,9 +205,8 @@ async def _discover_hzzo_urls() -> tuple[str, str]:
             raise ValueError(f"Could not discover URLs from HZZO page (found {len(xlsx_links)} links)")
     except Exception as e:
         # Check if fallback is still usable
-        from datetime import timezone
 
-        fallback_age_days = (datetime.now(UTC).replace(tzinfo=timezone.utc) - HZZO_FALLBACK_URLS_DATE.replace(tzinfo=timezone.utc)).days
+        fallback_age_days = (datetime.now(UTC).replace(tzinfo=UTC) - HZZO_FALLBACK_URLS_DATE.replace(tzinfo=UTC)).days
         age_months = fallback_age_days / 30
 
         if age_months > HZZO_FALLBACK_MAX_AGE_MONTHS:

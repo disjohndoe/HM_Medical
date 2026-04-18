@@ -11,8 +11,6 @@ from app.constants import get_cezih_document_coding
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError, CezihFhirError
 from app.services.cezih.message_builder import (
-    SIGNATURE_TYPE_CODE,
-    SIGNATURE_TYPE_SYSTEM,
     _now_iso,
     add_signature,
     build_condition_create,
@@ -340,7 +338,7 @@ async def check_insurance(
 
 
 async def _build_document_bundle(
-    fhir_client: "CezihFhirClient",
+    fhir_client: CezihFhirClient,
     patient_data: dict,
     record_data: dict,
     practitioner_id: str | None = None,
@@ -1732,7 +1730,7 @@ async def replace_document(
 
 
 async def _lookup_document_oid(
-    fhir_client: "CezihFhirClient",
+    fhir_client: CezihFhirClient,
     reference_id: str,
     patient_mbo: str,
     identifier_system: str,

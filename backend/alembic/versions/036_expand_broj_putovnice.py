@@ -9,9 +9,9 @@ TEST187229207429124774553873810518644589945). Real passports vary by
 country too — raising limit to 50 so we never reject valid identifiers.
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "036_expand_putovnica"
 down_revision = "035_predracun_stavke_tenant"

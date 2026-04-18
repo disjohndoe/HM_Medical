@@ -39,10 +39,14 @@ export default function CezihPage() {
   const [copied, setCopied] = useState<string | null>(null)
   const [pairingFallback, setPairingFallback] = useState(false)
 
+  // Clear agent pairing credentials when agent connects
   useEffect(() => {
     if (cezihStatus?.agent_connected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setGeneratedSecret(null)
+       
       setGeneratedTenantId(null)
+       
       setPairingFallback(false)
     }
   }, [cezihStatus?.agent_connected])
@@ -118,7 +122,7 @@ export default function CezihPage() {
         },
       })
     }
-  }, [user?.card_holder_name, cezihStatus?.agent_connected, cezihStatus?.card_inserted, cezihStatus?.card_holder, selfBind.isPending, suppressAutoBind])
+  }, [user?.card_holder_name, cezihStatus?.agent_connected, cezihStatus?.card_inserted, cezihStatus?.card_holder, selfBind, refreshUser, suppressAutoBind])
 
   const handleManualBind = () => {
     bindingInFlight.current = true
@@ -374,9 +378,9 @@ export default function CezihPage() {
                   <div className="rounded-md border p-3">
                     <p className="mb-2 text-sm font-medium">Upute za postavljanje</p>
                     <ol className="list-inside list-decimal space-y-1 text-sm text-muted-foreground">
-                      <li>Kliknite <strong>"Generiraj pristupne podatke"</strong> — dobit ćete Tenant ID i tajni ključ</li>
+                      <li>Kliknite <strong>&quot;Generiraj pristupne podatke&quot;</strong> — dobit ćete Tenant ID i tajni ključ</li>
                       <li>Instalirajte <strong>HM Digital Agent</strong> na računalo u ordinaciji</li>
-                      <li>Kliknite <strong>"Poveži agenta"</strong> — agent će se automatski konfigurirati</li>
+                      <li>Kliknite <strong>&quot;Poveži agenta&quot;</strong> — agent će se automatski konfigurirati</li>
                     </ol>
                   </div>
                 </div>

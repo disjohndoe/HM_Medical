@@ -92,7 +92,7 @@ def _ecdsa_der_to_raw(der_sig: bytes) -> bytes:
     Raw: r (32 bytes, zero-padded) || s (32 bytes, zero-padded)
     """
     try:
-        from asn1crypto.core import Sequence, Integer
+        from asn1crypto.core import Sequence
         seq = Sequence.load(der_sig)
         r_bytes = seq[0].contents
         s_bytes = seq[1].contents
@@ -281,7 +281,7 @@ async def _request_via_agent(
         return parsed
     except Exception as parse_err:
         logger.error("Failed to parse signing response as JSON: %s. Raw body (first 500 chars): %s", parse_err, body_text[:500])
-        raise CezihSigningError(f"Neispravan odgovor od CEZIH servisa za potpisivanje.") from parse_err
+        raise CezihSigningError("Neispravan odgovor od CEZIH servisa za potpisivanje.") from parse_err
 
 
 async def _get_signing_token(client: httpx.AsyncClient) -> str:

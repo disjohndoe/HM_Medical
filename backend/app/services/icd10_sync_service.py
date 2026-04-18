@@ -88,8 +88,9 @@ async def _fetch_from_cezih() -> list[dict]:
     """Try to fetch ICD-10 codes from CEZIH ValueSet/$expand."""
     try:
         import httpx
+
+        from app.config import settings
         from app.services.cezih.client import CezihFhirClient
-        from app.core.config import settings
 
         if not settings.CEZIH_CLIENT_ID:
             logger.info("ICD-10 sync: CEZIH credentials not configured, skipping")

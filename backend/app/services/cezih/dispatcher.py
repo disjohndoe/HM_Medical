@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import Any, Callable
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -42,8 +43,8 @@ async def _write_audit(
 
 def _require_audit_params(
     db: AsyncSession | None, user_id: UUID | None, tenant_id: UUID | None,
-) -> None:
-    """Audit parameters are mandatory for traceability."""
+) -> tuple[AsyncSession, UUID, UUID]:
+    """Audit parameters are mandatory for traceability. Returns narrowed types."""
     if not db or not user_id or not tenant_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -60,6 +61,7 @@ def _require_audit_params(
     current_tenant_id.set(tenant_id)
     current_user_id.set(user_id)
     current_db_session.set(db)
+    return db, user_id, tenant_id
 
 
 # --- Dispatch functions ---
@@ -78,7 +80,7 @@ async def import_patient_from_cezih(
 
     Uses search_patient_by_identifier for full data (address, phone, email, all identifiers).
     """
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from datetime import date as date_type
 
@@ -196,7 +198,7 @@ async def import_patient_by_identifier(
     Populates all identifier columns found in the PDQm response, so e-Karton flows
     can route subsequent queries through the priority resolver.
     """
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from datetime import date as date_type
 
@@ -408,7 +410,7 @@ async def insurance_check_by_identifier(
     so the result is cached for subsequent import — avoids double CEZIH call.
     Also detects deceased patients via deceasedDateTime.
     """
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     system_uri = real_service._IDENTIFIER_SYSTEM_MAP.get(identifier_type)
     if not system_uri:
         raise HTTPException(
@@ -486,7 +488,7 @@ async def insurance_check(
     from the patient record and runs PDQm. Works for Croatian-insured and
     PMIR-registered foreigners alike.
     """
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)
@@ -538,7 +540,7 @@ async def send_enalaz(
     practitioner_name: str = "",
 ) -> dict:
     from app.models.patient import Patient
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     record = await _get_medical_record(db, tenant_id, patient_id, record_id)
     if not record:
@@ -637,7 +639,7 @@ async def send_erecept(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
 
@@ -695,7 +697,7 @@ async def cancel_erecept(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.cancel_erecept(http_client, recept_id)
     except CezihError as e:
@@ -822,7 +824,7 @@ async def oid_generate(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.generate_oid(http_client, quantity)
     except CezihError as e:
@@ -846,7 +848,7 @@ async def code_system_query(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.query_code_system(http_client, system_name, query, count)
     except CezihError as e:
@@ -872,7 +874,7 @@ async def value_set_expand(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.expand_value_set(http_client, url, filter_text)
     except CezihError as e:
@@ -894,7 +896,7 @@ async def organization_search(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.find_organizations(http_client, name)
     except CezihError as e:
@@ -911,7 +913,7 @@ async def practitioner_search(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> list[dict]:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.find_practitioners(http_client, name)
     except CezihError as e:
@@ -936,7 +938,7 @@ async def foreigner_registration(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.register_foreigner(
             http_client, patient_data, org_code=org_code, source_oid=source_oid,
@@ -981,8 +983,9 @@ async def _lookup_patient_id(
     for the CEZIH call (MBO for Croatian, jedinstveni-id / EHIC / passport for
     foreigners). Try each column to find the owner.
     """
-    from app.models.patient import Patient
     from sqlalchemy import or_
+
+    from app.models.patient import Patient
 
     result = await db.execute(
         select(Patient.id).where(
@@ -1403,7 +1406,7 @@ async def dispatch_retrieve_cases(
     tenant_id: UUID,
     http_client=None,
 ) -> list[dict]:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)
@@ -1443,7 +1446,7 @@ async def dispatch_create_case(
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)
@@ -1493,7 +1496,7 @@ async def dispatch_update_case(
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)
@@ -1581,7 +1584,7 @@ async def dispatch_update_case_data(
     http_client=None,
     source_oid: str | None = None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)
@@ -1636,7 +1639,7 @@ async def dispatch_search_documents(
     tenant_id: UUID,
     http_client=None,
 ) -> list[dict]:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     patient_system: str | None = None
     patient_value: str | None = None
@@ -1686,20 +1689,21 @@ async def dispatch_replace_document(
     case_id: str = "",
 ) -> dict:
     from app.models.patient import Patient
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     # Load full record and patient data from DB (same pattern as send_enalaz)
     # Fallback: if no record_id, look up by cezih_reference_id (used when called from e-Nalazi tab)
     if not record_id and db and tenant_id and not (patient_data and record_data):
         from sqlalchemy import select as sa_select
+
         from app.models.medical_record import MedicalRecord
-        result = await db.execute(
+        db_result = await db.execute(
             sa_select(MedicalRecord).where(
                 MedicalRecord.tenant_id == tenant_id,
                 MedicalRecord.cezih_reference_id == original_reference_id,
             )
         )
-        found = result.scalar_one_or_none()
+        found = db_result.scalar_one_or_none()
         if found:
             record_id = found.id
     if record_id and not (patient_data and record_data):
@@ -1776,10 +1780,11 @@ async def dispatch_cancel_document(
     practitioner_id: str | None = None,
     practitioner_name: str = "",
 ) -> dict:
+    from sqlalchemy import select as sa_select
+
     from app.models.medical_record import MedicalRecord
     from app.models.patient import Patient
-    from sqlalchemy import select as sa_select
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     # Look up the record by cezih_reference_id — need full record data for ITI-65 bundle
     patient_data: dict = {}
@@ -1787,13 +1792,13 @@ async def dispatch_cancel_document(
     encounter_id = ""
     case_id = ""
     if db and tenant_id:
-        result = await db.execute(
+        query_result = await db.execute(
             sa_select(MedicalRecord).where(
                 MedicalRecord.tenant_id == tenant_id,
                 MedicalRecord.cezih_reference_id == reference_id,
             )
         )
-        record = result.scalar_one_or_none()
+        record = query_result.scalar_one_or_none()
         if record:
             if record.patient_id:
                 patient = await db.get(Patient, record.patient_id)
@@ -1860,7 +1865,7 @@ async def dispatch_retrieve_document(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> bytes:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.retrieve_document(http_client, document_url or reference_id)
     except CezihFhirError as e:
@@ -1900,7 +1905,7 @@ async def dispatch_create_visit(
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)
@@ -1915,8 +1920,9 @@ async def dispatch_create_visit(
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
-            build_encounter_create, build_message_bundle, add_signature, ENCOUNTER_EVENT_PROFILE_MAP,
-            PROFILE_ENCOUNTER, PROFILE_ENCOUNTER_MSG_HEADER,
+            add_signature,
+            build_encounter_create,
+            build_message_bundle,
         )
         fhir_client = CezihFhirClient(http_client)
         if not practitioner_id:
@@ -2002,7 +2008,7 @@ async def dispatch_update_visit(
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)
@@ -2016,7 +2022,9 @@ async def dispatch_update_visit(
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
-            build_encounter_update, build_message_bundle, add_signature,
+            add_signature,
+            build_encounter_update,
+            build_message_bundle,
         )
         fhir_client = CezihFhirClient(http_client)
         if not practitioner_id:
@@ -2081,7 +2089,7 @@ async def dispatch_visit_action(
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)
@@ -2095,9 +2103,15 @@ async def dispatch_visit_action(
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
-            build_encounter_close, build_encounter_cancel, build_encounter_reopen,
-            build_message_bundle, add_signature, ENCOUNTER_EVENT_PROFILE_MAP, VISIT_ACTION_MAP,
-            PROFILE_ENCOUNTER, PROFILE_ENCOUNTER_MSG_HEADER,
+            ENCOUNTER_EVENT_PROFILE_MAP,
+            PROFILE_ENCOUNTER,
+            PROFILE_ENCOUNTER_MSG_HEADER,
+            VISIT_ACTION_MAP,
+            add_signature,
+            build_encounter_cancel,
+            build_encounter_close,
+            build_encounter_reopen,
+            build_message_bundle,
         )
         fhir_client = CezihFhirClient(http_client)
         if not practitioner_id:
@@ -2118,7 +2132,7 @@ async def dispatch_visit_action(
                 org_code=org_code or "",
             )
         else:
-            builder_map = {
+            builder_map: dict[str, Callable[..., dict]] = {
                 "1.3": build_encounter_close,
                 "1.4": build_encounter_cancel,
             }
@@ -2128,7 +2142,7 @@ async def dispatch_visit_action(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Nema builder funkcije za event code {event_code}",
                 )
-            encounter = builder_fn(
+            encounter = builder_fn(  # type: ignore[call-arg]
                 encounter_id=visit_id,
                 patient_mbo=identifier_value,
                 nacin_prijema=nacin_prijema,
@@ -2187,7 +2201,7 @@ async def dispatch_list_visits(
     tenant_id: UUID,
     http_client=None,
 ) -> list[dict]:
-    _require_audit_params(db, user_id, tenant_id)
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
     patient = await db.get(Patient, patient_id)

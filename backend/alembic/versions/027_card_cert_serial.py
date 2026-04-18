@@ -5,9 +5,9 @@ Revises: 026_unique_card_binding
 Create Date: 2026-04-15
 
 """
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "027_card_cert_serial"
 down_revision = "026_unique_card_binding"

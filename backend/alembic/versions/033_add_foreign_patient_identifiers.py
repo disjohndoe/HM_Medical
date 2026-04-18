@@ -13,9 +13,9 @@ queries for foreigners, and bumps the mirror tables' patient_mbo column to
 fit 50-char jedinstveni-ids (the column now stores whichever identifier value
 was used for the CEZIH call, not strictly the MBO).
 """
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "033_foreign_ids"
 down_revision = "032_visit_reason"

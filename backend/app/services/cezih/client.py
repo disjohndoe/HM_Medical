@@ -4,6 +4,7 @@ import asyncio
 import contextvars
 import logging
 import time
+from typing import cast
 
 import httpx
 
@@ -108,9 +109,10 @@ class CezihFhirClient:
     async def _request_via_agent(
         self, method: str, url: str, headers: dict[str, str],
         params: dict | None, json_body: dict | list | None, timeout: int,
-    ) -> dict:
+    ) -> dict | bytes:
         """Route request through the agent's native TLS for mTLS client cert."""
         import json as _json
+
         from app.services.agent_connection_manager import agent_manager
 
         # Append query params to URL
@@ -178,13 +180,13 @@ class CezihFhirClient:
                 )
             # CEZIH returns response Bundles with nested OperationOutcome
             if body.get("resourceType") == "Bundle":
-                oo = _extract_operation_outcome(body)
-                if oo:
-                    oo_model = OperationOutcome.model_validate(oo)
+                oo_dict = _extract_operation_outcome(body)
+                if oo_dict:
+                    oo_model = OperationOutcome.model_validate(oo_dict)
                     raise CezihFhirError(
                         f"FHIR error: {oo_model.first_error_message}",
                         status_code=status_code,
-                        operation_outcome=oo,
+                        operation_outcome=oo_dict,
                     )
             # Build a concise error — don't dump entire FHIR bundles into user-facing messages
             error_detail = ""
@@ -225,7 +227,12 @@ class CezihFhirClient:
 
         # Route 8443 calls through agent if connected (for mTLS client cert)
         if self._should_use_agent(path):
-            return await self._request_via_agent(method, url, headers, params, json_body, timeout)
+            result = await self._request_via_agent(method, url, headers, params, json_body, timeout)
+            # Binary responses (bytes) are only expected for direct ITI-68 downloads,
+            # not through this high-level request() method. Assert we got JSON.
+            if isinstance(result, bytes):
+                raise CezihError("Neočekivani binarni odgovor od agenta (koristiti specifičnu metodu za preuzimanje).")
+            return result
 
         logger.info("CEZIH request: %s %s (attempt %d/%d)", method, url, _attempt + 1, max_attempts)
         if json_body:

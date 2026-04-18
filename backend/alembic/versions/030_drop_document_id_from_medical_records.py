@@ -7,9 +7,9 @@ Create Date: 2026-04-16
 029 was a mistake — targeted the wrong popup. Rolling back the column so
 the DB is clean for the real work (different popup, TBD).
 """
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "030_drop_document_id"
 down_revision = "029_record_document"

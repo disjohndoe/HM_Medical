@@ -9,9 +9,9 @@ Removes the "Zadano (sustav)" option — every user must now explicitly be
 (the working default), then the column is made NOT NULL and the CHECK
 constraint tightened.
 """
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "034_require_signing_method"
 down_revision = "033_foreign_ids"

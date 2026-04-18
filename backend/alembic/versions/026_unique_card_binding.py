@@ -7,7 +7,6 @@ Create Date: 2026-04-15
 """
 from alembic import op
 
-
 revision = "026_unique_card_binding"
 down_revision = "025_icd10_codes"
 

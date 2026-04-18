@@ -8,10 +8,10 @@ PredracunStavka previously inherited from Base (no tenant_id).
 Now uses BaseTenantModel for proper tenant isolation.
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
+from alembic import op
 
 revision = "035_predracun_stavke_tenant"
 down_revision = "034_require_signing_method"

@@ -43,7 +43,6 @@ export function SortableTableHead({
 
   return (
     <TableHead
-      role="button"
       tabIndex={0}
       aria-sort={isActive ? (currentDir === "asc" ? "ascending" : "descending") : "none"}
       onClick={() => onSort(columnKey)}

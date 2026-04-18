@@ -6,11 +6,11 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
 
+from app.config import settings
 from app.database import async_session
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services import audit_service, auth_service
-from app.config import settings
 from app.services.agent_connection_manager import agent_manager
 
 logger = logging.getLogger(__name__)

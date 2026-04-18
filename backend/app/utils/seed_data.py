@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +85,7 @@ async def seed_default_procedures(db: AsyncSession, tenant_id: uuid.UUID) -> Non
 # ---------------------------------------------------------------------------
 # HZZO certification test data (provisioned 2026-04-07)
 # ---------------------------------------------------------------------------
-_PATIENTS = [
+_PATIENTS: list[tuple[Any, ...]] = [
     # (ime, prezime, datum_rodjenja, spol, oib, mbo, adresa, grad, postanski_broj, telefon, mobitel, email)
     (
         "GORAN", "PACPRIVATNICI19", "1980-01-01", "M", "99999900187", "999990260",
@@ -287,7 +288,7 @@ async def seed_demo_data(db: AsyncSession) -> None:
     print(f"  Admin:  {DEMO_EMAILS['admin']} / {DEMO_PASSWORD}")
     print(f"  Doctor: {DEMO_EMAILS['doctor']} / {DEMO_PASSWORD} (HZJZ: 7659059)")
     print(f"  Nurse:  {DEMO_EMAILS['nurse']} / {DEMO_PASSWORD}")
-    print(f"  Patient: GORAN PACPRIVATNICI19 (MBO: 999990260)")
+    print("  Patient: GORAN PACPRIVATNICI19 (MBO: 999990260)")
     print(f"  Appointments: {len(appt_specs)}")
     print(f"  Medical records: {len(records_data)}")
     print(f"  Performed procedures: {len(performed_data)}")

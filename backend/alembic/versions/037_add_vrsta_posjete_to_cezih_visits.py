@@ -8,9 +8,9 @@ CEZIH QEDm strips Encounter.type on read — vrsta_posjete must be
 persisted in our local mirror to survive page reloads.
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "037_vrsta_posjete"
 down_revision = "036_expand_putovnica"

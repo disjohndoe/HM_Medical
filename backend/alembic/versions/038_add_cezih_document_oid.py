@@ -3,8 +3,9 @@
 Revision ID: 038
 Revises: 037
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "038_document_oid"
 down_revision = "037_vrsta_posjete"

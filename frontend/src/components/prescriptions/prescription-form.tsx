@@ -76,6 +76,7 @@ export function PrescriptionForm({ open, onOpenChange, patientId, prescription }
   useEffect(() => {
     if (open) {
       if (prescription) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelected(
           prescription.lijekovi.map((l) => ({
             atk: l.atk,
@@ -87,9 +88,12 @@ export function PrescriptionForm({ open, onOpenChange, patientId, prescription }
             napomena: l.napomena,
           })),
         )
+         
         setNapomena(prescription.napomena ?? "")
       } else {
+         
         setSelected([])
+         
         setNapomena("")
       }
       setSearchQuery("")

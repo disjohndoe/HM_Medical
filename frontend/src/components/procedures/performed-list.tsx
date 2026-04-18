@@ -99,7 +99,9 @@ export function PerformedList({ patientId }: PerformedListProps) {
     }
   }, [selectedProcedure, setValue])
 
+  // Clear selection when page changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedIds(new Set())
   }, [page])
 
