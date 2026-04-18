@@ -77,6 +77,7 @@ class InsuranceCheckResponse(BaseModel):
     spol: str
     osiguravatelj: str
     status_osiguranja: str
+    datum_smrti: str = ""
 
 
 class ENalazRequest(BaseModel):

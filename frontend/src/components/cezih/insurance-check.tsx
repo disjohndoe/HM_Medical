@@ -113,6 +113,7 @@ export function InsuranceCheck() {
   }
 
   const resultHasPatient = !!result && !!result.ime && result.status_osiguranja !== "Nije pronađen"
+  const isDeceased = !!result?.datum_smrti
 
   return (
     <Card>
@@ -187,9 +188,15 @@ export function InsuranceCheck() {
                   <span className="text-muted-foreground">Osiguravatelj:</span>{" "}
                   {result.osiguravatelj}
                 </div>
+                {isDeceased && (
+                  <div>
+                    <span className="text-muted-foreground">Datum smrti:</span>{" "}
+                    <span className="text-destructive font-medium">{formatDateHR(result.datum_smrti!)}</span>
+                  </div>
+                )}
               </div>
 
-              {resultHasPatient && (
+              {resultHasPatient && !isDeceased && (
                 <div className="flex items-center gap-2 pt-1">
                   {importedId ? (
                     <Link

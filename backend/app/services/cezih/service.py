@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime
 
 import httpx
@@ -25,6 +26,11 @@ from app.services.cezih.message_builder import (
 from app.services.cezih.models import FHIRPatient
 
 logger = logging.getLogger(__name__)
+
+# PDQm result cache — avoids redundant CEZIH calls when insurance check
+# is followed by patient import (same query within TTL window).
+_PDQM_CACHE: dict[str, tuple[dict, float]] = {}
+_PDQM_CACHE_TTL = 300  # 5 minutes
 
 # CEZIH identifier systems
 SYS_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
@@ -105,7 +111,14 @@ async def search_patient_by_identifier(
 
     identifier_system must be one of: 'mbo', 'putovnica', 'ehic'.
     Uses ITI-78 PDQm — same transaction as fetch_patient_demographics / check_insurance.
+    Results are cached for 5 minutes so subsequent import skips the CEZIH call.
     """
+    cache_key = f"{tenant_id}:{identifier_system}:{value}"
+    cached = _PDQM_CACHE.get(cache_key)
+    if cached and (time.time() - cached[1]) < _PDQM_CACHE_TTL:
+        logger.info("PDQm cache hit for %s|%s (tenant=%s)", identifier_system, value, tenant_id)
+        return cached[0]
+
     system_uri = _IDENTIFIER_SYSTEM_MAP.get(identifier_system)
     if not system_uri:
         raise CezihError(f"Nepoznati tip identifikatora: {identifier_system}")
@@ -185,7 +198,7 @@ async def search_patient_by_identifier(
     spol_map = {"male": "M", "female": "Ž", "other": "Ostalo", "unknown": "Nepoznato"}
     spol = spol_map.get(patient.gender or "", "")
 
-    return {
+    result = {
         "cezih_id": cezih_id,
         "ime": given,
         "prezime": family,
@@ -201,6 +214,15 @@ async def search_patient_by_identifier(
         "email": email,
         "identifikatori": identifikatori,
     }
+
+    _PDQM_CACHE[cache_key] = (result, time.time())
+    # Lazy eviction of stale entries
+    now = time.time()
+    stale = [k for k, (_, ts) in _PDQM_CACHE.items() if now - ts > _PDQM_CACHE_TTL]
+    for k in stale:
+        del _PDQM_CACHE[k]
+
+    return result
 
 
 async def fetch_patient_demographics(client: httpx.AsyncClient, mbo: str) -> dict:
@@ -282,6 +304,10 @@ async def check_insurance(
         spol_map = {"male": "M", "female": "Ž", "other": "Ostalo", "unknown": "Nepoznato"}
         spol = spol_map.get(patient.gender or "", "")
 
+        status_osiguranja = "Aktivan"
+        if patient.deceasedDateTime:
+            status_osiguranja = "Preminuo"
+
         return {
             "mbo": queried_value,
             "ime": given,
@@ -289,8 +315,9 @@ async def check_insurance(
             "datum_rodjenja": patient.birthDate or "",
             "oib": oib,
             "spol": spol,
-            "osiguravatelj": "HZZO",
-            "status_osiguranja": "Aktivan",
+            "osiguravatelj": "HZZO" if status_osiguranja == "Aktivan" else "",
+            "status_osiguranja": status_osiguranja,
+            "datum_smrti": patient.deceasedDateTime or "",
         }
 
     # Unexpected response format — log full response for debugging

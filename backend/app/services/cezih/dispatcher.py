@@ -73,7 +73,10 @@ async def import_patient_from_cezih(
     tenant_id: UUID | None = None,
     http_client=None,
 ) -> dict:
-    """Fetch patient demographics from CEZIH and create a new local patient."""
+    """Fetch patient demographics from CEZIH and create a new local patient.
+
+    Uses search_patient_by_identifier for full data (address, phone, email, all identifiers).
+    """
     _require_audit_params(db, user_id, tenant_id)
 
     from datetime import date as date_type
@@ -95,10 +98,23 @@ async def import_patient_from_cezih(
         )
 
     try:
-        cezih_data = await real_service.fetch_patient_demographics(http_client, mbo)
+        cezih_data = await real_service.search_patient_by_identifier(
+            http_client, identifier_system="mbo", value=mbo, tenant_id=tenant_id,
+        )
     except CezihError as e:
         logger.error("CEZIH patient import failed: %s", e.message)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+    # Extract identifiers
+    idents: dict[str, str] = {}
+    for ident in cezih_data.get("identifikatori") or []:
+        sys_uri = ident.get("system")
+        val = ident.get("value")
+        if sys_uri and val:
+            idents[sys_uri] = val
+
+    oib = idents.get(real_service.SYS_OIB)
+    cezih_patient_id = idents.get(real_service.SYS_JEDINSTVENI) or cezih_data.get("cezih_id") or None
 
     # Parse date string to date object
     dob = None
@@ -108,14 +124,28 @@ async def import_patient_from_cezih(
         except ValueError:
             pass
 
+    spol_norm = cezih_data.get("spol") or None
+    if spol_norm == "Ž":
+        spol_norm = "Z"
+    elif spol_norm not in ("M", "Z"):
+        spol_norm = None
+
+    addr = cezih_data.get("adresa") or {}
+
     patient = Patient(
         tenant_id=tenant_id,
         ime=cezih_data.get("ime") or "Nepoznato",
         prezime=cezih_data.get("prezime") or "Nepoznato",
         datum_rodjenja=dob,
-        spol=cezih_data.get("spol"),
-        oib=cezih_data.get("oib"),
+        spol=spol_norm,
+        oib=oib,
         mbo=mbo,
+        cezih_patient_id=cezih_patient_id,
+        adresa=addr.get("ulica") or None,
+        grad=addr.get("grad") or None,
+        postanski_broj=addr.get("postanski_broj") or None,
+        telefon=cezih_data.get("telefon") or None,
+        email=cezih_data.get("email") or None,
         cezih_insurance_status="Aktivan",
         cezih_insurance_checked_at=datetime.now(UTC),
     )
@@ -228,6 +258,32 @@ async def import_patient_by_identifier(
         )
         existing_patient = existing.scalar_one_or_none()
         if existing_patient:
+            # Update CEZIH-synced fields with fresh data
+            if mbo and not existing_patient.mbo:
+                existing_patient.mbo = mbo
+            if oib and not existing_patient.oib:
+                existing_patient.oib = oib
+            if putovnica and not existing_patient.broj_putovnice:
+                existing_patient.broj_putovnice = putovnica
+            if ehic and not existing_patient.ehic_broj:
+                existing_patient.ehic_broj = ehic
+            if cezih_patient_id and not existing_patient.cezih_patient_id:
+                existing_patient.cezih_patient_id = cezih_patient_id
+            addr = cezih_data.get("adresa") or {}
+            if addr.get("ulica") and not existing_patient.adresa:
+                existing_patient.adresa = addr["ulica"]
+            if addr.get("grad") and not existing_patient.grad:
+                existing_patient.grad = addr["grad"]
+            if addr.get("postanski_broj") and not existing_patient.postanski_broj:
+                existing_patient.postanski_broj = addr["postanski_broj"]
+            if cezih_data.get("telefon") and not existing_patient.telefon:
+                existing_patient.telefon = cezih_data["telefon"]
+            if cezih_data.get("email") and not existing_patient.email:
+                existing_patient.email = cezih_data["email"]
+            existing_patient.cezih_insurance_status = "Aktivan" if mbo else None
+            existing_patient.cezih_insurance_checked_at = datetime.now(UTC) if mbo else None
+            await db.flush()
+
             return {
                 "id": str(existing_patient.id),
                 "ime": existing_patient.ime,
@@ -344,9 +400,9 @@ async def insurance_check_by_identifier(
 ) -> dict:
     """Ad-hoc insurance check for a walk-in by MBO, EHIC, or passport.
 
-    Unlike `insurance_check`, this does not require a local patient record —
-    receptionists can verify insurance for a Croatian or foreign walk-in before
-    registering. identifier_type must be one of 'mbo', 'ehic', 'putovnica'.
+    Uses search_patient_by_identifier (richer PDQm) instead of check_insurance
+    so the result is cached for subsequent import — avoids double CEZIH call.
+    Also detects deceased patients via deceasedDateTime.
     """
     _require_audit_params(db, user_id, tenant_id)
     system_uri = real_service._IDENTIFIER_SYSTEM_MAP.get(identifier_type)
@@ -356,10 +412,35 @@ async def insurance_check_by_identifier(
             detail=f"Nepoznati tip identifikatora: {identifier_type}",
         )
     try:
-        result = await real_service.check_insurance(http_client, system_uri, identifier_value)
+        cezih_data = await real_service.search_patient_by_identifier(
+            http_client, identifier_system=identifier_type, value=identifier_value,
+            tenant_id=tenant_id,
+        )
     except CezihError as e:
         logger.error("CEZIH ad-hoc insurance check (%s) failed: %s", identifier_type, e.message)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+
+    # Build insurance-check response from richer PDQm data
+    status_osiguranja = "Aktivan"
+    if cezih_data.get("datum_smrti"):
+        status_osiguranja = "Preminuo"
+
+    oib = ""
+    for ident in cezih_data.get("identifikatori") or []:
+        if ident.get("system", "").endswith("/OIB") and ident.get("value"):
+            oib = ident["value"]
+
+    result = {
+        "mbo": identifier_value,
+        "ime": cezih_data.get("ime", ""),
+        "prezime": cezih_data.get("prezime", ""),
+        "datum_rodjenja": cezih_data.get("datum_rodjenja", ""),
+        "oib": oib,
+        "spol": cezih_data.get("spol", ""),
+        "osiguravatelj": "HZZO" if status_osiguranja == "Aktivan" else "",
+        "status_osiguranja": status_osiguranja,
+        "datum_smrti": cezih_data.get("datum_smrti", ""),
+    }
 
     await _write_audit(
         db, tenant_id, user_id,
@@ -367,7 +448,7 @@ async def insurance_check_by_identifier(
         details={
             "identifier_type": identifier_type,
             "identifier_value": identifier_value,
-            "result": result.get("status_osiguranja"),
+            "result": result["status_osiguranja"],
         },
     )
     return result

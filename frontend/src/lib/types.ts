@@ -504,6 +504,7 @@ export interface InsuranceCheckResponse {
   spol: string;
   osiguravatelj: string;
   status_osiguranja: string;
+  datum_smrti?: string;
 }
 
 export interface ENalazResponse {

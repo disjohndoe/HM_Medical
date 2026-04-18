@@ -209,6 +209,7 @@ export const OSIGURANJE_STATUS: Record<string, { label: string; color: string }>
   Aktivan: { label: "Aktivan", color: "bg-green-100 text-green-800" },
   "Na čekanju": { label: "Na čekanju", color: "bg-yellow-100 text-yellow-800" },
   Neaktivan: { label: "Neaktivan", color: "bg-red-100 text-red-800" },
+  Preminuo: { label: "Preminuo", color: "bg-gray-200 text-gray-600 line-through" },
   "Nije pronađen": { label: "Nije pronađen", color: "bg-gray-100 text-gray-800" },
 };
 
