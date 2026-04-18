@@ -112,6 +112,8 @@ class AgentConnectionManager:
         tenant_agents = self._connections.get(tenant_id)
         if not tenant_agents:
             return None
+        if not card_holder_name:
+            return None
         target = card_holder_name.strip().upper()
         for conn in tenant_agents.values():
             # Check top-level field (backward compat with old agents)
