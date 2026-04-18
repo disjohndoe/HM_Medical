@@ -350,11 +350,11 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                     <SortableTableHead columnKey="izvor" label="Izvor" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="w-[100px]" />
                     <SortableTableHead columnKey="status" label="Status" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="w-[100px]" />
                     <SortableTableHead columnKey="nacin_prijema" label="Način prijema" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
-                    <SortableTableHead columnKey="tip_posjete" label="Tip posjete" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="hidden md:table-cell" />
-                    <SortableTableHead columnKey="razlog" label="Razlog" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="hidden sm:table-cell" />
+                    <SortableTableHead columnKey="tip_posjete" label="Tip posjete" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
+                    <SortableTableHead columnKey="razlog" label="Razlog" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
                     <SortableTableHead columnKey="period_start" label="Početak" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
-                    <SortableTableHead columnKey="updated_at" label="Izmjena" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="hidden lg:table-cell" />
-                    <SortableTableHead columnKey="period_end" label="Kraj" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} className="hidden lg:table-cell" />
+                    <SortableTableHead columnKey="updated_at" label="Izmjena" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
+                    <SortableTableHead columnKey="period_end" label="Kraj" currentKey={vSortKey} currentDir={vSortDir} onSort={toggleVSort} />
                     <TableHead className="w-[180px] text-right">Akcije</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -390,12 +390,12 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                             || NACIN_PRIJEMA_LABELS[v.visit_type || visitMeta[v.visit_id]?.nacin_prijema || ""]
                             || v.visit_type || "—"}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm">
+                        <TableCell className="text-sm">
                           {v.tip_posjete_display
                             || TIP_POSJETE_LABELS[v.tip_posjete || visitMeta[v.visit_id]?.tip_posjete || ""]
                             || "—"}
                         </TableCell>
-                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                        <TableCell className="text-sm text-muted-foreground">
                           <div>
                             {v.reason || "—"}
                             {v.diagnosis_case_ids?.length > 0 && (
@@ -413,10 +413,10 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                         <TableCell className="text-sm">
                           {v.period_start ? formatDateTimeHR(v.period_start) : "—"}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+                        <TableCell className="text-sm text-muted-foreground">
                           {v.updated_at ? formatDateTimeHR(v.updated_at) : "—"}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell text-sm">
+                        <TableCell className="text-sm">
                           {v.period_end ? formatDateTimeHR(v.period_end) : "—"}
                         </TableCell>
                         <TableCell className="text-right">
