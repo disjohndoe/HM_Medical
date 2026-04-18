@@ -997,7 +997,7 @@ def build_condition_create(
             "coding": [{"system": CS_ICD10_HR, "code": icd_code, "display": icd_display}],
         },
         "subject": patient_ref(patient_mbo, identifier_system),
-        "onsetDateTime": onset_dt,
+        "onsetDateTime": onset_dt.isoformat() if isinstance(onset_dt, datetime) else onset_dt,
         "asserter": practitioner_ref(practitioner_id),
     }
 
@@ -1051,7 +1051,7 @@ def build_condition_status_update(
                 date.fromisoformat(abatement_date),
                 time.min,
             ).replace(tzinfo=_TZ_ZAGREB)
-            condition["abatementDateTime"] = abatement_dt
+            condition["abatementDateTime"] = abatement_dt.isoformat()
         else:
             condition["abatementDateTime"] = abatement_date
 
@@ -1112,7 +1112,7 @@ def build_condition_data_update(
                 date.fromisoformat(onset_date),
                 time.min,
             ).replace(tzinfo=_TZ_ZAGREB)
-            condition["onsetDateTime"] = onset_dt
+            condition["onsetDateTime"] = onset_dt.isoformat()
         else:
             condition["onsetDateTime"] = onset_date
 
@@ -1124,7 +1124,7 @@ def build_condition_data_update(
                 date.fromisoformat(abatement_date),
                 time.min,
             ).replace(tzinfo=_TZ_ZAGREB)
-            condition["abatementDateTime"] = abatement_dt
+            condition["abatementDateTime"] = abatement_dt.isoformat()
         else:
             condition["abatementDateTime"] = abatement_date
 
