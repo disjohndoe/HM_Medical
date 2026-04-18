@@ -221,7 +221,7 @@ class CezihFhirClient:
         accept: str | None = None,
         content_type: str | None = None,
         _attempt: int = 0,
-    ) -> dict:
+    ) -> dict | bytes:
         url = self._full_url(path)
         timeout = timeout or settings.CEZIH_TIMEOUT
         max_attempts = settings.CEZIH_RETRY_ATTEMPTS
@@ -235,10 +235,11 @@ class CezihFhirClient:
         # Route 8443 calls through agent if connected (for mTLS client cert)
         if self._should_use_agent(path):
             result = await self._request_via_agent(method, url, headers, params, json_body, timeout)
-            # Binary responses (bytes) are only expected for direct ITI-68 downloads,
-            # not through this high-level request() method. Assert we got JSON.
+            # Binary responses (bytes) are expected for ITI-68 document retrieval when accept="*/*"
             if isinstance(result, bytes):
-                raise CezihError("Neočekivani binarni odgovor od agenta (koristiti specifičnu metodu za preuzimanje).")
+                if accept == "*/*":
+                    return result  # Return bytes for document downloads
+                raise CezihError("Neočekivani binarni odgovor od agenta (koristiti accept='*/*' za dokumente).")
             return result
 
         logger.info("CEZIH request: %s %s (attempt %d/%d)", method, url, _attempt + 1, max_attempts)
@@ -298,7 +299,7 @@ class CezihFhirClient:
 
         return body
 
-    async def get(self, path: str, *, params: dict | None = None, timeout: int | None = None, accept: str | None = None) -> dict:
+    async def get(self, path: str, *, params: dict | None = None, timeout: int | None = None, accept: str | None = None) -> dict | bytes:
         return await self.request("GET", path, params=params, timeout=timeout, accept=accept)
 
     async def post(self, path: str, *, json_body: dict | None = None) -> dict:
