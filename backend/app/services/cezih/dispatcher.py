@@ -936,6 +936,11 @@ async def foreigner_registration(
             practitioner_id=practitioner_id,
         )
     except CezihError as e:
+        if "ERR_FOREIGNPATIENT_1002" in e.message or "already exists" in e.message.lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Pacijent je već registriran u CEZIH-u. Pretražite ga po putovnici ili EHIC-u i dodajte u kartoteku.",
+            ) from e
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     patient_name = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}"
     await _write_audit(

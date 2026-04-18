@@ -270,7 +270,14 @@ export function ForeignerRegistration() {
       onSuccess: (data) => {
         toast.success(`Stranac registriran u CEZIH (ID: ${data.patient_id})`)
       },
-      onError: (e) => toast.error(e.message),
+      onError: (e) => {
+        const msg = e.message ?? ""
+        if (msg.includes("već registriran") || msg.includes("409")) {
+          toast.error("Pacijent je već registriran u CEZIH-u. Pretražite ga po putovnici ili EHIC-u i dodajte u kartoteku.")
+        } else {
+          toast.error(msg)
+        }
+      },
     })
   }
 
