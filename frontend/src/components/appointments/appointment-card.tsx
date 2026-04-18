@@ -7,9 +7,11 @@ import type { Appointment } from "@/lib/types"
 interface AppointmentCardProps {
   appointment: Appointment
   onClick: (appointment: Appointment) => void
+  column?: number
+  totalColumns?: number
 }
 
-export function AppointmentCard({ appointment, onClick }: AppointmentCardProps) {
+export function AppointmentCard({ appointment, onClick, column = 0, totalColumns = 1 }: AppointmentCardProps) {
   const start = new Date(appointment.datum_vrijeme)
   const startMin = start.getHours() * 60 + start.getMinutes()
   const topOffset = ((startMin - WORKING_HOURS_START * 60) / 60) * 64 // 64px per hour (4 rows * 16px)
@@ -19,15 +21,20 @@ export function AppointmentCard({ appointment, onClick }: AppointmentCardProps) 
     ? `${appointment.patient_ime} ${appointment.patient_prezime}`
     : "—"
 
+  const leftPercent = (column / totalColumns) * 100
+  const widthPercent = (1 / totalColumns) * 100
+
   return (
     <div
       className={cn(
-        "absolute left-1 right-1 z-10 rounded-md border px-2 py-1 text-xs cursor-pointer overflow-hidden transition-shadow hover:shadow-sm",
+        "absolute z-10 rounded-md border px-1.5 py-0.5 text-xs cursor-pointer overflow-hidden transition-shadow hover:shadow-md hover:z-20",
         APPOINTMENT_VRSTA_COLORS[appointment.vrsta] ?? "bg-gray-100 border-gray-300",
       )}
       style={{
         top: `${topOffset}px`,
         height: `${Math.max(height, 24)}px`,
+        left: `calc(${leftPercent}% + 2px)`,
+        width: `calc(${widthPercent}% - 4px)`,
       }}
       onClick={() => onClick(appointment)}
     >
