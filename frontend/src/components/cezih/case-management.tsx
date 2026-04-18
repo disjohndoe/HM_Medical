@@ -213,25 +213,17 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
   }
 
   const getAvailableActions = (c: CaseItem) => {
-    // State machine per Simplifier spec:
-    //   active → remission(2.3), resolve(2.4)
-    //   remission → relapse(2.5), resolve(2.4)
-    //   relapse → remission(2.3), resolve(2.4)
-    //   resolved → reopen(2.9)
-    //   Delete (2.7) never shipped — product rule.
-    //   Resolve (Zatvori) requires verification_status === "confirmed"
-    const confirmed = c.verification_status === "confirmed"
     const filter = (actions: string[]) =>
       CASE_ACTIONS.filter((a) => actions.includes(a.value))
 
     switch (c.clinical_status) {
       case "active":
       case "recurrence":
-        return filter(confirmed ? ["remission", "resolve"] : ["remission"])
+        return filter(["remission", "resolve"])
       case "remission":
-        return filter(confirmed ? ["relapse", "resolve"] : ["relapse"])
+        return filter(["relapse", "resolve"])
       case "relapse":
-        return filter(confirmed ? ["remission", "resolve"] : ["remission"])
+        return filter(["remission", "resolve"])
       case "resolved":
         return filter(["reopen"])
       case "inactive":
@@ -354,9 +346,6 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Zatvaranje slučaja moguće je samo za Potvrđen status.
-                </p>
               </div>
               <div>
                 <Label>Napomena (opcionalno)</Label>
@@ -380,13 +369,10 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
           <p className="font-medium">Kako koristiti:</p>
           <ul className="list-disc list-inside space-y-0.5">
             <li>
-              <strong>Novi slučaj</strong> — upišite MKB šifru, datum početka i status verifikacije. Da bi mogli zatvoriti slučaj, on mora biti <em>Potvrđen</em>.
+              <strong>Novi slučaj</strong> — upišite MKB šifru, datum početka i status verifikacije.
             </li>
             <li>
               Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori, Ponovno otvori ili Ponavljajući slučaj. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
-            </li>
-            <li>
-              <strong>Zatvori</strong> je dostupan samo za slučajeve sa statusom verifikacije <em>Potvrđen</em>.
             </li>
           </ul>
         </div>
