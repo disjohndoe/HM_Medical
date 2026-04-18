@@ -494,9 +494,8 @@ async def sign_bundle_via_extsigner(
             "CEZIH_SIGNER_OIB nije postavljen. Potrebno je za udaljeno potpisivanje (extsigner)."
         )
 
-    # Extsigner lives on certws2:8443 (mTLS via agent) — use CEZIH_FHIR_BASE_URL.
-    # Auth is handled entirely by the agent's mTLS session — NO Bearer token needed.
-    base_url = settings.CEZIH_FHIR_BASE_URL
+    # Extsigner uses public hostname (no VPN needed), falls back to VPN URL.
+    base_url = settings.CEZIH_FHIR_PUB_BASE_URL or settings.CEZIH_FHIR_BASE_URL
     if not base_url:
         raise CezihSigningError("CEZIH_FHIR_BASE_URL nije postavljen.")
 
@@ -641,7 +640,7 @@ async def check_extsigner_transaction(transaction_code: str) -> dict:
     if not _should_use_agent():
         raise CezihSigningError("Agent nije spojen")
 
-    base_url = settings.CEZIH_FHIR_BASE_URL
+    base_url = settings.CEZIH_FHIR_PUB_BASE_URL or settings.CEZIH_FHIR_BASE_URL
     if not base_url:
         raise CezihSigningError("CEZIH_FHIR_BASE_URL nije postavljen.")
 

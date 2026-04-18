@@ -58,46 +58,90 @@ class CezihFhirClient:
     Handles: Bearer token injection, FHIR content types, retry with backoff,
     structured logging, and exception translation.
 
-    For port-8443 requests (clinical services requiring mTLS), routes through
-    the local agent's native TLS stack if an agent is connected. Port-9443
-    requests (reference services) go directly via httpx.
+    Routes ALL requests through the local agent (production server has no
+    direct connectivity to CEZIH). Picks VPN or public hostnames based on
+    the user's signing method:
+    - smartcard → certws2.cezih.hr (VPN, mTLS)
+    - extsigner → certpubws.cezih.hr (public, no VPN needed)
     """
 
     def __init__(self, http_client: httpx.AsyncClient, tenant_id=None) -> None:
         self._client = http_client
         self._tenant_id = tenant_id or current_tenant_id.get()
-        self._base_url = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
+        self._signing_method: str | None = None
+
+        # VPN URLs (smartcard path)
+        self._vpn_base_url = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
         if settings.CEZIH_FHIR_AUX_URL:
-            self._aux_url = settings.CEZIH_FHIR_AUX_URL.rstrip("/")
+            self._vpn_aux_url = settings.CEZIH_FHIR_AUX_URL.rstrip("/")
         elif settings.CEZIH_FHIR_BASE_URL:
             logger.warning(
                 "CEZIH_FHIR_AUX_URL not set, auxiliary services will use CEZIH_FHIR_BASE_URL (%s)",
                 settings.CEZIH_FHIR_BASE_URL,
             )
-            self._aux_url = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
+            self._vpn_aux_url = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
         else:
             raise CezihError("Ni CEZIH_FHIR_AUX_URL ni CEZIH_FHIR_BASE_URL nisu konfigurirani.")
+
+        # Public URLs (extsigner path — no VPN needed)
+        self._pub_base_url = (settings.CEZIH_FHIR_PUB_BASE_URL or self._vpn_base_url).rstrip("/")
+        self._pub_aux_url = (settings.CEZIH_FHIR_PUB_AUX_URL or self._vpn_aux_url).rstrip("/")
+
+    async def _get_signing_method(self) -> str:
+        if self._signing_method is not None:
+            return self._signing_method
+        user_id = current_user_id.get()
+        db = current_db_session.get()
+        if user_id and db:
+            from sqlalchemy import select
+            from app.models.user import User
+            try:
+                method = await db.scalar(
+                    select(User.cezih_signing_method).where(User.id == user_id)
+                )
+                self._signing_method = method or settings.CEZIH_SIGNING_METHOD
+            except Exception:
+                logger.warning("Could not resolve signing method from DB, using default")
+                self._signing_method = settings.CEZIH_SIGNING_METHOD
+        else:
+            self._signing_method = settings.CEZIH_SIGNING_METHOD
+        logger.info("CEZIH client using signing method: %s", self._signing_method)
+        return self._signing_method
+
+    def _is_extsigner(self, signing_method: str) -> bool:
+        return signing_method == "extsigner"
 
     def _is_aux_service(self, path: str) -> bool:
         clean = path.lstrip("/")
         return any(clean.startswith(p) for p in _AUX_PORT_PREFIXES)
 
-    def _full_url(self, path: str) -> str:
+    def _full_url(self, path: str, signing_method: str) -> str:
         if not path.startswith("/"):
             path = "/" + path
         clean = path.lstrip("/")
-        base = self._aux_url if self._is_aux_service(path) else self._base_url
+        is_aux = self._is_aux_service(path)
+        if self._is_extsigner(signing_method):
+            base = self._pub_aux_url if is_aux else self._pub_base_url
+        else:
+            base = self._vpn_aux_url if is_aux else self._vpn_base_url
         return f"{base}{_GATEWAY_PREFIX}{clean}"
 
-    async def _attach_auth(self, headers: dict[str, str]) -> dict[str, str]:
-        token = await get_oauth_token(client=self._client, tenant_id=self._tenant_id)
+    def _get_oauth2_url(self, signing_method: str) -> str:
+        if self._is_extsigner(signing_method) and settings.CEZIH_SIGNING_OAUTH2_URL:
+            return settings.CEZIH_SIGNING_OAUTH2_URL
+        return settings.CEZIH_OAUTH2_URL
+
+    async def _attach_auth(self, headers: dict[str, str], *, oauth2_url: str) -> dict[str, str]:
+        token = await get_oauth_token(
+            client=self._client, tenant_id=self._tenant_id, oauth2_url=oauth2_url,
+        )
         headers["Authorization"] = f"Bearer {token}"
         return headers
 
     def _should_use_agent(self, path: str) -> bool:
         """Check if this request should be routed through the agent.
 
-        Server has no VPN — ALL CEZIH requests (both 8443 and 9443) must
+        Server has no direct connectivity to CEZIH — ALL requests must
         go through the agent when it is connected.
         """
         if not self._tenant_id:
@@ -222,7 +266,9 @@ class CezihFhirClient:
         content_type: str | None = None,
         _attempt: int = 0,
     ) -> dict | bytes:
-        url = self._full_url(path)
+        signing_method = await self._get_signing_method()
+        url = self._full_url(path, signing_method)
+        oauth2_url = self._get_oauth2_url(signing_method)
         timeout = timeout or settings.CEZIH_TIMEOUT
         max_attempts = settings.CEZIH_RETRY_ATTEMPTS
 
@@ -230,9 +276,9 @@ class CezihFhirClient:
             "Accept": accept or _FHIR_CONTENT_TYPE,
             "Content-Type": content_type or _FHIR_CONTENT_TYPE,
         }
-        headers = await self._attach_auth(headers)
+        headers = await self._attach_auth(headers, oauth2_url=oauth2_url)
 
-        # Route 8443 calls through agent if connected (for mTLS client cert)
+        # Route through agent (production server has no direct CEZIH connectivity)
         if self._should_use_agent(path):
             result = await self._request_via_agent(method, url, headers, params, json_body, timeout)
             # Binary responses (bytes) are expected for ITI-68 document retrieval when accept="*/*"
@@ -263,7 +309,7 @@ class CezihFhirClient:
         # 401 — invalidate token and retry
         if response.status_code == 401 and _attempt < max_attempts - 1:
             logger.warning("CEZIH 401, invalidating token and retrying")
-            invalidate_token()
+            invalidate_token(oauth2_url)
             await asyncio.sleep(1.0 * (2 ** _attempt))
             return await self.request(
                 method, path, params=params, json_body=json_body, timeout=timeout, _attempt=_attempt + 1,

@@ -57,8 +57,10 @@ class Settings(BaseSettings):
     CEZIH_OAUTH2_URL: str = ""  # Keycloak token endpoint (VPN: certsso2, public: certpubsso)
     CEZIH_CLIENT_ID: str = ""
     CEZIH_CLIENT_SECRET: str = ""
-    CEZIH_FHIR_BASE_URL: str = ""  # e.g. https://certws2.cezih.hr:8443 (clinical FHIR)
-    CEZIH_FHIR_AUX_URL: str = ""  # e.g. https://certws2.cezih.hr:9443 (terminology, mCSD, OID, notifications)
+    CEZIH_FHIR_BASE_URL: str = ""  # e.g. https://certws2.cezih.hr:8443 (clinical FHIR, VPN)
+    CEZIH_FHIR_AUX_URL: str = ""  # e.g. https://certws2.cezih.hr:9443 (terminology, VPN)
+    CEZIH_FHIR_PUB_BASE_URL: str = ""  # e.g. https://certpubws.cezih.hr:8443 (clinical FHIR, no VPN)
+    CEZIH_FHIR_PUB_AUX_URL: str = ""  # e.g. https://certpubws.cezih.hr:9443 (terminology, no VPN)
     CEZIH_SIGNING_URL: str = ""  # Remote signing endpoint (certpubws.cezih.hr)
     CEZIH_SIGNING_OAUTH2_URL: str = ""  # Public Keycloak for signing (certpubsso.cezih.hr)
     CEZIH_SIGNING_METHOD: str = "extsigner"  # "extsigner" (Certilia remote, working) or "smartcard" (NCrypt JWS, broken)
