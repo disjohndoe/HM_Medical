@@ -13,6 +13,7 @@ interface AppointmentCardProps {
 
 export function AppointmentCard({ appointment, onClick, column = 0, totalColumns = 1 }: AppointmentCardProps) {
   const start = new Date(appointment.datum_vrijeme)
+  const end = new Date(start.getTime() + appointment.trajanje_minuta * 60000)
   const startMin = start.getHours() * 60 + start.getMinutes()
   const topOffset = ((startMin - WORKING_HOURS_START * 60) / 60) * 64 // 64px per hour (4 rows * 16px)
   const height = (appointment.trajanje_minuta / 60) * 64
@@ -41,7 +42,9 @@ export function AppointmentCard({ appointment, onClick, column = 0, totalColumns
       <div className="font-medium truncate">{patientName}</div>
       <div className="text-[10px] opacity-80 truncate">
         {String(start.getHours()).padStart(2, "0")}:{String(start.getMinutes()).padStart(2, "0")}
-        {" — "}
+        {"-"}
+        {String(end.getHours()).padStart(2, "0")}:{String(end.getMinutes()).padStart(2, "0")}
+        {" "}
         {APPOINTMENT_VRSTA[appointment.vrsta] ?? appointment.vrsta}
       </div>
     </div>
