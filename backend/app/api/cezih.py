@@ -847,7 +847,7 @@ async def retrieve_document(
         import base64
         data_plain = f"documentUniqueId=urn:ietf:rfc:3986|urn:oid:{oid}&position=0"
         data_b64 = base64.b64encode(data_plain.encode()).decode()
-        from app.core.config import settings
+        from app.config import settings
         base = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
         url = f"{base}/services-router/gateway/doc-mhd-svc/api/v1/iti-68-service?data={data_b64}"
 
