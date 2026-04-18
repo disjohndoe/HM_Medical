@@ -68,9 +68,10 @@ interface DayColumnProps {
   appointments: Appointment[]
   onSlotClick: (date: Date) => void
   onAppointmentClick: (appointment: Appointment) => void
+  showDoctor?: boolean
 }
 
-export function DayColumn({ date, appointments, onSlotClick, onAppointmentClick }: DayColumnProps) {
+export function DayColumn({ date, appointments, onSlotClick, onAppointmentClick, showDoctor }: DayColumnProps) {
   const hours: number[] = []
   for (let h = WORKING_HOURS_START; h < WORKING_HOURS_END; h++) {
     hours.push(h)
@@ -134,6 +135,7 @@ export function DayColumn({ date, appointments, onSlotClick, onAppointmentClick 
                 onClick={onAppointmentClick}
                 column={layout?.column ?? 0}
                 totalColumns={layout?.totalColumns ?? 1}
+                showDoctor={showDoctor}
               />
             )
           })}

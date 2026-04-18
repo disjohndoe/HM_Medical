@@ -9,9 +9,10 @@ interface AppointmentCardProps {
   onClick: (appointment: Appointment) => void
   column?: number
   totalColumns?: number
+  showDoctor?: boolean
 }
 
-export function AppointmentCard({ appointment, onClick, column = 0, totalColumns = 1 }: AppointmentCardProps) {
+export function AppointmentCard({ appointment, onClick, column = 0, totalColumns = 1, showDoctor }: AppointmentCardProps) {
   const start = new Date(appointment.datum_vrijeme)
   const end = new Date(start.getTime() + appointment.trajanje_minuta * 60000)
   const startMin = start.getHours() * 60 + start.getMinutes()
@@ -47,6 +48,11 @@ export function AppointmentCard({ appointment, onClick, column = 0, totalColumns
         {" "}
         {APPOINTMENT_VRSTA[appointment.vrsta] ?? appointment.vrsta}
       </div>
+      {showDoctor && appointment.doktor_prezime && (
+        <div className="text-[10px] opacity-70 truncate">
+          dr. {appointment.doktor_prezime}
+        </div>
+      )}
     </div>
   )
 }

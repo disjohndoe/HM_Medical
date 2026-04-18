@@ -89,6 +89,7 @@ export function CalendarView({
             appointments={groupedAppointments[formatDateKey(d)] ?? []}
             onSlotClick={onSlotClick}
             onAppointmentClick={onAppointmentClick}
+            showDoctor={!doktorId}
           />
         ))}
       </div>
