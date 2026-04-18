@@ -626,6 +626,7 @@ async def send_enalaz(
     if user_id:
         await _write_audit(db, tenant_id, user_id, action="e_nalaz_send", resource_id=patient_id, details=details)
 
+    await db.commit()
     return result
 
 
@@ -1765,6 +1766,8 @@ async def dispatch_replace_document(
         db, tenant_id, user_id, action="e_nalaz_replace",
         details={"reference_id": original_reference_id, "new_reference_id": new_ref},
     )
+    if db:
+        await db.commit()
     return result
 
 
@@ -1852,6 +1855,8 @@ async def dispatch_cancel_document(
         db, tenant_id, user_id, action="e_nalaz_cancel",
         details={"reference_id": reference_id, "new_reference_id": result.get("new_reference_id")},
     )
+    if db:
+        await db.commit()
     return result
 
 
