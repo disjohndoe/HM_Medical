@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     CEZIH_SIGNING_DEBUG: bool = False  # DEBUG: dump full JWS header + payload + sig for byte-diff between smartcard and extsigner
     RATE_LIMIT_ENABLED: bool = True
     CEZIH_ORG_CODE: str = ""  # HZZO sifra zdravstvene organizacije
-    CEZIH_OID: str = ""  # OID informacijskog sustava (urn:oid:...)
+    CEZIH_OID: str = ""  # FHIR system OID (auto-generated via TC6 generateOIDBatch, NOT from HZZO)
 
     @property
     def is_production(self) -> bool:
