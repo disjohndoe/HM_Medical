@@ -126,9 +126,9 @@ Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
 
 ### Key CEZIH Technical Findings (from live testing)
 
-**Signing (two-tier):**
-- Encounters only check signature presence — ES384 smart card OK
-- PMIR cryptographically verifies — must use extsigner (Certilia RS256), mTLS only (no Bearer token)
+**Signing:**
+- Both smart card AND Certilia work for ALL actions including PMIR (verified 2026-04-18)
+- Earlier ERR_DS_1002 on PMIR was caused by bundle structure issues, not signing method
 
 **ITI-65 document bundles:**
 - Standard profiles only — `HRExternalMinimalProvideDocumentBundle` (v1.0.1) rejected with 415 ERR_EHE_1099

@@ -24,7 +24,7 @@
 - [ ] Connect VPN before entering HZZO building
 - [ ] Launch Local Agent, wait for green status in app
 - [ ] Open browser to **app.hmdigital.hr** (NOT localhost)
-- [ ] Phone ready (Certilia app) — TC5 and TC11 need phone approval (15-25s delay)
+- [ ] Phone ready (Certilia app) — TC5 needs phone approval if using Certilia signing (15-25s delay)
 - [ ] This guide open on second screen/tablet
 
 ---
@@ -51,9 +51,9 @@ OID prefix:   2.16.840.1.113883.2.7.50.2.1.{suffix}
 | TC2 | Auth s certifikatom u oblaku | Implicit — extsigner uses Certilia cloud cert |
 | TC3 | Auth informacijskog sustava | Implicit — OAuth2 token cached on any CEZIH call |
 | TC4 | Potpis pametnom karticom | Implicit — smart card used for VPN auth |
-| TC5 | Potpis certifikatom u oblaku | Explicit via TC11 or TC18 (extsigner phone approval) |
+| TC5 | Potpis certifikatom u oblaku | Explicit via any TC using extsigner (phone approval) |
 
-**Tell examiner:** "TC1-5 are demonstrated implicitly through all subsequent test cases. TC5 signing will be visible when we execute TC11 (Certilia phone approval)."
+**Tell examiner:** "TC1-5 are demonstrated implicitly through all subsequent test cases. TC5 cloud signing is visible when Certilia mobile method is used (phone approval)."
 
 ### Group B — Registries (no side-effects, good warm-up)
 
@@ -68,14 +68,14 @@ OID prefix:   2.16.840.1.113883.2.7.50.2.1.{suffix}
 
 (*) **Explain to examiner:** "API call succeeds (200 OK). Empty results are a CEZIH test environment data limitation — production will return real data."
 
-### Group C — Foreigner Registration (requires Certilia phone approval)
+### Group C — Foreigner Registration
 
 | TC | Action | Where in UI | Expected Result |
 |----|--------|-------------|-----------------|
 | TC11 | Registracija stranca | CEZIH → Stranci | Patient/{id} created (201); unique patient identifier assigned |
 
 **Input:** ime=TEST, prezime=STRANAC, passport=AY9876543, country=DEU, datum_rodjenja=1990-01-15
-**Note:** Certilia phone approval required (15-25 second wait). Have phone ready.
+**Note:** Works with BOTH smart card and Certilia. If using Certilia: phone approval required (15-25s delay).
 
 ### Group D — Visit Lifecycle (sequential, each depends on previous)
 
@@ -139,8 +139,8 @@ CEZIH ValueSet/$expand returns empty for ICD-10 in test env. We implemented manu
 |---------|---------|-----|
 | Agent not connecting | Red status dots | Confirm VPN active on pvsek.cezih.hr. Restart agent from system tray. |
 | 415 on first POST | ERR_EHE_1099, path=/auth/realms/CEZIH | Session cookie stale. Click TC10 (GET) first to establish session. Then retry. |
-| ERR_DS_1002 on TC11 | code: "business-rule" | Wrong signing method. Verify `CEZIH_SIGNING_METHOD=extsigner` on server. |
-| TC11 phone approval missing | No Certilia popup | Open Certilia app manually, check pending. Allow 15-25s. Check server logs. |
+| ERR_DS_1002 on TC11 | code: "business-rule" | Bundle structure issue, NOT signing method. Both card and Certilia work for PMIR (verified 2026-04-18). Check server deploy is current. |
+| TC11 phone approval missing | No Certilia popup | Only relevant when using Certilia signing. Smart card works too — no phone needed. |
 | TC20 ERR_DOM_10057 | Cancel rejected | Already handled in code (uses ITI-65 replace with OID, not entered-in-error). If it appears, check server deploy is current. |
 | TC22 returns 0 bytes | Empty PDF | Only retrieve documents created DURING this session (TC18/TC19). |
 | TC19 415 after TC18 | ERR_EHE_1099 | External profile bug. Already fixed (use_external_profile=False). Verify deploy. |
