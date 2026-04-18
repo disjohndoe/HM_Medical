@@ -121,7 +121,7 @@ class AgentConnectionManager:
                 return conn
             # Check readers array (multi-reader support)
             for reader in conn.readers:
-                if reader.get("card_inserted") and reader.get("card_holder", "").strip().upper() == target:
+                if reader.get("card_inserted") and (reader.get("card_holder") or "").strip().upper() == target:
                     return conn
         return None
 
