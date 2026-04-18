@@ -409,12 +409,12 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                 <TableHeader>
                   <TableRow>
                     <SortableTableHead columnKey="status" label="Status" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="w-[100px]" />
-                    <SortableTableHead columnKey="verifikacija" label="Verifikacija" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="w-[100px]" />
+                    <SortableTableHead columnKey="verifikacija" label="Verifikacija" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="hidden md:table-cell w-[100px]" />
                     <SortableTableHead columnKey="icd_code" label="MKB šifra" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
-                    <SortableTableHead columnKey="naziv" label="Naziv" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
+                    <SortableTableHead columnKey="naziv" label="Naziv" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="hidden sm:table-cell" />
                     <SortableTableHead columnKey="onset_date" label="Početak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
-                    <SortableTableHead columnKey="updated_at" label="Izmjena" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
-                    <SortableTableHead columnKey="abatement_date" label="Završetak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
+                    <SortableTableHead columnKey="updated_at" label="Izmjena" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="hidden lg:table-cell" />
+                    <SortableTableHead columnKey="abatement_date" label="Završetak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="hidden lg:table-cell" />
                     <TableHead className="w-[180px] text-right">Akcije</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -428,13 +428,13 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                             {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status}
                           </Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden md:table-cell">
                           <span className="text-xs text-muted-foreground">
                             {VERIFICATION_STATUS_LABELS[c.verification_status || ""] || c.verification_status || "—"}
                           </span>
                         </TableCell>
                         <TableCell className="font-mono text-sm font-medium">{c.icd_code}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                           {c.icd_display}
                           {c.note && (
                             <span className="ml-1 text-xs text-blue-600" title={c.note}>
@@ -443,10 +443,10 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                           )}
                         </TableCell>
                         <TableCell className="text-sm">{formatDateTimeHR(c.onset_date)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
                           {c.updated_at ? formatDateTimeHR(c.updated_at) : "—"}
                         </TableCell>
-                        <TableCell className="text-sm">{c.abatement_date ? formatDateTimeHR(c.abatement_date) : "—"}</TableCell>
+                        <TableCell className="hidden lg:table-cell text-sm">{c.abatement_date ? formatDateTimeHR(c.abatement_date) : "—"}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
                             <Button
