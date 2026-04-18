@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.patient import Patient
 from app.models.procedure import PerformedProcedure, Procedure
 from app.models.user import User
 from app.schemas.procedure import PerformedProcedureCreate, ProcedureCreate, ProcedureUpdate
@@ -194,6 +195,10 @@ async def create_performed(
     procedure = await db.get(Procedure, data.procedure_id)
     if not procedure or procedure.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Postupak nije pronađen")
+
+    patient = await db.get(Patient, data.patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
 
     cijena = data.cijena_cents if data.cijena_cents is not None else procedure.cijena_cents
 

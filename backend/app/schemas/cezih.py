@@ -97,6 +97,8 @@ class ENalazResponse(BaseModel):
 class EReceptLijekEntry(BaseModel):
     atk: str
     naziv: str
+    oblik: str = ""
+    jacina: str = ""
     kolicina: int = 1
     doziranje: str = ""
     napomena: str = ""
@@ -308,7 +310,7 @@ class CreateVisitRequest(BaseModel):
     patient_id: UUID
     nacin_prijema: str = "6"      # 1-10, default: 6=Ostalo
     vrsta_posjete: str = "1"      # 1-3, default: 1=Pacijent prisutan
-    tip_posjete: str = "1"        # 1-3, default: 1=Posjeta LOM
+    tip_posjete: str = "2"        # 1-3, default: 2=Posjeta SKZZ
     reason: str | None = None
 
 
@@ -332,6 +334,9 @@ class VisitResponse(BaseModel):
     success: bool
     visit_id: str
     status: str  # planned, in-progress, finished, cancelled, entered-in-error
+    nacin_prijema: str | None = None
+    vrsta_posjete: str | None = None
+    tip_posjete: str | None = None
 
 
 class VisitItem(BaseModel):
@@ -341,6 +346,8 @@ class VisitItem(BaseModel):
     status: str
     visit_type: str
     visit_type_display: str | None = None
+    vrsta_posjete: str | None = None
+    vrsta_posjete_display: str | None = None
     tip_posjete: str | None = None
     tip_posjete_display: str | None = None
     reason: str | None = None

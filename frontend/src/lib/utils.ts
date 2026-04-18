@@ -14,6 +14,14 @@ export function formatDateHR(date: string | null | undefined): string {
   })
 }
 
+/**
+ * Safely extract date portion from ISO string (handles both "YYYY-MM-DD" and "YYYY-MM-DDTHH:MM:SS")
+ */
+export function toDateOnly(dateStr: string | undefined | null): string | null {
+  if (!dateStr) return null
+  return dateStr.split("T")[0]
+}
+
 export function formatDateTimeHR(date: string | null | undefined): string {
   if (!date) return "—"
   return new Date(date).toLocaleString("hr-HR", {

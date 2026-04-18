@@ -24,4 +24,5 @@ class DocumentUploadResponse(BaseModel):
     kategorija: str
     file_size: int
     mime_type: str
+    uploaded_by: UUID
     created_at: datetime

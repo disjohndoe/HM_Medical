@@ -1,4 +1,5 @@
 import { useMutation } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 
@@ -7,11 +8,8 @@ async function downloadExport(patientId: string, asZip: boolean) {
     ? `/patient-rights/${patientId}/export?zip=1`
     : `/patient-rights/${patientId}/export`
 
+  // api.fetchRaw throws on error, no need to check res.ok
   const res = await api.fetchRaw(endpoint)
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || `Greška prilikom izvoza (${res.status})`)
-  }
 
   // Extract filename from Content-Disposition header
   const disposition = res.headers.get("Content-Disposition") || ""
@@ -38,5 +36,6 @@ export function useExportPatientData() {
   return useMutation({
     mutationFn: ({ patientId, asZip = false }: { patientId: string; asZip?: boolean }) =>
       downloadExport(patientId, asZip),
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

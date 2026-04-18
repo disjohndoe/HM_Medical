@@ -35,6 +35,7 @@ class CezihVisit(BaseTenantModel):
     )
     admission_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
     tip_posjete: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    vrsta_posjete: Mapped[str | None] = mapped_column(String(10), nullable=True)
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     period_start: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,

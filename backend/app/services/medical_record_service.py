@@ -70,6 +70,8 @@ def _record_row_to_dict(row) -> dict:
         "cezih_sent_at": rec.cezih_sent_at,
         "cezih_reference_id": rec.cezih_reference_id,
         "cezih_storno": rec.cezih_storno,
+        "cezih_encounter_id": rec.cezih_encounter_id,
+        "cezih_case_id": rec.cezih_case_id,
         "sensitivity": rec.sensitivity,
         "preporucena_terapija": rec.preporucena_terapija,
         "doktor_ime": row.doktor_ime,
@@ -153,6 +155,10 @@ async def create_record(
     data: MedicalRecordCreate,
     doktor_id: uuid.UUID,
 ) -> dict:
+    patient = await db.get(Patient, data.patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
     await _validate_tip_for_tenant(db, tenant_id, data.tip)
 
     therapy_dump = [t.model_dump() for t in data.preporucena_terapija] if data.preporucena_terapija else None

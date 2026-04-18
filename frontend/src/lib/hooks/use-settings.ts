@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type { AgentSecretResponse, PairingTokenResponse, PlanUsage, Tenant } from "@/lib/types"
@@ -18,6 +19,7 @@ export function useUpdateClinicSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings", "clinic"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -47,12 +49,14 @@ export function useGenerateAgentSecret() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["settings", "cezih-status"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
 export function useCreatePairingToken() {
   return useMutation({
     mutationFn: () => api.post<PairingTokenResponse>("/settings/pairing-token", {}),
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 

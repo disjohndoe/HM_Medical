@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import CEZIH_ELIGIBLE_TYPES
@@ -1025,8 +1026,8 @@ async def _persist_local_case_by_patient_id(
             note=note_text,
         ))
         await db.flush()
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to persist local CezihCase mirror (non-fatal)")
+    except (IntegrityError, OperationalError) as exc:
+        logger.warning("Failed to persist local CezihCase mirror: %s", exc)
 
 
 async def _persist_local_visit_by_patient_id(
@@ -1038,6 +1039,7 @@ async def _persist_local_visit_by_patient_id(
     status_str: str,
     admission_type: str | None,
     tip_posjete: str | None = None,
+    vrsta_posjete: str | None = None,
     reason: str | None = None,
 ) -> None:
     if not db or not tenant_id:
@@ -1052,12 +1054,13 @@ async def _persist_local_visit_by_patient_id(
             status=status_str or "in-progress",
             admission_type=admission_type,
             tip_posjete=tip_posjete,
+            vrsta_posjete=vrsta_posjete,
             reason=reason,
             period_start=datetime.now(UTC),
         ))
         await db.flush()
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to persist local CezihVisit mirror (non-fatal)")
+    except (IntegrityError, OperationalError) as exc:
+        logger.warning("Failed to persist local CezihVisit mirror: %s", exc)
 
 
 async def _fetch_fresh_local_cases_by_patient(
@@ -1093,8 +1096,8 @@ async def _fetch_fresh_local_cases_by_patient(
             }
             for row in rows
         ]
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to read local CezihCase mirror (non-fatal)")
+    except SQLAlchemyError as exc:
+        logger.warning("Failed to read local CezihCase mirror: %s", exc)
         return []
 
 
@@ -1103,6 +1106,11 @@ _TIP_POSJETE_LABELS = {
     "1": "Posjeta LOM",
     "2": "Posjeta SKZZ",
     "3": "Hospitalizacija",
+}
+_VRSTA_POSJETE_LABELS = {
+    "1": "Pacijent prisutan",
+    "2": "Pacijent udaljeno prisutan",
+    "3": "Pacijent nije prisutan",
 }
 
 
@@ -1139,12 +1147,15 @@ async def _fetch_fresh_local_visits_by_patient(
                 created_at = created_at.replace(tzinfo=UTC)
             fresh = created_at is not None and created_at >= cutoff
             tip = row.tip_posjete or ""
+            vrsta = row.vrsta_posjete or ""
             out.append({
                 "visit_id": row.cezih_visit_id or "",
                 "patient_mbo": row.patient_mbo,
                 "status": row.status,
                 "visit_type": row.admission_type or "",
                 "visit_type_display": None,
+                "vrsta_posjete": vrsta,
+                "vrsta_posjete_display": _VRSTA_POSJETE_LABELS.get(vrsta) if vrsta else None,
                 "tip_posjete": tip,
                 "tip_posjete_display": _TIP_POSJETE_LABELS.get(tip) if tip else None,
                 "reason": row.reason,
@@ -1158,8 +1169,8 @@ async def _fetch_fresh_local_visits_by_patient(
                 "_fresh": fresh,
             })
         return out
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to read local CezihVisit mirror (non-fatal)")
+    except SQLAlchemyError as exc:
+        logger.warning("Failed to read local CezihVisit mirror: %s", exc)
         return []
 
 
@@ -1191,7 +1202,7 @@ def _merge_with_local(
 
 
 # Visit fields that only exist locally (CEZIH never returns them)
-_VISIT_LOCAL_ONLY_FIELDS = ("tip_posjete", "tip_posjete_display", "updated_at")
+_VISIT_LOCAL_ONLY_FIELDS = ("tip_posjete", "tip_posjete_display", "vrsta_posjete", "vrsta_posjete_display", "updated_at")
 # Visit fields where CEZIH is authoritative, but we fall back to the mirror
 # when CEZIH's QEDm response leaves the field empty. QEDm read-back regularly
 # strips Encounter.reasonCode, so the user-entered reason is more reliable.
@@ -1298,8 +1309,8 @@ async def _update_local_case(
         if note is not None:
             row.note = note
         await db.flush()
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to update local CezihCase mirror (non-fatal)")
+    except (IntegrityError, OperationalError) as exc:
+        logger.warning("Failed to update local CezihCase mirror: %s", exc)
 
 
 async def _update_local_visit(
@@ -1310,6 +1321,7 @@ async def _update_local_visit(
     patient_mbo: str | None = None,
     status_str: str | None = None,
     tip_posjete: str | None = None,
+    vrsta_posjete: str | None = None,
     admission_type: str | None = None,
     reason: str | None = None,
     set_period_end: bool = False,
@@ -1347,6 +1359,7 @@ async def _update_local_visit(
                 status=status_str or "in-progress",
                 admission_type=admission_type,
                 tip_posjete=tip_posjete,
+                vrsta_posjete=vrsta_posjete,
                 reason=reason,
                 period_start=datetime.now(UTC),
             )
@@ -1359,6 +1372,8 @@ async def _update_local_visit(
             row.status = status_str
         if tip_posjete is not None:
             row.tip_posjete = tip_posjete
+        if vrsta_posjete is not None:
+            row.vrsta_posjete = vrsta_posjete
         if admission_type is not None:
             row.admission_type = admission_type
         if reason is not None:
@@ -1368,8 +1383,8 @@ async def _update_local_visit(
         if clear_period_end:
             row.period_end = None
         await db.flush()
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to update local CezihVisit mirror (non-fatal)")
+    except (IntegrityError, OperationalError) as exc:
+        logger.warning("Failed to update local CezihVisit mirror: %s", exc)
 
 
 # ============================================================
@@ -1921,6 +1936,7 @@ async def dispatch_create_visit(
         status_str=resp.get("status") or "in-progress",
         admission_type=nacin_prijema,
         tip_posjete=tip_posjete,
+        vrsta_posjete=vrsta_posjete,
         reason=reason,
     )
     return resp
@@ -2029,6 +2045,7 @@ async def dispatch_update_visit(
         db, tenant_id, visit_id,
         patient_mbo=identifier_value,
         tip_posjete=tip_posjete,
+        vrsta_posjete=vrsta_posjete,
         admission_type=nacin_prijema,
         reason=reason,
     )

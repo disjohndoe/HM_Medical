@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type { PaginatedResponse, Patient, PatientCreate, PatientUpdate } from "@/lib/types"
@@ -32,6 +33,7 @@ export function useCreatePatient() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -44,6 +46,7 @@ export function useUpdatePatient() {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
       queryClient.invalidateQueries({ queryKey: ["patients", variables.id] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -54,5 +57,6 @@ export function useDeletePatient() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

@@ -20,6 +20,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { SPOL_OPTIONS } from "@/lib/constants"
+import { toDateOnly } from "@/lib/utils"
 import type { Patient } from "@/lib/types"
 
 const patientSchema = z.object({
@@ -105,7 +106,7 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
       ? {
           ime: patient.ime,
           prezime: patient.prezime,
-          datum_rodjenja: patient.datum_rodjenja?.split("T")[0] ?? null,
+          datum_rodjenja: toDateOnly(patient.datum_rodjenja),
           spol: patient.spol ?? null,
           oib: patient.oib ?? null,
           mbo: patient.mbo ?? null,

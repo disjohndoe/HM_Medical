@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
+from uuid import UUID
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -36,9 +37,13 @@ async def get_current_user(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Korisnik nije pronadjen")
 
-    # Verify tenant match
+    # Verify tenant match using proper UUID comparison
     token_tenant_id = payload.get("tenant_id")
-    if str(user.tenant_id) != token_tenant_id:
+    try:
+        token_tenant_uuid = UUID(token_tenant_id) if token_tenant_id else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Neispravan token")
+    if user.tenant_id != token_tenant_uuid:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Neispravan token")
 
     # GAP 1 fix: reject if user has no active refresh tokens (kicked/revoked session)

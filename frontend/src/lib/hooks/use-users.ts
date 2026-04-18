@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type { CardStatusResponse, PaginatedResponse, User, UserCreate } from "@/lib/types"
@@ -18,6 +19,7 @@ export function useCreateUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -29,6 +31,7 @@ export function useUpdateUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -39,6 +42,7 @@ export function useDeactivateUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -55,6 +59,7 @@ export function useBindCard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -65,6 +70,7 @@ export function useUnbindCard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -76,6 +82,7 @@ export function useAutoBindCard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -87,6 +94,7 @@ export function useSelfBindCard() {
       queryClient.invalidateQueries({ queryKey: ["users"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "status"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -98,6 +106,7 @@ export function useSelfUnbindCard() {
       queryClient.invalidateQueries({ queryKey: ["users"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "status"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 

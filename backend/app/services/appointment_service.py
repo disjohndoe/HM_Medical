@@ -134,7 +134,7 @@ async def check_conflict(
         Appointment.doktor_id == doktor_id,
         Appointment.status != "otkazan",
         Appointment.datum_vrijeme < new_end,
-    )
+    ).with_for_update()
     if exclude_id:
         q = q.where(Appointment.id != exclude_id)
 

@@ -69,6 +69,21 @@ function handleAuthFailure(): never {
   throw new Error("Sesija je istekla");
 }
 
+/**
+ * Check if an error message is related to CEZIH signing configuration.
+ * Returns the error message if it's a signing error, null otherwise.
+ */
+export function isSigningError(message: string): boolean {
+  const signingKeywords = [
+    "potpis nije konfiguriran",
+    "korisnik nema konfiguriran način potpisa",
+    "nema prijavljenog korisnika za potpisivanje",
+    "baza podataka nije dostupna",
+  ];
+  const lowerMessage = message.toLowerCase();
+  return signingKeywords.some((keyword) => lowerMessage.includes(keyword));
+}
+
 async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, headers = {} } = options;
 
@@ -182,6 +197,53 @@ async function apiClientRaw(
   return res;
 }
 
+async function apiClientFormData<T>(endpoint: string, formData: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+  } catch {
+    throw new Error("Greška u komunikaciji s poslužiteljem. Provjerite mrežnu vezu i pokušajte ponovo.");
+  }
+
+  if (res.status === 401) {
+    try {
+      await refreshTokens();
+
+      const retryRes = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+
+      if (!retryRes.ok) {
+        const errorBody = await retryRes.json().catch(() => null);
+        const message = errorBody?.detail ? extractErrorMessage(errorBody.detail) : `API error: ${retryRes.status} ${retryRes.statusText}`;
+        throw new Error(message);
+      }
+      if (retryRes.status === 204) return undefined as T;
+      return retryRes.json();
+    } catch (err) {
+      if (err instanceof Error && err.message === "Refresh failed") {
+        handleAuthFailure();
+      }
+      throw err;
+    }
+  }
+
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => null);
+    const message = errorBody?.detail ? extractErrorMessage(errorBody.detail) : `API error: ${res.status} ${res.statusText}`;
+    throw new Error(message);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
 export const api = {
   get: <T>(endpoint: string) => apiClient<T>(endpoint),
   post: <T>(endpoint: string, body: unknown) =>
@@ -195,4 +257,6 @@ export const api = {
   fetchRaw: (endpoint: string) => apiClientRaw(endpoint),
   postRaw: (endpoint: string, body: unknown) =>
     apiClientRaw(endpoint, { method: "POST", body }),
+  postFormData: <T>(endpoint: string, formData: FormData) =>
+    apiClientFormData<T>(endpoint, formData),
 };

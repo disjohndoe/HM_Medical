@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import { RECORD_TIP, RECORD_TIP_COLORS, CEZIH_MANDATORY_TYPES, CEZIH_ELIGIBLE_TYPES } from "@/lib/constants"
@@ -72,6 +73,7 @@ export function useCreateRecordType() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["record-types"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -83,6 +85,7 @@ export function useUpdateRecordType() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["record-types"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -94,5 +97,6 @@ export function useDeleteRecordType() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["record-types"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

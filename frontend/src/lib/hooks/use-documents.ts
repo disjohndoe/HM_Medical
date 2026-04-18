@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type { Document, DocumentUploadResponse } from "@/lib/types"
@@ -24,32 +25,17 @@ export function useUploadDocument() {
       file: File
       kategorija: string
     }) => {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
-
       const formData = new FormData()
       formData.append("file", file)
       formData.append("patient_id", patientId)
       formData.append("kategorija", kategorija)
 
-      const res = await fetch(
-        `${API_BASE}/documents/upload`,
-        {
-          method: "POST",
-          credentials: "include",
-          body: formData,
-        }
-      )
-
-      if (!res.ok) {
-        const errorBody = await res.json().catch(() => null)
-        throw new Error(errorBody?.detail || `Greška pri uploadu: ${res.status}`)
-      }
-
-      return res.json() as Promise<DocumentUploadResponse>
+      return api.postFormData<DocumentUploadResponse>("/documents/upload", formData)
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["documents", variables.patientId] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -61,5 +47,6 @@ export function useDeleteDocument() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["documents", variables.patientId] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

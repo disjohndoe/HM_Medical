@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
 from app.models.document import Document
+from app.models.patient import Patient
 from app.models.user import User
 from app.schemas.document import DocumentRead, DocumentUploadResponse
 
@@ -41,6 +42,10 @@ async def upload_document(
 ):
     if kategorija not in ("nalaz", "snimka", "dokument", "ostalo"):
         raise HTTPException(status_code=400, detail="Nevažeća kategorija dokumenta")
+
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Pacijent nije pronađen")
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="Naziv datoteke je obavezan")
@@ -96,6 +101,7 @@ async def upload_document(
         kategorija=doc.kategorija,
         file_size=doc.file_size,
         mime_type=doc.mime_type,
+        uploaded_by=doc.uploaded_by,
         created_at=doc.created_at,
     )
 
@@ -151,10 +157,11 @@ async def delete_document(
     if not doc or doc.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=404, detail="Dokument nije pronađen")
 
-    # Remove file from disk
     file_path = Path(doc.file_path)
-    if file_path.exists():
-        file_path.unlink()
 
     await db.delete(doc)
     await db.flush()
+
+    # Remove file from disk AFTER DB delete succeeds
+    if file_path.exists():
+        file_path.unlink(missing_ok=True)

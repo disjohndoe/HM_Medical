@@ -397,25 +397,22 @@ async def _build_document_bundle(
     patient_display = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip()
 
     # Generate document OID via CEZIH identifier registry
-    doc_oid = ""
-    try:
-        oid_result = await fhir_client.post(
-            "identifier-registry-services/api/v1/oid/generateOIDBatch",
-            json_body={
-                "oidType": {
-                    "system": "http://ent.hr/fhir/CodeSystem/ehe-oid-types",
-                    "code": "1",
-                },
-                "quantity": 1,
+    oid_result = await fhir_client.post(
+        "identifier-registry-services/api/v1/oid/generateOIDBatch",
+        json_body={
+            "oidType": {
+                "system": "http://ent.hr/fhir/CodeSystem/ehe-oid-types",
+                "code": "1",
             },
-        )
-        logger.info("OID generation response: %s", oid_result)
-        oids = oid_result.get("oid") or oid_result.get("oids") or []
-        if oids:
-            doc_oid = oids[0]
-            logger.info("Generated document OID: %s", doc_oid)
-    except Exception as e:
-        logger.warning("OID generation failed: %s", e)
+            "quantity": 1,
+        },
+    )
+    logger.info("OID generation response: %s", oid_result)
+    oids = oid_result.get("oid") or oid_result.get("oids") or []
+    if not oids:
+        raise CezihError("OID generation returned empty result", detail=str(oid_result))
+    doc_oid = oids[0]
+    logger.info("Generated document OID: %s", doc_oid)
 
     _doc_ref_profile = (
         "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternaltMinimalDocumentReference"
@@ -863,6 +860,11 @@ async def query_code_system(
     For large code systems (e.g. ICD-10) where concepts are not embedded
     inline, uses ValueSet/$expand with a filter to search.  Falls back to
     inline concept extraction for small code systems.
+
+    Returns concepts with _tier field indicating which method succeeded:
+    - 'expand': ValueSet/$expand (FHIR standard)
+    - 'lookup': CodeSystem/$lookup (exact match)
+    - 'inline': inline concept extraction (fallback)
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -877,7 +879,7 @@ async def query_code_system(
         response = await fhir_client.get("terminology-services/api/v1/CodeSystem", params=params)
     if response.get("resourceType") == "Bundle" and response.get("entry"):
         cs_url = response["entry"][0].get("resource", {}).get("url")
-    logger.info(f"CodeSystem lookup '{system_name}' -> url={cs_url}")
+    logger.info("CodeSystem lookup '%s' -> url=%s", system_name, cs_url)
 
     # Step 2: Try ValueSet/$expand with filter (FHIR-standard for searching)
     if query and cs_url:
@@ -893,8 +895,10 @@ async def query_code_system(
                         "code": contains.get("code", ""),
                         "display": contains.get("display", ""),
                         "system": contains.get("system", cs_url),
+                        "_tier": "expand",
                     })
                 if concepts:
+                    logger.info("CodeSystem '%s': query='%s' -> tier=expand (results=%d)", system_name, query, len(concepts))
                     return concepts
             except Exception:
                 continue
@@ -914,7 +918,8 @@ async def query_code_system(
                     if param.get("name") == "code":
                         code_val = param.get("valueString", query)
                 if display_val:
-                    return [{"code": code_val or query, "display": display_val, "system": cs_url}]
+                    logger.info("CodeSystem '%s': query='%s' -> tier=lookup (exact match)", system_name, query)
+                    return [{"code": code_val or query, "display": display_val, "system": cs_url, "_tier": "lookup"}]
         except Exception:
             pass
 
@@ -939,7 +944,9 @@ async def query_code_system(
                     "code": code,
                     "display": display,
                     "system": cs.get("url", system_name),
+                    "_tier": "inline",
                 })
+    logger.info("CodeSystem '%s': query='%s' -> tier=inline (results=%d)", system_name, query, len(results))
     return results
 
 
@@ -956,21 +963,42 @@ async def expand_value_set(
     params: dict = {"url": url, "_count": "100"}
     if filter_text:
         params["filter"] = filter_text
-    # Try $expand first, fall back to plain search
+
+    used_fallback = False
     try:
         response = await fhir_client.get("terminology-services/api/v1/ValueSet/$expand", params=params)
-    except Exception:
+    except Exception as e:
+        logger.warning("ValueSet $expand failed for %s: %s, falling back to plain search", url, e)
+        used_fallback = True
         response = await fhir_client.get("terminology-services/api/v1/ValueSet", params=params)
 
     concepts = []
+    # Try expansion first (standard path)
     expansion = response.get("expansion", {})
-    for contains in expansion.get("contains", []):
-        concepts.append({
-            "code": contains.get("code", ""),
-            "display": contains.get("display", ""),
-            "system": contains.get("system", ""),
-        })
-    return {"url": url, "concepts": concepts, "total": len(concepts)}
+    if expansion:
+        for contains in expansion.get("contains", []):
+            concepts.append({
+                "code": contains.get("code", ""),
+                "display": contains.get("display", ""),
+                "system": contains.get("system", ""),
+            })
+    else:
+        # Fallback: extract from Bundle.entry
+        for entry in response.get("entry", []):
+            resource = entry.get("resource", {})
+            if resource.get("resourceType") == "Concept":
+                concepts.append({
+                    "code": resource.get("code", ""),
+                    "display": resource.get("display", ""),
+                    "system": resource.get("system", ""),
+                })
+
+    return {
+        "url": url,
+        "concepts": concepts,
+        "total": len(concepts),
+        "_method": "$expand" if not used_fallback else "search (fallback)",
+    }
 
 
 # ============================================================
@@ -1080,18 +1108,56 @@ async def register_foreigner(
     # Frontend may send alpha-2 (DE) — convert to alpha-3 (DEU).
     raw_country = (patient_data.get("drzavljanstvo") or "HRV").upper().strip()
     _ALPHA2_TO_ALPHA3 = {
-        "AF": "AFG", "AL": "ALB", "DZ": "DZA", "AD": "AND", "AO": "AGO",
-        "AR": "ARG", "AM": "ARM", "AU": "AUS", "AT": "AUT", "AZ": "AZE",
-        "BA": "BIH", "BE": "BEL", "BG": "BGR", "BR": "BRA", "CA": "CAN",
-        "CH": "CHE", "CN": "CHN", "CY": "CYP", "CZ": "CZE", "DE": "DEU",
-        "DK": "DNK", "EE": "EST", "ES": "ESP", "FI": "FIN", "FR": "FRA",
-        "GB": "GBR", "GE": "GEO", "GR": "GRC", "HR": "HRV", "HU": "HUN",
-        "IE": "IRL", "IL": "ISR", "IN": "IND", "IS": "ISL", "IT": "ITA",
-        "JP": "JPN", "KR": "KOR", "LT": "LTU", "LU": "LUX", "LV": "LVA",
-        "ME": "MNE", "MK": "MKD", "MT": "MLT", "MX": "MEX", "NL": "NLD",
-        "NO": "NOR", "NZ": "NZL", "PL": "POL", "PT": "PRT", "RO": "ROU",
-        "RS": "SRB", "RU": "RUS", "SE": "SWE", "SI": "SVN", "SK": "SVK",
-        "TR": "TUR", "UA": "UKR", "US": "USA", "XK": "XKX", "ZA": "ZAF",
+        "AD": "AND", "AE": "ARE", "AF": "AFG", "AG": "ATG", "AI": "AIA",
+        "AL": "ALB", "AM": "ARM", "AO": "AGO", "AQ": "ATA", "AR": "ARG",
+        "AS": "ASM", "AT": "AUT", "AU": "AUS", "AW": "ABW", "AX": "ALA",
+        "AZ": "AZE", "BA": "BIH", "BB": "BRB", "BD": "BGD", "BE": "BEL",
+        "BF": "BFA", "BG": "BGR", "BH": "BHR", "BI": "BDI", "BJ": "BEN",
+        "BL": "BLM", "BM": "BMU", "BN": "BRN", "BO": "BOL", "BQ": "BES",
+        "BR": "BRA", "BS": "BHS", "BT": "BTN", "BV": "BVT", "BW": "BWA",
+        "BY": "BLR", "BZ": "BLZ", "CA": "CAN", "CC": "CCK", "CD": "COD",
+        "CF": "CAF", "CG": "COG", "CH": "CHE", "CI": "CIV", "CK": "COK",
+        "CL": "CHL", "CM": "CMR", "CN": "CHN", "CO": "COL", "CR": "CRI",
+        "CU": "CUB", "CV": "CPV", "CW": "CUW", "CX": "CXR", "CY": "CYP",
+        "CZ": "CZE", "DE": "DEU", "DJ": "DJI", "DK": "DNK", "DM": "DMA",
+        "DO": "DOM", "DZ": "DZA", "EC": "ECU", "EE": "EST", "EG": "EGY",
+        "EH": "ESH", "ER": "ERI", "ES": "ESP", "ET": "ETH", "FI": "FIN",
+        "FJ": "FJI", "FK": "FLK", "FM": "FSM", "FO": "FRO", "FR": "FRA",
+        "GA": "GAB", "GB": "GBR", "GD": "GRD", "GE": "GEO", "GF": "GUF",
+        "GG": "GGY", "GH": "GHA", "GI": "GIB", "GL": "GRL", "GM": "GMB",
+        "GN": "GIN", "GP": "GLP", "GQ": "GNQ", "GR": "GRC", "GS": "SGS",
+        "GT": "GTM", "GU": "GUM", "GW": "GNB", "GY": "GUY", "HK": "HKG",
+        "HM": "HMD", "HN": "HND", "HR": "HRV", "HT": "HTI", "HU": "HUN",
+        "ID": "IDN", "IE": "IRL", "IL": "ISR", "IM": "IMN", "IN": "IND",
+        "IO": "IOT", "IQ": "IRQ", "IR": "IRN", "IS": "ISL", "IT": "ITA",
+        "JE": "JEY", "JM": "JAM", "JO": "JOR", "JP": "JPN", "KE": "KEN",
+        "KG": "KGZ", "KH": "KHM", "KI": "KIR", "KM": "COM", "KN": "KNA",
+        "KP": "PRK", "KR": "KOR", "KW": "KWT", "KY": "CYM", "KZ": "KAZ",
+        "LA": "LAO", "LB": "LBN", "LC": "LCA", "LI": "LIE", "LK": "LKA",
+        "LR": "LBR", "LS": "LSO", "LT": "LTU", "LU": "LUX", "LV": "LVA",
+        "LY": "LBY", "MA": "MAR", "MC": "MCO", "MD": "MDA", "ME": "MNE",
+        "MF": "MAF", "MG": "MDG", "MH": "MHL", "MK": "MKD", "ML": "MLI",
+        "MM": "MMR", "MN": "MNG", "MO": "MAC", "MP": "MNP", "MQ": "MTQ",
+        "MR": "MRT", "MS": "MSR", "MT": "MLT", "MU": "MUS", "MV": "MDV",
+        "MW": "MWI", "MX": "MEX", "MY": "MYS", "MZ": "MOZ", "NA": "NAM",
+        "NC": "NCL", "NE": "NER", "NF": "NFK", "NG": "NGA", "NI": "NIC",
+        "NL": "NLD", "NO": "NOR", "NP": "NPL", "NR": "NRU", "NU": "NIU",
+        "NZ": "NZL", "OM": "OMN", "PA": "PAN", "PE": "PER", "PF": "PYF",
+        "PG": "PNG", "PH": "PHL", "PK": "PAK", "PL": "POL", "PM": "SPM",
+        "PN": "PCN", "PR": "PRI", "PS": "PSE", "PT": "PRT", "PW": "PLW",
+        "PY": "PRY", "QA": "QAT", "RE": "REU", "RO": "ROU", "RS": "SRB",
+        "RU": "RUS", "RW": "RWA", "SA": "SAU", "SB": "SLB", "SC": "SYC",
+        "SD": "SDN", "SE": "SWE", "SG": "SGP", "SH": "SHN", "SI": "SVN",
+        "SJ": "SJM", "SK": "SVK", "SL": "SLE", "SM": "SMR", "SN": "SEN",
+        "SO": "SOM", "SR": "SUR", "SS": "SSD", "ST": "STP", "SV": "SLV",
+        "SX": "SXM", "SY": "SYR", "SZ": "SWZ", "TC": "TCA", "TD": "TCD",
+        "TF": "ATF", "TG": "TGO", "TH": "THA", "TJ": "TJK", "TK": "TKL",
+        "TL": "TLS", "TM": "TKM", "TN": "TUN", "TO": "TON", "TR": "TUR",
+        "TT": "TTO", "TV": "TUV", "TW": "TWN", "TZ": "TZA", "UA": "UKR",
+        "UG": "UGA", "UM": "UMI", "US": "USA", "UY": "URY", "UZ": "UZB",
+        "VA": "VAT", "VC": "VCT", "VE": "VEN", "VG": "VGB", "VI": "VIR",
+        "VN": "VNM", "VU": "VUT", "WF": "WLF", "WS": "WSM", "XK": "XKX",
+        "YE": "YEM", "YT": "MYT", "ZA": "ZAF", "ZM": "ZMB", "ZW": "ZWE",
     }
     country = _ALPHA2_TO_ALPHA3.get(raw_country, raw_country) if len(raw_country) == 2 else raw_country
     patient_resource: dict = {
@@ -1361,11 +1427,11 @@ async def retrieve_cases(
                 if "identifikator-slucaja" in (ident.get("system") or ""):
                     case_id = ident.get("value", "")
             code = cond.get("code", {})
-            coding = code.get("coding", [{}])[0] if code.get("coding") else {}
+            coding = (code.get("coding") or [{}])[0]
             clinical = cond.get("clinicalStatus", {})
-            cl_coding = clinical.get("coding", [{}])[0] if clinical.get("coding") else {}
+            cl_coding = (clinical.get("coding") or [{}])[0]
             ver_status = cond.get("verificationStatus", {})
-            ver_coding = ver_status.get("coding", [{}])[0] if ver_status.get("coding") else {}
+            ver_coding = (ver_status.get("coding") or [{}])[0]
             # Extract note from Condition.note[0].text
             notes = cond.get("note", [])
             note_text = notes[0].get("text", "") if notes else ""
@@ -1460,6 +1526,8 @@ async def create_recurring_case(
         verification_status=verification_status, note_text=note_text,
     )
     local_case_id = condition["identifier"][0]["value"]
+    # 2.2 profile: identifier max=0 (FORBIDDEN) — server assigns global ID
+    condition.pop("identifier", None)
     bundle = await build_message_bundle(
         "2.2", condition,
         sender_org_code=org_code, author_practitioner_id=practitioner_id,
@@ -1488,11 +1556,11 @@ async def update_case(
     *,
     identifier_system: str | None = None,
 ) -> dict:
-    """Update a case via FHIR messaging (TC17, codes 2.2-2.7).
+    """Update case status via FHIR messaging (TC17, codes 2.3-2.5, 2.9).
 
-    Note: 2.8 Delete is not supported — CEZIH rejects every delete
-    transition. Use update_case_data with verification_status=
-    `entered-in-error` to neutralize a mistaken entry.
+    2.2 (recurring) routes through create_recurring_case().
+    2.6 (data update) routes through update_case_data().
+    Delete (2.7) is NOT shipped — use 2.6 with verificationStatus=entered-in-error.
     """
     from app.services.cezih.message_builder import (
         CASE_ACTION_MAP,
@@ -1505,31 +1573,19 @@ async def update_case(
 
     event_code = action_info["code"] or ""
 
-    if action == "create_recurring":
-        # Event 2.2 uses hr-create-health-issue-recurrence-message profile:
-        # identifier FORBIDDEN (server assigns), ICD + verificationStatus + onset REQUIRED.
-        # Needs full build_condition_create routing — not yet implemented.
-        raise CezihError(
-            "Ponavljajući slučaj (2.2) zahtijeva implementaciju nove rute "
-            "(hr-create-health-issue-recurrence-message). Pratit će u sljedećoj iteraciji."
-        )
-    else:
-        # Per-event CEZIH profile rules live in CASE_EVENT_PROFILE (message_builder.py).
-        # Each event code maps to a distinct FHIR StructureDefinition with its own
-        # cardinality + slice rules — see docs/CEZIH/findings/case-lifecycle-profile-matrix.md.
-        rules = CASE_EVENT_PROFILE.get(event_code)
-        if rules is None:
-            raise CezihError(f"No CASE_EVENT_PROFILE rules for event code {event_code}")
-        from app.services.cezih.message_builder import ID_MBO
-        condition = build_condition_status_update(
-            case_identifier=case_identifier, patient_mbo=patient_mbo,
-            identifier_system=identifier_system or ID_MBO,
-            clinical_status=rules["cs_value"] if rules["cs"] else None,
-            abatement_date=(
-                datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-                if rules["abatement"] else None
-            ),
-        )
+    rules = CASE_EVENT_PROFILE.get(event_code)
+    if rules is None:
+        raise CezihError(f"No CASE_EVENT_PROFILE rules for event code {event_code}")
+    from app.services.cezih.message_builder import ID_MBO
+    condition = build_condition_status_update(
+        case_identifier=case_identifier, patient_mbo=patient_mbo,
+        identifier_system=identifier_system or ID_MBO,
+        clinical_status=rules["cs_value"] if rules["cs"] else None,
+        abatement_date=(
+            datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+            if rules["abatement"] else None
+        ),
+    )
 
     fhir_client = CezihFhirClient(client)
     bundle = await build_message_bundle(

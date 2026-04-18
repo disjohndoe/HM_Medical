@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
-import { api } from "@/lib/api-client"
+import { api, isSigningError } from "@/lib/api-client"
 import type {
   CaseActionResponse,
   CaseItem,
@@ -33,11 +34,26 @@ import type {
   VisitsListResponse,
 } from "@/lib/types"
 
+/** Helper: show actionable toast for signing configuration errors. */
+function showSigningErrorToast(message: string) {
+  if (isSigningError(message)) {
+    toast.error(message, {
+      action: {
+        label: "Idi na Postavke",
+        onClick: () => (window.location.href = "/postavke/korisnici"),
+      },
+    })
+  } else {
+    toast.error(message)
+  }
+}
+
 export function useCezihStatus() {
   return useQuery({
     queryKey: ["cezih", "status"],
     queryFn: () => api.get<CezihStatusResponse>("/cezih/status"),
     refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
     staleTime: 3_000,
   })
 }
@@ -122,6 +138,7 @@ export function useInsuranceCheck() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       queryClient.invalidateQueries({ queryKey: ["patients"] })
     },
+    onError: (err) => toast.error(err.message),
   })
 }
 
@@ -135,6 +152,7 @@ export function useInsuranceCheckByMbo() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
+    onError: (err) => toast.error(err.message),
   })
 }
 
@@ -159,6 +177,7 @@ export function useInsuranceCheckByIdentifier() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
+    onError: (err) => toast.error(err.message),
   })
 }
 
@@ -188,6 +207,7 @@ export function useSendENalaz() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
     },
+    onError: (err) => showSigningErrorToast(err.message),
   })
 }
 
@@ -201,6 +221,7 @@ export function useSendERecept() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
     },
+    onError: (err) => toast.error(err.message),
   })
 }
 
@@ -213,6 +234,7 @@ export function useCancelERecept() {
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
+    onError: (err) => toast.error(err.message),
   })
 }
 
@@ -281,6 +303,7 @@ export function useOidGenerate() {
     mutationFn: () =>
       api.post<OidGenerateResponse>("/cezih/oid-generate", { quantity: 1 }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cezih", "activity"] }),
+    onError: (err) => toast.error(err.message),
   })
 }
 
@@ -362,6 +385,7 @@ export function useRegisterForeigner() {
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patients", "search"] })
     },
+    onError: (err) => toast.error(err.message),
   })
 }
 
@@ -396,27 +420,25 @@ export function useCreateVisit() {
   return useMutation({
     mutationFn: (data: CreateVisitRequest) =>
       api.post<VisitResponse>("/cezih/visits", data),
-    onSuccess: (resp, vars) => {
-      // CEZIH QEDm (read) is eventually consistent with the write side — the
-      // new visit is usually not visible in GET /cezih/visits for several
-      // seconds. Insert optimistically so the Posjete table sees it right
-      // away. Do NOT invalidate ["cezih","visits"] — that would trigger a
-      // refetch that blows away the optimistic row before CEZIH catches up.
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: ["cezih", "visits", vars.patient_id] })
       const queryKey = ["cezih", "visits", vars.patient_id]
+      const prev = qc.getQueryData<VisitsListResponse>(queryKey)
+      const tempId = `temp-${Date.now()}`
       const newVisit: VisitItem = {
-        visit_id: resp.visit_id,
+        visit_id: tempId,
         patient_mbo: vars.patient_id,
-        status: resp.status || "in-progress",
-        visit_type: resp.nacin_prijema || vars.nacin_prijema || "6",
+        status: "in-progress",
+        visit_type: vars.nacin_prijema || "6",
         visit_type_display: null,
-        vrsta_posjete: resp.vrsta_posjete || vars.vrsta_posjete || "1",
-        vrsta_posjete_display: "",
-        tip_posjete: resp.tip_posjete || vars.tip_posjete || "2",
-        tip_posjete_display: "",
+        vrsta_posjete: vars.vrsta_posjete || "1",
+        vrsta_posjete_display: null,
+        tip_posjete: vars.tip_posjete || "1",
+        tip_posjete_display: null,
         reason: vars.reason || null,
         period_start: new Date().toISOString(),
         period_end: null,
-        service_provider_code: null, // null → isExternalVisit() is false → shows as "Naša"
+        service_provider_code: null,
         practitioner_id: null,
         practitioner_ids: [],
         diagnosis_case_ids: [],
@@ -424,11 +446,37 @@ export function useCreateVisit() {
       }
       qc.setQueryData<VisitsListResponse>(queryKey, (old) => {
         if (!old) return { visits: [newVisit] }
-        if (old.visits.some((v) => v.visit_id === newVisit.visit_id)) return old
         return { visits: [newVisit, ...old.visits] }
       })
+      return { prev, tempId, queryKey }
+    },
+    onSuccess: (resp, vars, ctx) => {
+      // Replace temp ID with real one from CEZIH
+      if (ctx) {
+        qc.setQueryData<VisitsListResponse>(ctx.queryKey, (old) => {
+          if (!old) return old
+          return {
+            visits: old.visits.map((v) =>
+              v.visit_id === ctx.tempId
+                ? {
+                    ...v,
+                    visit_id: resp.visit_id,
+                    visit_type: resp.nacin_prijema || v.visit_type,
+                    vrsta_posjete: resp.vrsta_posjete || v.vrsta_posjete,
+                    tip_posjete: resp.tip_posjete || v.tip_posjete,
+                    status: resp.status || v.status,
+                  }
+                : v,
+            ),
+          }
+        })
+      }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
+    },
+    onError: (err, vars, ctx) => {
+      showSigningErrorToast(err.message)
+      if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
 }
@@ -447,9 +495,10 @@ export function useUpdateVisit() {
         reason, nacin_prijema, vrsta_posjete, tip_posjete,
         diagnosis_case_id, additional_practitioner_id, period_start,
       }),
-    onSuccess: (_resp, vars) => {
-      // Optimistic merge — see useCreateVisit comment.
+    onMutate: async (vars) => {
       const queryKey = ["cezih", "visits", vars.patientId]
+      await qc.cancelQueries({ queryKey })
+      const prev = qc.getQueryData<VisitsListResponse>(queryKey)
       qc.setQueryData<VisitsListResponse>(queryKey, (old) => {
         if (!old) return old
         return {
@@ -465,11 +514,11 @@ export function useUpdateVisit() {
                   }),
                   ...(vars.vrsta_posjete !== undefined && {
                     vrsta_posjete: vars.vrsta_posjete,
-                    vrsta_posjete_display: "",
+                    vrsta_posjete_display: null,
                   }),
                   ...(vars.tip_posjete !== undefined && {
                     tip_posjete: vars.tip_posjete,
-                    tip_posjete_display: "",
+                    tip_posjete_display: null,
                   }),
                   ...(vars.diagnosis_case_id !== undefined && {
                     diagnosis_case_ids: vars.diagnosis_case_id ? [vars.diagnosis_case_id] : [],
@@ -481,8 +530,15 @@ export function useUpdateVisit() {
           ),
         }
       })
+      return { prev, queryKey }
+    },
+    onSuccess: (_resp, vars) => {
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
+    },
+    onError: (err, _vars, ctx) => {
+      showSigningErrorToast(err.message)
+      if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
 }
@@ -492,9 +548,10 @@ export function useVisitAction() {
   return useMutation({
     mutationFn: ({ visitId, action, patientId, periodStart }: { visitId: string; action: string; patientId: string; periodStart?: string | null }) =>
       api.post<VisitResponse>(`/cezih/visits/${visitId}/action?patient_id=${encodeURIComponent(patientId)}`, { action, period_start: periodStart || undefined }),
-    onSuccess: (_resp, vars) => {
-      // Optimistic status flip — see useCreateVisit comment.
+    onMutate: async (vars) => {
       const queryKey = ["cezih", "visits", vars.patientId]
+      await qc.cancelQueries({ queryKey })
+      const prev = qc.getQueryData<VisitsListResponse>(queryKey)
       const newStatus =
         vars.action === "close" ? "finished"
         : vars.action === "reopen" ? "in-progress"
@@ -522,8 +579,15 @@ export function useVisitAction() {
           }
         })
       }
+      return { prev, queryKey }
+    },
+    onSuccess: (_resp, vars) => {
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
+    },
+    onError: (err, _vars, ctx) => {
+      showSigningErrorToast(err.message)
+      if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
 }
@@ -547,14 +611,13 @@ export function useCreateCase() {
   return useMutation({
     mutationFn: (data: CreateCaseRequest) =>
       api.post<CaseResponse>("/cezih/cases", data),
-    onSuccess: (resp, vars) => {
-      // CEZIH's /health-issue-services (write) and /ihe-qedm-services (read) are
-      // eventually consistent — a newly-created case is usually not yet visible
-      // via QEDm GET /Condition for several seconds. Insert optimistically so
-      // the table + e-Nalaz case dropdown see it immediately.
+    onMutate: async (vars) => {
       const queryKey = ["cezih", "cases", vars.patient_id]
+      await qc.cancelQueries({ queryKey })
+      const prev = qc.getQueryData<CasesListResponse>(queryKey)
+      const tempId = `temp-${Date.now()}`
       const newCase: CaseItem = {
-        case_id: resp.cezih_case_id || resp.local_case_id,
+        case_id: tempId,
         icd_code: vars.icd_code,
         icd_display: vars.icd_display,
         clinical_status: "active",
@@ -566,11 +629,29 @@ export function useCreateCase() {
       }
       qc.setQueryData<CasesListResponse>(queryKey, (old) => {
         if (!old) return { cases: [newCase] }
-        if (old.cases.some((c) => c.case_id === newCase.case_id)) return old
         return { cases: [newCase, ...old.cases] }
       })
+      return { prev, tempId, queryKey }
+    },
+    onSuccess: (resp, _vars, ctx) => {
+      if (ctx) {
+        qc.setQueryData<CasesListResponse>(ctx.queryKey, (old) => {
+          if (!old) return old
+          return {
+            cases: old.cases.map((c) =>
+              c.case_id === ctx.tempId
+                ? { ...c, case_id: resp.cezih_case_id || resp.local_case_id }
+                : c,
+            ),
+          }
+        })
+      }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
+    },
+    onError: (err, _vars, ctx) => {
+      showSigningErrorToast(err.message)
+      if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
 }
@@ -592,12 +673,38 @@ export function useUpdateCaseStatus() {
   return useMutation({
     mutationFn: ({ caseId, patientId, action }: { caseId: string; patientId: string; action: string }) =>
       api.put<CaseActionResponse>(`/cezih/cases/${caseId}/status?patient_id=${encodeURIComponent(patientId)}`, { action }),
-    onSuccess: (resp, vars) => {
+    onMutate: async (vars) => {
       const queryKey = ["cezih", "cases", vars.patientId]
-      qc.setQueryData<CasesListResponse>(queryKey, (old) => {
-        if (!old) return old
-        if (vars.action === "create_recurring") {
-          // 2.2 Ponavljajući spawns a new case inheriting the parent's ICD.
+      await qc.cancelQueries({ queryKey })
+      const prev = qc.getQueryData<CasesListResponse>(queryKey)
+      if (vars.action === "create_recurring") {
+        // Will be handled in onSuccess with real case ID
+        return { prev, queryKey }
+      }
+      const newStatus = CASE_ACTION_TO_STATUS[vars.action]
+      if (newStatus) {
+        const today = new Date().toISOString().split("T")[0]
+        qc.setQueryData<CasesListResponse>(queryKey, (old) => {
+          if (!old) return old
+          return {
+            cases: old.cases.map((c) =>
+              c.case_id !== vars.caseId
+                ? c
+                : {
+                    ...c,
+                    clinical_status: newStatus,
+                    abatement_date: newStatus === "resolved" ? today : c.abatement_date,
+                  },
+            ),
+          }
+        })
+      }
+      return { prev, queryKey }
+    },
+    onSuccess: (resp, vars, ctx) => {
+      if (vars.action === "create_recurring" && ctx) {
+        qc.setQueryData<CasesListResponse>(ctx.queryKey, (old) => {
+          if (!old) return old
           const parent = old.cases.find((c) => c.case_id === vars.caseId)
           if (!parent) return old
           const newCaseId = resp.case_id || `pending-${vars.caseId}-rec`
@@ -615,23 +722,13 @@ export function useUpdateCaseStatus() {
             _local: true,
           }
           return { cases: [newCase, ...old.cases] }
-        }
-        const newStatus = CASE_ACTION_TO_STATUS[vars.action]
-        if (!newStatus) return old
-        const today = new Date().toISOString().split("T")[0]
-        return {
-          cases: old.cases.map((c) =>
-            c.case_id !== vars.caseId
-              ? c
-              : {
-                  ...c,
-                  clinical_status: newStatus,
-                  abatement_date: newStatus === "resolved" ? today : c.abatement_date,
-                },
-          ),
-        }
-      })
+        })
+      }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+    },
+    onError: (err, _vars, ctx) => {
+      showSigningErrorToast(err.message)
+      if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
 }
@@ -646,8 +743,10 @@ export function useUpdateCaseData() {
       onset_date?: string; abatement_date?: string; note?: string;
     }) =>
       api.put<CaseActionResponse>(`/cezih/cases/${caseId}/data?patient_id=${encodeURIComponent(patientId)}`, data),
-    onSuccess: (_resp, vars) => {
+    onMutate: async (vars) => {
       const queryKey = ["cezih", "cases", vars.patientId]
+      await qc.cancelQueries({ queryKey })
+      const prev = qc.getQueryData<CasesListResponse>(queryKey)
       qc.setQueryData<CasesListResponse>(queryKey, (old) => {
         if (!old) return old
         return {
@@ -666,7 +765,14 @@ export function useUpdateCaseData() {
           ),
         }
       })
+      return { prev, queryKey }
+    },
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+    },
+    onError: (err, _vars, ctx) => {
+      showSigningErrorToast(err.message)
+      if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
 }
@@ -700,24 +806,30 @@ export function useReplaceDocument() {
   return useMutation({
     mutationFn: ({ referenceId, record_id }: { referenceId: string; record_id?: string }) =>
       api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}`, record_id ? { record_id } : {}),
-    onSuccess: (_resp, vars) => {
-      // CEZIH MHD (read) is eventually consistent with replace. Mark the
-      // replaced row as "Zatvorena" (superseded) optimistically so the user
-      // sees the status change right away. A new "current" row for the
-      // replacement will appear on the next natural refetch of the search.
-      // Do NOT invalidate ["cezih","documents"] — would wipe this flip.
-      qc.setQueriesData<DocumentSearchItem[]>(
-        { queryKey: ["cezih", "documents"], exact: false },
-        (old) => {
-          if (!old) return old
-          return old.map((d) =>
-            d.id === vars.referenceId ? { ...d, status: "Zatvorena", _local: true } : d,
-          )
-        },
-      )
+    onMutate: async (vars) => {
+      const queryFilter = { queryKey: ["cezih", "documents"], exact: false }
+      await qc.cancelQueries(queryFilter)
+      const prev = qc.getQueriesData<DocumentSearchItem[]>(queryFilter)
+      qc.setQueriesData<DocumentSearchItem[]>(queryFilter, (old) => {
+        if (!old) return old
+        return old.map((d) =>
+          d.id === vars.referenceId ? { ...d, status: "Zatvorena", _local: true } : d,
+        )
+      })
+      return { prev }
+    },
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
+    },
+    onError: (err, _vars, ctx) => {
+      showSigningErrorToast(err.message)
+      if (ctx?.prev) {
+        for (const [key, data] of ctx.prev) {
+          qc.setQueryData(key, data)
+        }
+      }
     },
   })
 }
@@ -727,21 +839,30 @@ export function useCancelDocument() {
   return useMutation({
     mutationFn: (referenceId: string) =>
       api.delete<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}`),
-    onSuccess: (_resp, referenceId) => {
-      // CEZIH MHD eventually-consistent — optimistic status flip to
-      // "Pogreška" (entered-in-error) so the user sees immediate feedback.
-      qc.setQueriesData<DocumentSearchItem[]>(
-        { queryKey: ["cezih", "documents"], exact: false },
-        (old) => {
-          if (!old) return old
-          return old.map((d) =>
-            d.id === referenceId ? { ...d, status: "Pogreška", _local: true } : d,
-          )
-        },
-      )
+    onMutate: async (referenceId) => {
+      const queryFilter = { queryKey: ["cezih", "documents"], exact: false }
+      await qc.cancelQueries(queryFilter)
+      const prev = qc.getQueriesData<DocumentSearchItem[]>(queryFilter)
+      qc.setQueriesData<DocumentSearchItem[]>(queryFilter, (old) => {
+        if (!old) return old
+        return old.map((d) =>
+          d.id === referenceId ? { ...d, status: "Pogreška", _local: true } : d,
+        )
+      })
+      return { prev }
+    },
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
+    },
+    onError: (err, _vars, ctx) => {
+      showSigningErrorToast(err.message)
+      if (ctx?.prev) {
+        for (const [key, data] of ctx.prev) {
+          qc.setQueryData(key, data)
+        }
+      }
     },
   })
 }
@@ -749,12 +870,10 @@ export function useCancelDocument() {
 export function useRetrieveDocument() {
   return useMutation({
     mutationFn: async ({ id, contentUrl }: { id: string; contentUrl?: string }) => {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
-      const url = contentUrl
-        ? `${API_BASE}/cezih/e-nalaz/${id}/document?url=${encodeURIComponent(contentUrl)}`
-        : `${API_BASE}/cezih/e-nalaz/${id}/document`
-      const response = await fetch(url, { credentials: "include" })
-      if (!response.ok) throw new Error("Failed to retrieve document")
+      const endpoint = contentUrl
+        ? `/cezih/e-nalaz/${id}/document?url=${encodeURIComponent(contentUrl)}`
+        : `/cezih/e-nalaz/${id}/document`
+      const response = await api.fetchRaw(endpoint)
       return response.blob()
     },
   })
@@ -769,6 +888,7 @@ export function useImportPatientFromCezih() {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
+    onError: (err) => toast.error(err.message),
   })
 }
 
@@ -796,5 +916,6 @@ export function useImportPatientByIdentifier() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "patients", "search"] })
     },
+    onError: (err) => toast.error(err.message),
   })
 }

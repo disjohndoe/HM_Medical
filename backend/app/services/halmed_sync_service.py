@@ -46,6 +46,10 @@ HZZO_DOPUNSKA_URL = (
     "_stupa%20na%20snagu%20_16_03_2026._0.xlsx"
 )
 
+# Fallback URL expiration check — prevents using outdated drug data
+HZZO_FALLBACK_URLS_DATE = datetime(2026, 3, 16)
+HZZO_FALLBACK_MAX_AGE_MONTHS = 6
+
 # Sheets that contain drug data (prefix match)
 DRUG_SHEET_PREFIXES = ("OLL-", "DLL-", "OL-magistralni", "DL-magistralni")
 
@@ -170,7 +174,11 @@ def _parse_xlsx(data: bytes, hzzo_lista: str) -> list[dict]:
 
 
 async def _discover_hzzo_urls() -> tuple[str, str]:
-    """Scrape HZZO page to find latest .xlsx download URLs."""
+    """Scrape HZZO page to find latest .xlsx download URLs.
+
+    Falls back to hardcoded URLs if discovery fails, but only if they're
+    not too old (see HZZO_FALLBACK_MAX_AGE_MONTHS).
+    """
     try:
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             resp = await client.get(HZZO_LISTE_URL)
@@ -196,7 +204,21 @@ async def _discover_hzzo_urls() -> tuple[str, str]:
 
             raise ValueError(f"Could not discover URLs from HZZO page (found {len(xlsx_links)} links)")
     except Exception as e:
-        logger.warning("HZZO URL discovery failed (%s), using fallback URLs", e)
+        # Check if fallback is still usable
+        from datetime import timezone
+
+        fallback_age_days = (datetime.now(UTC).replace(tzinfo=timezone.utc) - HZZO_FALLBACK_URLS_DATE.replace(tzinfo=timezone.utc)).days
+        age_months = fallback_age_days / 30
+
+        if age_months > HZZO_FALLBACK_MAX_AGE_MONTHS:
+            from app.services.cezih.exceptions import CezihError
+            raise CezihError(
+                f"HZZO URL discovery failed i fallback URL-ovi su stari {age_months:.0f} mjeseci. "
+                f"Ažurirajte HZZO_OSNOVNA_URL i HZZO_DOPUNSKA_URL u halmed_sync_service.py. "
+                f"Original error: {e}"
+            ) from e
+
+        logger.warning("HZZO URL discovery failed (%s), using fallback URLs (age=%.1f months)", e, age_months)
         return HZZO_OSNOVNA_URL, HZZO_DOPUNSKA_URL
 
 

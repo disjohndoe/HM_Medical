@@ -53,6 +53,8 @@ class MedicalRecordRead(BaseModel):
     cezih_sent_at: datetime | None
     cezih_reference_id: str | None
     cezih_storno: bool
+    cezih_encounter_id: str | None = None
+    cezih_case_id: str | None = None
     sensitivity: str
     preporucena_terapija: list[PreporucenaTerapijaEntry] | None = None
     doktor_ime: str | None = None

@@ -3,10 +3,11 @@ import time
 from datetime import datetime
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.auth import limiter
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
@@ -178,7 +179,9 @@ async def create_pairing_token(
 
 
 @router.post("/pair/claim", response_model=PairClaimResponse)
+@limiter.limit("5/minute")
 async def claim_pairing_token(
+    request: Request,
     data: PairClaimRequest,
     db: AsyncSession = Depends(get_db),
 ):

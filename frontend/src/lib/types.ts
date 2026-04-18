@@ -37,6 +37,8 @@ export interface User {
   card_certificate_oib: string | null;
   practitioner_id: string | null;
   cezih_signing_method: CezihSigningMethod;
+  card_certificate_serial: string | null;
+  card_required: boolean;
   tenant?: Tenant;
 }
 
@@ -140,6 +142,10 @@ export interface PatientUpdate {
   spol?: string | null;
   oib?: string | null;
   mbo?: string | null;
+  broj_putovnice?: string | null;
+  ehic_broj?: string | null;
+  cezih_patient_id?: string | null;
+  drzavljanstvo?: string | null;
   adresa?: string | null;
   grad?: string | null;
   postanski_broj?: string | null;
@@ -318,6 +324,8 @@ export interface MedicalRecord {
   cezih_sent_at: string | null;
   cezih_reference_id: string | null;
   cezih_storno: boolean;
+  cezih_encounter_id: string | null;
+  cezih_case_id: string | null;
   sensitivity: string;
   preporucena_terapija: PreporucenaTerapijaEntry[] | null;
   doktor_ime: string | null;
@@ -442,6 +450,7 @@ export interface DocumentUploadResponse {
   kategorija: string;
   file_size: number;
   mime_type: string;
+  uploaded_by: string;
   created_at: string;
 }
 
@@ -517,6 +526,8 @@ export interface ENalazResponse {
 export interface EReceptLijekEntry {
   atk: string;
   naziv: string;
+  oblik: string;
+  jacina: string;
   kolicina: number;
   doziranje: string;
   napomena: string;
@@ -537,15 +548,8 @@ export interface EReceptStornoResponse {
 
 // --- Prescriptions ---
 
-export interface PrescriptionLijekEntry {
-  atk: string;
-  naziv: string;
-  oblik: string;
-  jacina: string;
-  kolicina: number;
-  doziranje: string;
-  napomena: string;
-}
+// Alias for EReceptLijekEntry — both represent the same drug entry structure
+export type PrescriptionLijekEntry = EReceptLijekEntry
 
 export interface Prescription {
   id: string;
@@ -573,7 +577,7 @@ export interface Prescription {
 export interface PrescriptionCreate {
   patient_id: string;
   medical_record_id?: string | null;
-  lijekovi: Omit<PrescriptionLijekEntry, "oblik" | "jacina">[];
+  lijekovi: PrescriptionLijekEntry[];
   napomena?: string | null;
 }
 
@@ -828,10 +832,10 @@ export interface VisitItem {
   status: string;
   visit_type: string;
   visit_type_display: string | null;
-  vrsta_posjete: string;
-  vrsta_posjete_display: string;
-  tip_posjete: string;
-  tip_posjete_display: string;
+  vrsta_posjete: string | null;
+  vrsta_posjete_display: string | null;
+  tip_posjete: string | null;
+  tip_posjete_display: string | null;
   reason: string | null;
   period_start: string | null;
   period_end: string | null;

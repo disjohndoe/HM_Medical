@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type { Appointment, AppointmentCreate, AvailableSlot, PaginatedResponse, User } from "@/lib/types"
@@ -62,6 +63,7 @@ export function useCreateAppointment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -74,6 +76,7 @@ export function useUpdateAppointment() {
       queryClient.invalidateQueries({ queryKey: ["appointments"] })
       queryClient.invalidateQueries({ queryKey: ["appointments", variables.id] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -84,6 +87,7 @@ export function useDeleteAppointment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type {
@@ -34,6 +35,7 @@ export function useCreatePrescription() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prescriptions"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -46,6 +48,7 @@ export function useUpdatePrescription() {
       qc.invalidateQueries({ queryKey: ["prescriptions"] })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -56,6 +59,7 @@ export function useDeletePrescription() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prescriptions"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -70,6 +74,7 @@ export function useSendPrescription() {
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -84,5 +89,6 @@ export function useStornoPrescription() {
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

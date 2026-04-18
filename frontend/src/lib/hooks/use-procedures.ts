@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type {
@@ -37,6 +38,7 @@ export function useCreateProcedure() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -48,6 +50,7 @@ export function useUpdateProcedure() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -58,6 +61,7 @@ export function useDeleteProcedure() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -97,5 +101,6 @@ export function useCreatePerformed() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["performed-procedures"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

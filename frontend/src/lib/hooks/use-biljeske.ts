@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type {
@@ -33,6 +34,7 @@ export function useCreateBiljeska() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["biljeske"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -44,6 +46,7 @@ export function useUpdateBiljeska() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["biljeske"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -54,5 +57,6 @@ export function useDeleteBiljeska() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["biljeske"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

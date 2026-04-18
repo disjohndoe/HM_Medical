@@ -106,11 +106,21 @@ async def export_patient_data(
         .where(PerformedProcedure.tenant_id == tenant_id, PerformedProcedure.patient_id == patient_id)
         .order_by(PerformedProcedure.datum.desc())
     )
+    pp_rows = pp_result.scalars().all()
+
+    procedure_ids = list({pp.procedure_id for pp in pp_rows})
+    if procedure_ids:
+        proc_result = await db.execute(
+            select(Procedure).where(Procedure.id.in_(procedure_ids))
+        )
+        proc_map = {p.id: p for p in proc_result.scalars().all()}
+    else:
+        proc_map = {}
+
     performed_procedures = []
-    for pp in pp_result.scalars().all():
+    for pp in pp_rows:
         rec = _model_to_dict(pp)
-        # Enrich with procedure name
-        proc = await db.get(Procedure, pp.procedure_id)
+        proc = proc_map.get(pp.procedure_id)
         rec["_naziv_postupka"] = proc.naziv if proc else ""
         rec["_sifra_postupka"] = proc.sifra if proc else ""
         rec["_doktor"] = doctor_names.get(str(pp.doktor_id), "")
@@ -142,14 +152,23 @@ async def export_patient_data(
         .where(Predracun.tenant_id == tenant_id, Predracun.patient_id == patient_id)
         .order_by(Predracun.datum.desc())
     )
-    invoices = []
-    for inv in inv_result.scalars().all():
-        inv_data = _model_to_dict(inv)
-        # Load line items
-        stavke_result = await db.execute(
-            select(PredracunStavka).where(PredracunStavka.predracun_id == inv.id)
+    inv_rows = inv_result.scalars().all()
+
+    predracun_ids = [inv.id for inv in inv_rows]
+    if predracun_ids:
+        all_stavke_result = await db.execute(
+            select(PredracunStavka).where(PredracunStavka.predracun_id.in_(predracun_ids))
         )
-        inv_data["stavke"] = [_model_to_dict(s) for s in stavke_result.scalars().all()]
+        stavke_by_predracun: dict[uuid.UUID, list] = {}
+        for s in all_stavke_result.scalars().all():
+            stavke_by_predracun.setdefault(s.predracun_id, []).append(_model_to_dict(s))
+    else:
+        stavke_by_predracun = {}
+
+    invoices = []
+    for inv in inv_rows:
+        inv_data = _model_to_dict(inv)
+        inv_data["stavke"] = stavke_by_predracun.get(inv.id, [])
         invoices.append(inv_data)
 
     # --- CEZIH cases ---

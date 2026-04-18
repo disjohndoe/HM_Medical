@@ -82,7 +82,7 @@ class AgentConnectionManager:
             self._connections.pop(tenant_id, None)
         # Fail any pending sign/proxy requests for this tenant so callers
         # (visit creation, document send, etc.) error out immediately instead
-        # of waiting the full 120s signing timeout. Without this, a dropped
+        # of waiting the full 300s signing timeout. Without this, a dropped
         # WS during PIN entry leaves the HTTP handler stuck. In multi-agent
         # tenants this is coarse (we don't track which agent each request was
         # sent to) but tenants run one agent per machine today.
@@ -191,7 +191,7 @@ class AgentConnectionManager:
         url: str,
         headers: dict[str, str],
         body: str | None = None,
-        timeout: float = 120.0,
+        timeout: float = 300.0,
         card_holder_name: str | None = None,
     ) -> dict:
         """Send an HTTP request through a connected agent and wait for the response.
@@ -237,7 +237,7 @@ class AgentConnectionManager:
         tenant_id: UUID,
         *,
         data_base64: str,
-        timeout: float = 120.0,
+        timeout: float = 300.0,
     ) -> dict:
         """Send data to the agent for JWS signing (NCryptSignHash).
 
@@ -307,7 +307,7 @@ class AgentConnectionManager:
         *,
         data_base64: str,
         algorithm: str = "RS256",
-        timeout: float = 120.0,
+        timeout: float = 300.0,
     ) -> dict:
         """Send raw bytes to agent for signing.
 
@@ -345,7 +345,7 @@ class AgentConnectionManager:
         tenant_id: UUID,
         *,
         data_base64: str,
-        timeout: float = 120.0,
+        timeout: float = 300.0,
     ) -> dict:
         """Send data to the agent for signing with the smart card.
 

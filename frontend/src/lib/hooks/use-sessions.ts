@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 
@@ -28,6 +29,7 @@ export function useRevokeSession() {
       queryClient.invalidateQueries({ queryKey: ["sessions"] })
       queryClient.invalidateQueries({ queryKey: ["plan", "usage"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -44,6 +46,7 @@ export function useRevokeOtherSessions() {
       queryClient.invalidateQueries({ queryKey: ["sessions"] })
       queryClient.invalidateQueries({ queryKey: ["plan", "usage"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -56,5 +59,6 @@ export function useCleanupTokens() {
       queryClient.invalidateQueries({ queryKey: ["sessions"] })
       queryClient.invalidateQueries({ queryKey: ["plan", "usage"] })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

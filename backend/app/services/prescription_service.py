@@ -1,11 +1,15 @@
+import logging
 import uuid
 from datetime import UTC, datetime
+
+logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.medical_record import MedicalRecord
+from app.models.patient import Patient
 from app.models.prescription import Prescription
 from app.models.user import User
 from app.schemas.prescription import PrescriptionCreate, PrescriptionUpdate
@@ -109,6 +113,10 @@ async def create_prescription(
     data: PrescriptionCreate,
     doktor_id: uuid.UUID,
 ) -> dict:
+    patient = await db.get(Patient, data.patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
     prescription = Prescription(
         tenant_id=tenant_id,
         patient_id=data.patient_id,
@@ -352,16 +360,25 @@ async def send_to_cezih(
         http_client=http_client,
     )
 
+    # CEZIH succeeded — persist locally. If DB fails after CEZIH success,
+    # log enough detail for manual reconciliation.
     prescription.cezih_sent = True
     prescription.cezih_sent_at = datetime.now(UTC)
     prescription.cezih_recept_id = cezih_result.get("recept_id", "")
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception:
+        logger.critical(
+            "CEZIH e-Recept sent but DB update FAILED — manual reconciliation needed. "
+            "prescription_id=%s recept_id=%s tenant_id=%s",
+            prescription_id, prescription.cezih_recept_id, tenant_id,
+        )
+        raise
 
     return {
         "prescription_id": prescription.id,
         "cezih_recept_id": prescription.cezih_recept_id,
         "success": cezih_result.get("success", True),
-        "mock": cezih_result.get("mock", True),
     }
 
 
@@ -398,11 +415,18 @@ async def storno_prescription(
 
     prescription.cezih_storno = True
     prescription.cezih_storno_at = datetime.now(UTC)
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception:
+        logger.critical(
+            "CEZIH storno sent but DB update FAILED — manual reconciliation needed. "
+            "prescription_id=%s recept_id=%s tenant_id=%s",
+            prescription_id, prescription.cezih_recept_id, tenant_id,
+        )
+        raise
 
     return {
         "prescription_id": prescription.id,
         "cezih_recept_id": prescription.cezih_recept_id,
         "success": cezih_result.get("success", True),
-        "mock": cezih_result.get("mock", True),
     }

@@ -6,6 +6,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.biljeska import Biljeska
+from app.models.patient import Patient
 from app.models.user import User
 from app.schemas.biljeska import BiljeskaCreate, BiljeskaUpdate
 
@@ -91,6 +92,10 @@ async def create_biljeska(
     data: BiljeskaCreate,
     doktor_id: uuid.UUID,
 ) -> dict:
+    patient = await db.get(Patient, data.patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
     biljeska = Biljeska(
         tenant_id=tenant_id,
         patient_id=data.patient_id,

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
 import type {
@@ -63,6 +64,7 @@ export function useCreateMedicalRecord() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       queryClient.invalidateQueries({ queryKey: ["cezih", "documents"], exact: false })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }
 
@@ -80,5 +82,6 @@ export function useUpdateMedicalRecord() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       queryClient.invalidateQueries({ queryKey: ["cezih", "documents"], exact: false })
     },
+    onError: (err: Error) => { toast.error(err.message) },
   })
 }

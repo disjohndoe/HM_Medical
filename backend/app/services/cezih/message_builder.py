@@ -329,30 +329,50 @@ def _debug_dump_jws(source: str, jws_b64: str) -> None:
 
 async def _resolve_signing_method() -> str:
     """Resolve the active signing method for the current request from the user's
-    `cezih_signing_method` column (always non-NULL).
+    `cezih_signing_method` column.
 
-    Fallback `settings.CEZIH_SIGNING_METHOD` only applies to background tasks with
-    no request-bound user (context var empty) — normal API traffic always has one.
+    Raises CezihError if:
+    - No user is logged in
+    - Database is not available
+    - DB lookup fails
+    - User has no signing method configured
     """
     from sqlalchemy import select
 
-    from app.config import settings
     from app.models.user import User
     from app.services.cezih.client import current_db_session, current_user_id
 
     user_id = current_user_id.get()
     db = current_db_session.get()
-    if user_id and db is not None:
-        try:
-            method = await db.scalar(
-                select(User.cezih_signing_method).where(User.id == user_id)
-            )
-            if method:
-                return method
-        except Exception as e:  # noqa: BLE001 — never let signing pref lookup break the request
-            logger.warning("Failed to resolve per-user signing method: %s", e)
 
-    return settings.CEZIH_SIGNING_METHOD or "extsigner"
+    if not user_id:
+        logger.error("Signing method resolution failed: no user in context")
+        raise CezihError("Nema prijavljenog korisnika za potpisivanje.")
+
+    if db is None:
+        logger.error("Signing method resolution failed: no database session")
+        raise CezihError("Baza podataka nije dostupna.")
+
+    try:
+        method = await db.scalar(
+            select(User.cezih_signing_method).where(User.id == user_id)
+        )
+    except Exception as e:
+        logger.error("DB lookup failed for signing method (user_id=%s): %s", user_id, e)
+        raise CezihError(
+            "Potpis nije konfiguriran. Kontaktirajte administratora ili "
+            "odaberite način potpisa u Postavke."
+        ) from e
+
+    if not method:
+        logger.error("User has no signing method configured (user_id=%s)", user_id)
+        raise CezihError(
+            "Korisnik nema konfiguriran način potpisa. "
+            "Odaberite 'AKD kartica' ili 'Certilia mobilni' u Postavke."
+        )
+
+    logger.info("Resolved signing method for user_id=%s: %s", user_id, method)
+    return method
 
 
 async def add_signature(
@@ -602,7 +622,7 @@ async def _add_signature_smartcard(
             result = await agent_manager.sign_jws(
                 tenant_id,
                 data_base64=data_b64,
-                timeout=120.0,
+                timeout=300.0,
             )
 
             if "error" in result:
@@ -996,17 +1016,14 @@ def build_condition_status_update(
     clinical_status: str | None = None,
     abatement_date: str | None = None,
 ) -> dict[str, Any]:
-    """Build Condition for case status update (codes 2.3-2.5, 2.7).
+    """Build Condition for case status update (codes 2.3-2.5, 2.9).
 
-    Field requirements per CEZIH `hr-health-issue-resolve-message|0.1` profile
-    plus FHIR R4 invariant `con-4` (if abated, clinicalStatus ∈ inactive/
-    resolved/remission):
+    Per Simplifier cezih.hr.condition-management/0.2.1 profiles:
 
-    - 2.3 Remisija: abatementDateTime + clinicalStatus=remission
-    - 2.4 Relaps:   clinicalStatus=relapse only (no abatement — relapse is
-      a return to active; abatement would violate con-4)
-    - 2.5 Resolve:  abatementDateTime + clinicalStatus=resolved
-    - 2.7 Reopen:   minimal — no abatement, no clinicalStatus
+    - 2.3 Remisija: minimal (identifier + subject only)
+    - 2.4 Resolve:  clinicalStatus=resolved + abatementDateTime REQUIRED
+    - 2.5 Relapse:  minimal (identifier + subject only)
+    - 2.9 Reopen:   minimal (identifier + subject only)
     """
     condition: dict[str, Any] = {
         "resourceType": "Condition",
@@ -1117,14 +1134,15 @@ def build_condition_data_update(
 #   2.1=Create, 2.2=Create recurrence, 2.3=Remission, 2.4=Resolve,
 #   2.5=Relapse, 2.6=Data update, 2.7=Delete (NOT shipped),
 #   2.8=Reopen after delete (unreachable), 2.9=Reopen after resolve
-CASE_ACTION_MAP: dict[str, dict[str, str | None]] = {
-    "create": {"code": "2.1", "clinical_status": None},
-    "create_recurring": {"code": "2.2", "clinical_status": None},
-    "remission": {"code": "2.3", "clinical_status": "remission"},
-    "resolve": {"code": "2.4", "clinical_status": "resolved"},
-    "relapse": {"code": "2.5", "clinical_status": "relapse"},
-    "update_data": {"code": "2.6", "clinical_status": None},  # Data-only update, no status change
-    "reopen": {"code": "2.9", "clinical_status": "active"},
+# Action → event code only. Payload shape per event is in CASE_EVENT_PROFILE below.
+CASE_ACTION_MAP: dict[str, dict[str, str]] = {
+    "create": {"code": "2.1"},
+    "create_recurring": {"code": "2.2"},
+    "remission": {"code": "2.3"},
+    "resolve": {"code": "2.4"},
+    "relapse": {"code": "2.5"},
+    "update_data": {"code": "2.6"},
+    "reopen": {"code": "2.9"},
 }
 
 
@@ -1214,19 +1232,20 @@ def parse_message_response(response_body: dict[str, Any]) -> dict[str, Any]:
         result["error_message"] = "CEZIH nije vratio valjan odgovor (prazan Bundle)."
         return result
 
-    header = entries[0].get("resource", {})
-    resp_info = header.get("response", {})
-    result["response_code"] = resp_info.get("code")
-    result["success"] = resp_info.get("code") == "ok"
+    for entry in entries:
+        resource = entry.get("resource", {})
+        rt = resource.get("resourceType")
 
-    # Check for OperationOutcome in second entry
-    if len(entries) > 1:
-        second = entries[1].get("resource", {})
-        if second.get("resourceType") == "OperationOutcome":
-            issues = second.get("issue", [])
-            for issue in issues:
+        if rt == "MessageHeader":
+            resp_info = resource.get("response", {})
+            result["response_code"] = resp_info.get("code")
+            result["success"] = resp_info.get("code") == "ok"
+
+        elif rt == "OperationOutcome":
+            for issue in resource.get("issue", []):
                 if issue.get("severity") in ("error", "fatal"):
-                    details = issue.get("details", {}).get("coding", [{}])[0]
+                    codings = issue.get("details", {}).get("coding") or [{}]
+                    details = codings[0]
                     error_code = details.get("code")
                     diagnostics = issue.get("diagnostics")
                     issue_code = issue.get("code")
@@ -1239,13 +1258,9 @@ def parse_message_response(response_body: dict[str, Any]) -> dict[str, Any]:
                     result["success"] = False
                     break
 
-        # Check for returned resource with identifier (e.g. CEZIH-assigned visit/case ID)
-        rt = second.get("resourceType")
-        if rt == "Condition":
-            identifiers = second.get("identifier", [])
-            for ident in identifiers:
-                sys = ident.get("system", "")
-                if sys == ID_CASE_GLOBAL:
+        elif rt == "Condition":
+            for ident in resource.get("identifier", []):
+                if ident.get("system", "") == ID_CASE_GLOBAL:
                     result["identifier"] = ident.get("value")
                     break
 

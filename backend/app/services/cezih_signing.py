@@ -14,12 +14,14 @@ from app.config import settings
 from app.services.cezih.exceptions import CezihSigningError
 
 
-def _extract_signature_from_cms(cms_der: bytes) -> bytes | None:
+def _extract_signature_from_cms(cms_der: bytes) -> bytes:
     """Extract the raw cryptographic signature value from a CMS/PKCS#7 DER structure.
 
     Parses minimal ASN.1 to find the SignerInfo.signature field.
-    Returns the raw signature bytes, or None if parsing fails.
+    Raises CezihSigningError if parsing fails — no silent failures.
     """
+    errors = []
+
     try:
         # CMS SignedData structure (simplified):
         # SEQUENCE {
@@ -49,9 +51,9 @@ def _extract_signature_from_cms(cms_der: bytes) -> bytes | None:
             logger.info("Extracted raw signature from CMS: %d bytes", len(sig_value))
             return sig_value
     except ImportError:
-        logger.warning("asn1crypto not available, trying manual ASN.1 parsing")
+        errors.append("asn1crypto library nije instaliran")
     except Exception as e:
-        logger.warning("asn1crypto CMS parsing failed: %s, trying manual", e)
+        errors.append(f"asn1crypto CMS parsiranje nije uspjelo: {e}")
 
     try:
         # Manual fallback: the signature is typically the last large OCTET STRING
@@ -76,9 +78,11 @@ def _extract_signature_from_cms(cms_der: bytes) -> bytes | None:
                     logger.info("Manual ASN.1: found tag=0x%02x, len=%d at offset %d", tag, length, i)
                     return sig
     except Exception as e:
-        logger.warning("Manual ASN.1 parsing failed: %s", e)
+        errors.append(f"Manual ASN.1 parsiranje nije uspjelo: {e}")
 
-    return None
+    raise CezihSigningError(
+        "Ekstrakcija potpisa iz CMS formata nije uspjela. " + "; ".join(errors)
+    )
 
 
 def _ecdsa_der_to_raw(der_sig: bytes) -> bytes:
@@ -113,8 +117,50 @@ def _ecdsa_der_to_raw(der_sig: bytes) -> bytes:
                      len(der_sig), len(raw), len(r_bytes), len(s_bytes))
         return raw
     except Exception as e:
-        logger.warning("ECDSA DER→raw conversion failed: %s, using DER directly", e)
-        return der_sig
+        raise CezihSigningError(
+            f"Konverzija ECDSA potpisa nije uspjela: {e}. "
+            "Potpis je u neispravnom formatu i ne može se koristiti."
+        ) from e
+
+
+def _detect_bundle_type(bundle_json_bytes: bytes) -> str:
+    """Detect FHIR bundle type (transaction or message) from JSON bytes.
+
+    Args:
+        bundle_json_bytes: FHIR bundle as JSON bytes
+
+    Returns:
+        "transaction" or "message"
+
+    Raises:
+        CezihSigningError: If JSON is invalid or 'type' field is missing
+    """
+    try:
+        bundle_obj = json.loads(bundle_json_bytes)
+    except json.JSONDecodeError as e:
+        logger.error("Invalid JSON bundle: %s", e)
+        raise CezihSigningError(
+            "Neispravan JSON format u FHIR bundleu. "
+            "Kontaktirajte tehničku podršku."
+        ) from e
+
+    bundle_type = bundle_obj.get("type")
+    if not bundle_type:
+        resource_type = bundle_obj.get("resourceType", "unknown")
+        logger.error("Bundle missing 'type' field: resourceType=%s", resource_type)
+        raise CezihSigningError(
+            "FHIR bundle nema obavezno 'type' polje. "
+            "Kontaktirajte tehničku podršku."
+        )
+
+    if bundle_type not in ("transaction", "message"):
+        logger.warning("Unknown bundle type: %s", bundle_type)
+        raise CezihSigningError(
+            f"Nepoznat tip bundla: {bundle_type}. Dozvoljeni: transaction, message."
+        )
+
+    logger.debug("Detected bundle type: %s", bundle_type)
+    return bundle_type
 
 
 logger = logging.getLogger(__name__)
@@ -265,13 +311,11 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
 
         oauth_url = settings.CEZIH_SIGNING_OAUTH2_URL
         if not oauth_url:
-            oauth_url = settings.CEZIH_OAUTH2_URL
-            if oauth_url:
-                logger.warning(
-                    "CEZIH_SIGNING_OAUTH2_URL not set, falling back to CEZIH_OAUTH2_URL (%s)",
-                    oauth_url,
-                )
-        if not oauth_url or not settings.CEZIH_CLIENT_ID:
+            raise CezihSigningError(
+                "CEZIH_SIGNING_OAUTH2_URL nije postavljen. Potrebno je za potpisivanje putem Certilia. "
+                "Postavite ga u .env datoteci ili kontaktirajte podršku."
+            )
+        if not settings.CEZIH_CLIENT_ID:
             raise CezihSigningError(
                 "OAuth2 postavke za potpisivanje nisu konfigurirane. "
                 "Postavite CEZIH_SIGNING_OAUTH2_URL i CEZIH_CLIENT_ID.",
@@ -401,7 +445,7 @@ async def sign_bundle_for_cezih(
             tenant_id,
             data_base64=data_b64,
             algorithm=algorithm,
-            timeout=120.0,
+            timeout=300.0,
         )
     except RuntimeError as e:
         raise CezihSigningError(f"Greška pri potpisivanju putem agenta: {e}") from e
@@ -425,46 +469,6 @@ async def sign_bundle_for_cezih(
     }
 
 
-async def _sign_bundle_cms_fallback(bundle_json_bytes: bytes) -> dict:
-    """Fallback: sign with CMS/PKCS#7 if NCrypt JWS signing is unavailable."""
-    if not _should_use_agent():
-        raise CezihSigningError("Neispravna CEZIH konekcija — agent nije spojen")
-
-    from app.services.agent_connection_manager import agent_manager
-    from app.services.cezih.client import current_tenant_id
-
-    tenant_id = current_tenant_id.get()
-    data_b64 = base64.b64encode(bundle_json_bytes).decode("ascii")
-
-    logger.info("CEZIH CMS fallback signing (bundle_size=%d)", len(bundle_json_bytes))
-
-    try:
-        result = await agent_manager.sign_data(
-            tenant_id,
-            data_base64=data_b64,
-            timeout=120.0,
-        )
-    except RuntimeError as e:
-        raise CezihSigningError(f"Greška pri CMS potpisivanju putem agenta: {e}") from e
-
-    if "error" in result:
-        raise CezihSigningError(
-            f"Potpisivanje pametnom karticom nije uspjelo: {result['error']}",
-            signing_service_error=result["error"],
-        )
-
-    sig_b64 = result.get("signature", "")
-    kid = result.get("kid", "unknown")
-
-    logger.info("CMS fallback signing OK (kid=%.16s, sig_len=%d)", kid, len(sig_b64))
-
-    return {
-        "success": True,
-        "signature": sig_b64,
-        "signing_algorithm": "CMS/PKCS7",
-        "signed_at": datetime.now(UTC).isoformat(),
-        "kid": kid,
-    }
 
 
 async def sign_bundle_via_extsigner(
@@ -509,12 +513,7 @@ async def sign_bundle_via_extsigner(
 
     # Detect bundle type: transaction bundles (ITI-65) use FHIR_DOCUMENT,
     # message bundles (visits/cases) use FHIR_MESSAGE
-    import json as _json_detect
-    try:
-        bundle_obj = _json_detect.loads(bundle_json_bytes)
-        bundle_type = bundle_obj.get("type", "message")
-    except Exception:
-        bundle_type = "message"
+    bundle_type = _detect_bundle_type(bundle_json_bytes)
     doc_type = "FHIR_DOCUMENT" if bundle_type == "transaction" else "FHIR_MESSAGE"
 
     payload = {
@@ -565,7 +564,7 @@ async def sign_bundle_via_extsigner(
     tc_encoded = urllib.parse.quote(transaction_code, safe="")
     get_url = f"{retrieve_url}?transactionId={tc_encoded}"
 
-    max_attempts = 24  # 24 x 5s = 120 seconds total
+    max_attempts = 60  # 60 x 5s = 300 seconds total
     poll_interval = 5
 
     for attempt in range(1, max_attempts + 1):
