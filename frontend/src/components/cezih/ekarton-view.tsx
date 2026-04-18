@@ -134,8 +134,8 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
     insuranceMutation.mutate(patientId)
   }
 
-  const handleDownloadPdf = (referenceId: string, contentUrl?: string) => {
-    retrieveDoc.mutate({ id: referenceId, contentUrl }, {
+  const handleDownloadPdf = (referenceId: string, contentUrl?: string, documentOid?: string) => {
+    retrieveDoc.mutate({ id: referenceId, contentUrl, documentOid }, {
       onSuccess: (blob) => {
         const url = URL.createObjectURL(blob)
         const a = document.createElement("a")
@@ -512,7 +512,7 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0 shrink-0"
-                      onClick={() => handleDownloadPdf(n.reference_id!)}
+                      onClick={() => handleDownloadPdf(n.reference_id!, undefined, n.document_oid ?? undefined)}
                       disabled={retrieveDoc.isPending}
                       title="Preuzmi PDF"
                     >

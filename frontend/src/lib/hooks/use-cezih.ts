@@ -869,10 +869,13 @@ export function useCancelDocument() {
 
 export function useRetrieveDocument() {
   return useMutation({
-    mutationFn: async ({ id, contentUrl }: { id: string; contentUrl?: string }) => {
-      const endpoint = contentUrl
-        ? `/cezih/e-nalaz/${id}/document?url=${encodeURIComponent(contentUrl)}`
-        : `/cezih/e-nalaz/${id}/document`
+    mutationFn: async ({ id, contentUrl, documentOid }: { id: string; contentUrl?: string; documentOid?: string }) => {
+      let endpoint = `/cezih/e-nalaz/${id}/document`
+      if (contentUrl) {
+        endpoint += `?url=${encodeURIComponent(contentUrl)}`
+      } else if (documentOid) {
+        endpoint += `?oid=${encodeURIComponent(documentOid)}`
+      }
       const response = await api.fetchRaw(endpoint)
       return response.blob()
     },

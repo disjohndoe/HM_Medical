@@ -596,12 +596,15 @@ async def send_enalaz(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
 
     ref = result["reference_id"]
+    doc_oid = result.get("document_oid", "")
     now = datetime.now(UTC)
 
     if record:
         record.cezih_sent = True
         record.cezih_sent_at = now
         record.cezih_reference_id = ref
+        if doc_oid:
+            record.cezih_document_oid = doc_oid
         if encounter_id:
             record.cezih_encounter_id = encounter_id
         if case_id:
@@ -1744,12 +1747,15 @@ async def dispatch_replace_document(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
 
-    # Update the DB record's reference_id to the new document created by replace
+    # Update the DB record's reference_id and OID to the new document created by replace
     new_ref = result.get("new_reference_id")
+    new_oid = result.get("new_document_oid", "")
     if record_id and new_ref:
         record = await _get_medical_record_by_id(db, tenant_id, record_id)
         if record:
             record.cezih_reference_id = new_ref
+            if new_oid:
+                record.cezih_document_oid = new_oid
             await db.flush()
 
     await _write_audit(

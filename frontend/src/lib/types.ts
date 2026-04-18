@@ -624,6 +624,7 @@ export interface PatientCezihENalaz {
   datum: string;
   tip: string;
   reference_id: string | null;
+  document_oid: string | null;
   cezih_sent_at: string | null;
   cezih_storno: boolean;
   cezih_signed: boolean;

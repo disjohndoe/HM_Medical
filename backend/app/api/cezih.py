@@ -313,6 +313,7 @@ async def get_patient_cezih_summary(
             datum=r.cezih_sent_at or r.created_at,
             tip=r.tip,
             reference_id=r.cezih_reference_id,
+            document_oid=r.cezih_document_oid,
             cezih_sent_at=r.cezih_sent_at,
             cezih_storno=r.cezih_storno,
             cezih_signed=bool(r.cezih_signature_data),
@@ -835,10 +836,20 @@ async def retrieve_document(
     request: Request,
     reference_id: str,
     url: str = Query(None, description="CEZIH content URL from DocumentReference"),
+    oid: str = Query(None, description="Document OID — constructs ITI-68 URL"),
     current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
     db: AsyncSession = Depends(get_db),
 ):
     from fastapi.responses import Response
+
+    # Construct content_url from OID when direct URL not provided
+    if not url and oid:
+        import base64
+        data_plain = f"documentUniqueId=urn:ietf:rfc:3986|urn:oid:{oid}&position=0"
+        data_b64 = base64.b64encode(data_plain.encode()).decode()
+        from app.core.config import settings
+        base = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
+        url = f"{base}/services-router/gateway/doc-mhd-svc/api/v1/iti-68-service?data={data_b64}"
 
     await check_cezih_access(db, current_user.tenant_id)
     content = await cezih.dispatch_retrieve_document(

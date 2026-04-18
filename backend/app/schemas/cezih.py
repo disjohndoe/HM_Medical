@@ -168,6 +168,7 @@ class PatientCezihENalaz(BaseModel):
     datum: datetime
     tip: str
     reference_id: str | None = None
+    document_oid: str | None = None
     cezih_sent_at: datetime | None = None
     cezih_storno: bool = False
     cezih_signed: bool = False
