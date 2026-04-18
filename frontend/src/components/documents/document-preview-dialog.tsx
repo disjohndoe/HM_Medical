@@ -88,21 +88,11 @@ export function DocumentPreviewDialog({
               />
             </div>
           ) : blobUrl && isPdf ? (
-            <object
-              data={blobUrl}
-              type="application/pdf"
-              className="w-full h-full"
-            >
-              <div className="flex flex-col items-center justify-center gap-2 p-8">
-                <p className="text-sm text-muted-foreground">
-                  Preglednik ne podržava prikaz PDF-a.
-                </p>
-                <Button variant="outline" size="sm" onClick={handleDownload}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Preuzmi PDF
-                </Button>
-              </div>
-            </object>
+            <iframe
+              src={blobUrl}
+              className="w-full h-full border-0"
+              title={document?.naziv ?? "PDF"}
+            />
           ) : (
             <p className="text-sm text-muted-foreground">
               Pregled nije dostupan za ovaj tip datoteke.

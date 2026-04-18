@@ -16,7 +16,7 @@
         X-Frame-Options DENY
         Referrer-Policy strict-origin-when-cross-origin
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://{$DOMAIN}; frame-ancestors 'none'"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://{$DOMAIN}; frame-src blob:; frame-ancestors 'none'"
         X-Permitted-Cross-Domain-Policies none
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
         -Server
