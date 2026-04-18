@@ -978,11 +978,12 @@ def build_condition_create(
     """
     local_id = local_case_id or str(uuid.uuid4())
 
-    # Convert date-only string to proper local datetime with timezone
+    # Convert date-only string to selected date + current time
     if onset_date and len(onset_date) == 10:  # Date-only "YYYY-MM-DD"
+        now = datetime.now(_TZ_ZAGREB)
         onset_dt = datetime.combine(
             date.fromisoformat(onset_date),
-            time.min,  # 00:00:00
+            now.time(),
         ).replace(tzinfo=_TZ_ZAGREB)
     else:
         onset_dt = onset_date
@@ -1047,9 +1048,10 @@ def build_condition_status_update(
 
     if abatement_date:
         if len(abatement_date) == 10:  # Date-only "YYYY-MM-DD"
+            now = datetime.now(_TZ_ZAGREB)
             abatement_dt = datetime.combine(
                 date.fromisoformat(abatement_date),
-                time.min,
+                now.time(),
             ).replace(tzinfo=_TZ_ZAGREB)
             condition["abatementDateTime"] = abatement_dt.isoformat()
         else:
@@ -1108,9 +1110,10 @@ def build_condition_data_update(
 
     if onset_date:
         if len(onset_date) == 10:  # Date-only "YYYY-MM-DD"
+            now = datetime.now(_TZ_ZAGREB)
             onset_dt = datetime.combine(
                 date.fromisoformat(onset_date),
-                time.min,
+                now.time(),
             ).replace(tzinfo=_TZ_ZAGREB)
             condition["onsetDateTime"] = onset_dt.isoformat()
         else:
@@ -1120,9 +1123,10 @@ def build_condition_data_update(
     # Since entered-in-error drops clinicalStatus (con-5), abatement must also be dropped.
     if abatement_date and not entered_in_error:
         if len(abatement_date) == 10:  # Date-only "YYYY-MM-DD"
+            now = datetime.now(_TZ_ZAGREB)
             abatement_dt = datetime.combine(
                 date.fromisoformat(abatement_date),
-                time.min,
+                now.time(),
             ).replace(tzinfo=_TZ_ZAGREB)
             condition["abatementDateTime"] = abatement_dt.isoformat()
         else:
