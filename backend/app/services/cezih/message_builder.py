@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -978,6 +978,15 @@ def build_condition_create(
     """
     local_id = local_case_id or str(uuid.uuid4())
 
+    # Convert date-only string to proper local datetime with timezone
+    if onset_date and len(onset_date) == 10:  # Date-only "YYYY-MM-DD"
+        onset_dt = datetime.combine(
+            date.fromisoformat(onset_date),
+            time.min,  # 00:00:00
+        ).replace(tzinfo=_TZ_ZAGREB)
+    else:
+        onset_dt = onset_date
+
     condition: dict[str, Any] = {
         "resourceType": "Condition",
         "identifier": [{"system": ID_CASE_LOCAL, "value": local_id}],
@@ -988,7 +997,7 @@ def build_condition_create(
             "coding": [{"system": CS_ICD10_HR, "code": icd_code, "display": icd_display}],
         },
         "subject": patient_ref(patient_mbo, identifier_system),
-        "onsetDateTime": onset_date,
+        "onsetDateTime": onset_dt,
         "asserter": practitioner_ref(practitioner_id),
     }
 
@@ -1037,7 +1046,14 @@ def build_condition_status_update(
         }
 
     if abatement_date:
-        condition["abatementDateTime"] = abatement_date
+        if len(abatement_date) == 10:  # Date-only "YYYY-MM-DD"
+            abatement_dt = datetime.combine(
+                date.fromisoformat(abatement_date),
+                time.min,
+            ).replace(tzinfo=_TZ_ZAGREB)
+            condition["abatementDateTime"] = abatement_dt
+        else:
+            condition["abatementDateTime"] = abatement_date
 
     return condition
 
@@ -1091,12 +1107,26 @@ def build_condition_data_update(
         }
 
     if onset_date:
-        condition["onsetDateTime"] = onset_date
+        if len(onset_date) == 10:  # Date-only "YYYY-MM-DD"
+            onset_dt = datetime.combine(
+                date.fromisoformat(onset_date),
+                time.min,
+            ).replace(tzinfo=_TZ_ZAGREB)
+            condition["onsetDateTime"] = onset_dt
+        else:
+            condition["onsetDateTime"] = onset_date
 
     # con-4: if abated, clinicalStatus must be inactive/resolved/remission.
     # Since entered-in-error drops clinicalStatus (con-5), abatement must also be dropped.
     if abatement_date and not entered_in_error:
-        condition["abatementDateTime"] = abatement_date
+        if len(abatement_date) == 10:  # Date-only "YYYY-MM-DD"
+            abatement_dt = datetime.combine(
+                date.fromisoformat(abatement_date),
+                time.min,
+            ).replace(tzinfo=_TZ_ZAGREB)
+            condition["abatementDateTime"] = abatement_dt
+        else:
+            condition["abatementDateTime"] = abatement_date
 
     if practitioner_id:
         condition["asserter"] = practitioner_ref(practitioner_id)

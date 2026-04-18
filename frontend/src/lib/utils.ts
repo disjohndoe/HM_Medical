@@ -24,6 +24,10 @@ export function toDateOnly(dateStr: string | undefined | null): string | null {
 
 export function formatDateTimeHR(date: string | null | undefined): string {
   if (!date) return "—"
+  // If date-only string (YYYY-MM-DD), format as date only to avoid UTC midnight interpretation
+  if (date.length === 10) {
+    return formatDateHR(date)
+  }
   return new Date(date).toLocaleString("hr-HR", {
     day: "2-digit",
     month: "2-digit",
