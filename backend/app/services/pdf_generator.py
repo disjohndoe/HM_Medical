@@ -605,6 +605,53 @@ class NalazPDFGenerator:
 
 
 # ---------------------------------------------------------------------------
+# CEZIH text-to-PDF converter (for ITI-68 retrieved plain-text documents)
+# ---------------------------------------------------------------------------
+
+def cezih_text_to_pdf(text: str) -> bytes:
+    """Convert plain-text CEZIH document content to a clean A4 PDF."""
+    _register_fonts()
+    styles = _build_styles()
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+        title="CEZIH e-Nalaz",
+    )
+
+    story: list = []
+
+    header_style = ParagraphStyle(
+        "cezih_header",
+        fontName="DejaVuSans-Bold",
+        fontSize=11,
+        leading=14,
+        alignment=TA_CENTER,
+        textColor=_COLOR_MUTED,
+        spaceAfter=4 * mm,
+    )
+    story.append(Paragraph("CEZIH e-Nalaz", header_style))
+    story.append(Spacer(1, 3 * mm))
+    story.append(Paragraph(_nl2br(text), styles["body"]))
+
+    def _page_number(canvas, doc):
+        _register_fonts()
+        canvas.saveState()
+        canvas.setFont("DejaVuSans", 8)
+        canvas.setFillColor(_COLOR_MUTED)
+        canvas.drawRightString(A4[0] - 15 * mm, 10 * mm, f"Stranica {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_page_number, onLaterPages=_page_number)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # Predračun (proforma invoice) PDF generator
 # ---------------------------------------------------------------------------
 _COLOR_DISCLAIMER_BG = colors.HexColor("#FEF3C7")

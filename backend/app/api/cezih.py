@@ -847,6 +847,10 @@ async def retrieve_document(
         db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
+    if not content.startswith(b"%PDF"):
+        from app.services.pdf_generator import cezih_text_to_pdf
+        text = content.decode("utf-8", errors="replace")
+        content = cezih_text_to_pdf(text)
     return Response(
         content=content,
         media_type="application/pdf",
