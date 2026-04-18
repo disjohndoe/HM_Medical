@@ -397,6 +397,18 @@ async def _add_signature_extsigner(
     """
     from app.services.cezih_signing import sign_bundle_via_extsigner
 
+    # ITI-65 transaction bundles are not signed via extsigner.
+    # Extsigner only accepts FHIR_MESSAGE documentType — it rejects transaction
+    # bundles with HPDF_GENERAL_ERROR/A250/INVALID_JSON_PAYLOAD. CEZIH ITI-65
+    # ingest does not cryptographically verify Bundle.signature either, so we
+    # return the bundle unsigned. Card path adds a local JWS signature; for
+    # mobile we simply skip signing entirely.
+    if bundle.get("type") == "transaction":
+        logger.info(
+            "ITI-65 transaction bundle detected — skipping extsigner (unsigned send)",
+        )
+        return bundle
+
     # Add signature placeholder (extsigner may need it in the structure)
     bundle["signature"] = {
         "type": [
