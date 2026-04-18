@@ -43,16 +43,20 @@ import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 
 const CLINICAL_STATUS_COLORS: Record<string, string> = {
   active: "bg-blue-100 text-blue-800",
-  remission: "bg-green-100 text-green-800",
+  recurrence: "bg-orange-100 text-orange-800",
   relapse: "bg-orange-100 text-orange-800",
+  remission: "bg-green-100 text-green-800",
   resolved: "bg-gray-100 text-gray-800",
+  inactive: "bg-gray-100 text-gray-600",
 }
 
 const CLINICAL_STATUS_LABELS: Record<string, string> = {
   active: "Aktivan",
-  remission: "Remisija",
+  recurrence: "Ponavljajući",
   relapse: "Relaps",
+  remission: "Remisija",
   resolved: "Zatvoren",
+  inactive: "Neaktivan",
 }
 
 const VISIT_STATUS_COLORS: Record<string, string> = {
@@ -135,7 +139,7 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
     if (!summary) return
     didAutoCheck.current = true
     insuranceMutation.mutate(patientId)
-  }, [hasCezihIdentifier, patientId, summary?.insurance?.last_checked])
+  }, [hasCezihIdentifier, patientId, insuranceMutation, summary?.insurance?.last_checked, summary])
 
   const handleCheckInsurance = () => {
     if (!hasCezihIdentifier) return
@@ -327,8 +331,8 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
             <div className="space-y-1.5">
               {filteredCases.map((c) => (
                 <div key={c.case_id} className="flex items-center gap-2 flex-wrap">
-                  <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100"}>
-                    {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status}
+                  <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100 text-gray-600"}>
+                    {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status || "Aktivan"}
                   </Badge>
                   <span className="font-mono text-sm">{c.icd_code}</span>
                   <span className="text-sm text-muted-foreground">{c.icd_display}</span>
