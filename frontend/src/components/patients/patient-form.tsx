@@ -48,8 +48,8 @@ const patientSchema = z.object({
     .nullable()
     .optional()
     .refine(
-      (v) => !v || /^[A-Za-z0-9]{5,15}$/.test(v),
-      "Broj putovnice mora imati 5-15 alfanumeričkih znakova",
+      (v) => !v || /^[A-Za-z0-9]{5,50}$/.test(v),
+      "Broj putovnice mora imati 5-50 alfanumeričkih znakova",
     ),
   ehic_broj: z
     .string()
@@ -267,8 +267,8 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
               <Label htmlFor="broj_putovnice">Broj putovnice</Label>
               <Input
                 id="broj_putovnice"
-                maxLength={15}
-                placeholder="5-15 alfanumeričkih znakova"
+                maxLength={50}
+                placeholder="5-50 alfanumeričkih znakova"
                 {...register("broj_putovnice")}
               />
               {errors.broj_putovnice && (

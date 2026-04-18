@@ -95,6 +95,7 @@ async def create_predracun(
     for i, row in enumerate(rows):
         pp = row[0]
         stavka = PredracunStavka(
+            tenant_id=tenant_id,
             predracun_id=predracun.id,
             performed_procedure_id=pp.id,
             sifra=row.sifra or "",
@@ -152,14 +153,21 @@ async def list_predracuni(
     )
     predracuni = result.scalars().all()
 
-    items = []
-    for p in predracuni:
-        stavke_result = await db.execute(
-            select(PredracunStavka)
-            .where(PredracunStavka.predracun_id == p.id)
-            .order_by(PredracunStavka.sort_order)
-        )
-        items.append(_to_dict(p, list(stavke_result.scalars().all())))
+    if not predracuni:
+        return [], total
+
+    # Single query for all stavke instead of N+1
+    predracun_ids = [p.id for p in predracuni]
+    stavke_result = await db.execute(
+        select(PredracunStavka)
+        .where(PredracunStavka.predracun_id.in_(predracun_ids))
+        .order_by(PredracunStavka.predracun_id, PredracunStavka.sort_order)
+    )
+    stavke_by_predracun: dict[uuid.UUID, list[PredracunStavka]] = {}
+    for s in stavke_result.scalars().all():
+        stavke_by_predracun.setdefault(s.predracun_id, []).append(s)
+
+    items = [_to_dict(p, stavke_by_predracun.get(p.id, [])) for p in predracuni]
 
     return items, total
 

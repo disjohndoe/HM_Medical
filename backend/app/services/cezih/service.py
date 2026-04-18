@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from datetime import UTC, datetime
 
 import httpx
 
 from app.constants import get_cezih_document_coding
 from app.services.cezih.client import CezihFhirClient
-from app.services.cezih.exceptions import CezihError
+from app.services.cezih.exceptions import CezihError, CezihFhirError
 from app.services.cezih.message_builder import (
     SIGNATURE_TYPE_CODE,
     SIGNATURE_TYPE_SYSTEM,
@@ -105,7 +106,7 @@ async def search_patient_by_identifier(
     client: httpx.AsyncClient,
     identifier_system: str,
     value: str,
-    tenant_id=None,
+    tenant_id: uuid.UUID,
 ) -> dict:
     """Search CEZIH patient registry by identifier (MBO, passport, or EHIC).
 
@@ -127,8 +128,20 @@ async def search_patient_by_identifier(
     params = {"identifier": f"{system_uri}|{value}"}
     response = await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
 
-    if response.get("resourceType") != "Bundle":
-        raise CezihError("Neočekivan format odgovora iz CEZIH-a")
+    resource_type = response.get("resourceType")
+    if resource_type == "OperationOutcome":
+        issues = response.get("issue", [])
+        diagnostics = "; ".join(
+            issue.get("diagnostics") or issue.get("details", {}).get("text", "")
+            for issue in issues
+        )
+        raise CezihFhirError(
+            f"CEZIH greška: {diagnostics or 'Nepoznata greška'}",
+            status_code=0,
+            operation_outcome=response,
+        )
+    if resource_type != "Bundle":
+        raise CezihError(f"Neočekivan format odgovora iz CEZIH-a (resourceType={resource_type})")
 
     entries = response.get("entry", [])
     if not entries:
@@ -1094,7 +1107,7 @@ async def register_foreigner(
     }
     if patient_data.get("datum_rodjenja"):
         patient_resource["birthDate"] = patient_data["datum_rodjenja"]
-    _gender_map = {"M": "male", "Z": "male", "Ž": "female", "F": "female", "male": "male", "female": "female", "unknown": "unknown"}
+    _gender_map = {"M": "male", "Z": "female", "Ž": "female", "F": "female", "male": "male", "female": "female", "unknown": "unknown"}
     raw_spol = patient_data.get("spol") or ""
     fhir_gender = _gender_map.get(raw_spol)
     if fhir_gender:

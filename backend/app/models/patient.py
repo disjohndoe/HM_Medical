@@ -27,7 +27,7 @@ class Patient(BaseTenantModel):
     oib: Mapped[str | None] = mapped_column(String(11), nullable=True)
     mbo: Mapped[str | None] = mapped_column(String(9), nullable=True)
     # Foreign patient identifiers (populated by PMIR registration for non-insured)
-    broj_putovnice: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    broj_putovnice: Mapped[str | None] = mapped_column(String(50), nullable=True)
     ehic_broj: Mapped[str | None] = mapped_column(String(20), nullable=True)
     cezih_patient_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     drzavljanstvo: Mapped[str | None] = mapped_column(String(3), nullable=True)

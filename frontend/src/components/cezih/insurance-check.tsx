@@ -49,10 +49,10 @@ const ID_CONFIG: Record<IdType, {
   },
   putovnica: {
     label: "Putovnica",
-    placeholder: "Broj putovnice (5-15 znakova)",
-    validate: (v) => /^[A-Za-z0-9]{5,15}$/.test(v),
-    errorMsg: "Broj putovnice mora imati 5-15 alfanumeričkih znakova",
-    sanitize: (v) => v.replace(/[^A-Za-z0-9]/g, "").slice(0, 15),
+    placeholder: "Broj putovnice (5-50 znakova)",
+    validate: (v) => /^[A-Za-z0-9]{5,50}$/.test(v),
+    errorMsg: "Broj putovnice mora imati 5-50 alfanumeričkih znakova",
+    sanitize: (v) => v.replace(/[^A-Za-z0-9]/g, "").slice(0, 50),
   },
 }
 

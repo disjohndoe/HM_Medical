@@ -24,7 +24,7 @@ import {
 } from "@/lib/hooks/use-cezih"
 
 const EHIC_REGEX = /^[0-9A-Za-z]{20}$/
-const PASSPORT_REGEX = /^[A-Za-z0-9]{5,15}$/
+const PASSPORT_REGEX = /^[A-Za-z0-9]{5,50}$/
 const COUNTRY_REGEX = /^[A-Za-z]{2,3}$/
 
 const SPOL_LABELS: Record<string, string> = { M: "Muški", Ž: "Ženski", Ostalo: "Ostalo", Nepoznato: "Nepoznato" }
@@ -107,7 +107,7 @@ export function ForeignerSearch() {
                 value={value}
                 onChange={(e) => setValue(e.target.value.toUpperCase())}
                 placeholder={system === "putovnica" ? "AB1234567" : "20 znakova, npr. HR123..."}
-                maxLength={system === "ehic" ? 20 : 15}
+                maxLength={system === "ehic" ? 20 : 50}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               />
               <Button onClick={handleSearch} disabled={search.isFetching || value.length < 5}>
@@ -239,7 +239,7 @@ function validate(form: {
   if (!form.broj_putovnice && !form.ehic_broj)
     return "Potreban je broj putovnice ili EHIC broj"
   if (form.broj_putovnice && !PASSPORT_REGEX.test(form.broj_putovnice))
-    return "Broj putovnice: 5-15 alfanumeričkih znakova"
+    return "Broj putovnice: 5-50 alfanumeričkih znakova"
   if (form.ehic_broj && !EHIC_REGEX.test(form.ehic_broj))
     return "EHIC broj mora imati točno 20 alfanumeričkih znakova (0-9, A-Z)"
   if (form.drzavljanstvo && !COUNTRY_REGEX.test(form.drzavljanstvo))
@@ -346,7 +346,7 @@ export function ForeignerRegistration() {
               value={form.broj_putovnice}
               onChange={(e) => update("broj_putovnice", e.target.value.toUpperCase())}
               placeholder="AB1234567"
-              maxLength={15}
+              maxLength={50}
             />
           </div>
         </div>

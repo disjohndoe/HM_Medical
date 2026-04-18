@@ -34,7 +34,7 @@ class Predracun(BaseTenantModel):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
 
-class PredracunStavka(Base):
+class PredracunStavka(BaseTenantModel):
     __tablename__ = "predracun_stavke"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -124,7 +124,6 @@ async def create_prescription(
     query = _join_query(base)
     result = await db.execute(query)
     row = result.one()
-    await db.commit()
     return _row_to_dict(row)
 
 
@@ -231,7 +230,7 @@ async def delete_prescription(
             detail="Poslan recept se ne može obrisati — koristite storno",
         )
     await db.delete(prescription)
-    await db.commit()
+    await db.flush()
 
 
 async def upsert_draft_from_record(
@@ -356,7 +355,7 @@ async def send_to_cezih(
     prescription.cezih_sent = True
     prescription.cezih_sent_at = datetime.now(UTC)
     prescription.cezih_recept_id = cezih_result.get("recept_id", "")
-    await db.commit()
+    await db.flush()
 
     return {
         "prescription_id": prescription.id,
@@ -399,7 +398,7 @@ async def storno_prescription(
 
     prescription.cezih_storno = True
     prescription.cezih_storno_at = datetime.now(UTC)
-    await db.commit()
+    await db.flush()
 
     return {
         "prescription_id": prescription.id,

@@ -6,7 +6,7 @@ from pydantic import BaseModel, field_validator
 
 from app.utils.croatian import validate_mbo, validate_oib
 
-_PUTOVNICA_RE = re.compile(r"^[A-Za-z0-9]{5,15}$")
+_PUTOVNICA_RE = re.compile(r"^[A-Za-z0-9]{5,50}$")
 _EHIC_RE = re.compile(r"^[0-9A-Za-z]{20}$")
 _DRZAVLJANSTVO_RE = re.compile(r"^[A-Za-z]{2,3}$")
 
@@ -111,7 +111,7 @@ class PatientUpdate(BaseModel):
     @classmethod
     def validate_putovnica(cls, v: str | None) -> str | None:
         if v is not None and v != "" and not _PUTOVNICA_RE.match(v):
-            raise ValueError("Broj putovnice mora imati 5-15 alfanumeričkih znakova")
+            raise ValueError("Broj putovnice mora imati 5-50 alfanumeričkih znakova")
         return v
 
     @field_validator("ehic_broj")

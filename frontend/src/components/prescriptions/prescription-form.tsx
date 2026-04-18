@@ -97,7 +97,7 @@ export function PrescriptionForm({ open, onOpenChange, patientId, prescription }
   }, [open, prescription])
 
   const handleAddDrug = (drug: LijekItem) => {
-    if (selected.some((s) => s.atk === drug.atk && s.naziv === drug.naziv)) {
+    if (selected.some((s) => s.atk === drug.atk && s.naziv === drug.naziv && s.oblik === drug.oblik && s.jacina === drug.jacina)) {
       toast.info("Lijek je već dodan")
       return
     }
@@ -256,7 +256,7 @@ export function PrescriptionForm({ open, onOpenChange, patientId, prescription }
                   <CommandGroup>
                     {drugs?.map((drug) => (
                       <CommandItem
-                        key={`${drug.atk}-${drug.naziv}`}
+                        key={`${drug.atk}-${drug.naziv}-${drug.oblik}-${drug.jacina}`}
                         value={drug.naziv}
                         onSelect={() => handleAddDrug(drug)}
                       >

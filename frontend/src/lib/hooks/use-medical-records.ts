@@ -60,6 +60,8 @@ export function useCreateMedicalRecord() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["medical-records"] })
       queryClient.invalidateQueries({ queryKey: ["prescriptions"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "documents"], exact: false })
     },
   })
 }
@@ -75,6 +77,8 @@ export function useUpdateMedicalRecord() {
         queryKey: ["medical-records", variables.id],
       })
       queryClient.invalidateQueries({ queryKey: ["prescriptions"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "documents"], exact: false })
     },
   })
 }
