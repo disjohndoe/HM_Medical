@@ -144,7 +144,7 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
         a.click()
         URL.revokeObjectURL(url)
       },
-      onError: () => toast.error("Greška pri preuzimanju dokumenta"),
+      onError: (err: Error) => toast.error(err.message || "Greška pri preuzimanju dokumenta"),
     })
   }
 

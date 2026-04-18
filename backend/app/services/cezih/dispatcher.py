@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import CEZIH_ELIGIBLE_TYPES
 from app.services.cezih import service as real_service
-from app.services.cezih.exceptions import CezihError, CezihSigningError
+from app.services.cezih.exceptions import CezihError, CezihFhirError, CezihSigningError
 from app.services.cezih.message_builder import _now_iso
 
 logger = logging.getLogger(__name__)
@@ -1857,6 +1857,14 @@ async def dispatch_retrieve_document(
     _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.retrieve_document(http_client, document_url or reference_id)
+    except CezihFhirError as e:
+        if e.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dokument nije pronađen na CEZIH-u.",
+            ) from e
+        http_code = e.status_code if 400 <= e.status_code < 600 else 502
+        raise HTTPException(status_code=http_code, detail=e.message) from e
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
     await _write_audit(
