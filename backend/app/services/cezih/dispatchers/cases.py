@@ -430,15 +430,17 @@ async def dispatch_update_case_data(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
 
     await _write_audit(
-        db, tenant_id, user_id, action="case_data_update",
-        details={"case_id": case_id, "patient_id": str(patient_id)},
+        db, tenant_id, user_id, action="case_update_data",
+        details={"case_id": case_id},
     )
 
     await _update_local_case(
         db, tenant_id, case_id,
+        clinical_status=current_clinical_status,
         verification_status=verification_status,
         icd_code=icd_code, icd_display=icd_display,
-        onset_date=onset_date, abatement_date=abatement_date, note=note_text,
+        onset_date=onset_date, abatement_date=abatement_date,
+        note=note_text,
     )
     return result
 

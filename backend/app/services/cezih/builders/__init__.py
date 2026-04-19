@@ -7,6 +7,6 @@ Organised by resource domain:
   - condition: Condition resource + case action/profile maps
 """
 from app.services.cezih.builders.bundles import *  # noqa: F401,F403
-from app.services.cezih.builders.common import *   # noqa: F401,F403
+from app.services.cezih.builders.common import *  # noqa: F401,F403
 from app.services.cezih.builders.condition import *  # noqa: F401,F403
 from app.services.cezih.builders.encounter import *  # noqa: F401,F403

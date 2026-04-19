@@ -7,7 +7,6 @@ import logging
 import re
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx

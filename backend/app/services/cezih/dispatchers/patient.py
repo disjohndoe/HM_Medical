@@ -11,8 +11,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.cezih import service as real_service
-from app.services.cezih.exceptions import CezihError
 from app.services.cezih.dispatchers.common import _require_audit_params, _write_audit
+from app.services.cezih.exceptions import CezihError
 
 logger = logging.getLogger(__name__)
 

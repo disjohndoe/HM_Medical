@@ -94,6 +94,7 @@ class CezihFhirClient:
         db = current_db_session.get()
         if user_id and db:
             from sqlalchemy import select
+
             from app.models.user import User
             try:
                 method = await db.scalar(

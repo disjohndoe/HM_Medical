@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from app.services.cezih.builders.common import _now_iso, org_ref, patient_ref, practitioner_ref
+from app.services.cezih.builders.common import _now_iso, practitioner_ref
 from app.services.cezih.exceptions import CezihError
 
 logger = logging.getLogger(__name__)
@@ -187,7 +187,7 @@ async def _add_signature_extsigner(
             },
         ],
         "when": _now_iso(),
-        "who": patient_ref(practitioner_id),
+        "who": practitioner_ref(practitioner_id),
         "data": "",
     }
 
@@ -300,7 +300,7 @@ async def _add_signature_smartcard(
             },
         ],
         "when": _now_iso(),
-        "who": patient_ref(practitioner_id),
+        "who": practitioner_ref(practitioner_id),
         "data": "",
     }
     bundle["signature"] = sig_elem

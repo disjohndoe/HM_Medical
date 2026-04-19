@@ -9,7 +9,6 @@ from app.services.cezih.exceptions import CezihError
 from app.services.cezih.message_builder import (
     _now_iso,
     add_signature,
-    build_message_bundle,
     org_ref,
     practitioner_ref,
 )

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import CEZIH_ELIGIBLE_TYPES
 from app.services.cezih import service as real_service
+from app.services.cezih.builders.common import _now_iso
 from app.services.cezih.dispatchers.common import _require_audit_params, _write_audit
 from app.services.cezih.exceptions import CezihError, CezihFhirError, CezihSigningError
 
@@ -44,12 +45,6 @@ async def _get_medical_record_by_id(db: AsyncSession | None, tenant_id: UUID | N
         )
     )
     return result.scalar_one_or_none()
-
-
-def _now_iso() -> str:
-    """Return current UTC datetime in ISO format."""
-    from app.services.cezih.message_builder import _now_iso as _real_now_iso
-    return _real_now_iso()
 
 
 async def send_enalaz(

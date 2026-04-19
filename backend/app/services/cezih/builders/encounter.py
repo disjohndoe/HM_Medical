@@ -5,19 +5,15 @@ Contains encounter builders and VISIT_ACTION_MAP for visit lifecycle operations.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from app.services.cezih.builders.common import (
-    CS_ICD10_HR,
     CS_SIFRA_OSLOBODJENJA,
     CS_SUDJELOVANJE_U_TROSKOVIMA,
-    EXT_TROSKOVI_SUDJELovanje,
     ID_CASE_REF,
     ID_ENCOUNTER,
     ID_MBO,
-    _TZ_ZAGREB,
+    EXT_TROSKOVI_SUDJELovanje,
     _now_iso,
     org_ref,
     patient_ref,

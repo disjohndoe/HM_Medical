@@ -8,9 +8,9 @@ import logging
 import uuid
 from datetime import date, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from app.services.cezih.builders.common import (
+    _TZ_ZAGREB,
     CS_ANNOTATION_TYPE,
     CS_CONDITION_CLINICAL,
     CS_CONDITION_VER_STATUS,
@@ -19,8 +19,6 @@ from app.services.cezih.builders.common import (
     ID_CASE_GLOBAL,
     ID_CASE_LOCAL,
     ID_MBO,
-    _TZ_ZAGREB,
-    _now_iso,
     patient_ref,
     practitioner_ref,
 )

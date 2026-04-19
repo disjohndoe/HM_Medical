@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Any
 
 from app.services.cezih.builders.common import (
     MESSAGE_TYPE_SYSTEM,
@@ -33,7 +34,6 @@ async def build_message_bundle(
     Does NOT add signature — call add_signature() separately for real mode.
     profile_urls: optional {"bundle": url, "header": url, "resource": url} for meta.profile.
     """
-    from typing import Any
 
     if not sender_org_code:
         raise CezihError(
@@ -110,7 +110,6 @@ def build_iti65_transaction_bundle(
     Each entry must have a `request` with method and url.
     Optionally includes a SubmissionSet (List) as the first entry.
     """
-    from typing import Any
 
     # Build SubmissionSet (List) — required by IHE MHD ITI-65
     # HRMinimalSubmissionSet requires 2 identifiers: uniqueId + entryUUID
