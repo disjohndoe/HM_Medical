@@ -134,26 +134,30 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
       toast.error("Odaberite MKB/ICD-10 šifru")
       return
     }
-    createCase.mutate(
-      {
-        patient_id: patientId,
-        icd_code: selectedIcd.code,
-        icd_display: selectedIcd.display,
-        onset_date: onsetDate,
-        verification_status: verification,
-        note: note || undefined,
+    // Close dialog and reset form BEFORE firing the mutation. The optimistic
+    // row in onMutate keeps the user informed; the dialog's exit animation
+    // finishes well before the CEZIH signing round-trip resolves and swaps
+    // the row key from tempId→realId. Decoupling prevents a Base UI
+    // floating-ui race that left the new row's Akcija Select inert until
+    // the next navigation.
+    const payload = {
+      patient_id: patientId,
+      icd_code: selectedIcd.code,
+      icd_display: selectedIcd.display,
+      onset_date: onsetDate,
+      verification_status: verification,
+      note: note || undefined,
+    }
+    setCreateOpen(false)
+    setSelectedIcd(null)
+    setIcdQuery("")
+    setVerification("confirmed")
+    setNote("")
+    createCase.mutate(payload, {
+      onSuccess: (data) => {
+        toast.success(`Slučaj kreiran: ${data.cezih_case_id || data.local_case_id}`)
       },
-      {
-        onSuccess: (data) => {
-          toast.success(`Slučaj kreiran: ${data.cezih_case_id || data.local_case_id}`)
-          setCreateOpen(false)
-          setSelectedIcd(null)
-          setIcdQuery("")
-          setVerification("confirmed")
-          setNote("")
-        },
-      }
-    )
+    })
   }
 
   const handleAction = (caseId: string, action: string) => {

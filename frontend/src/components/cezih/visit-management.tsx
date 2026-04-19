@@ -158,30 +158,34 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   })
 
   const handleCreate = () => {
-    createVisit.mutate(
-      {
-        patient_id: patientId,
-        nacin_prijema: nacinPrijema,
-        tip_posjete: tipPosjete,
-        reason: reason || undefined,
+    // Close dialog and reset form BEFORE firing the mutation. The optimistic
+    // row handles UI feedback; closing up-front prevents a Base UI
+    // floating-ui race where the row's key swap (tempId→realId) happens
+    // mid-dialog-exit and leaves the Akcija Select inert.
+    const payload = {
+      patient_id: patientId,
+      nacin_prijema: nacinPrijema,
+      tip_posjete: tipPosjete,
+      reason: reason || undefined,
+    }
+    const capturedNacin = nacinPrijema
+    const capturedTip = tipPosjete
+    setShowCreate(false)
+    setReason("")
+    createVisit.mutate(payload, {
+      onSuccess: (res) => {
+        toast.success(`Posjeta kreirana: ${res.visit_id}`)
+        if (res.visit_id) {
+          setVisitMeta((prev) => ({
+            ...prev,
+            [res.visit_id]: {
+              nacin_prijema: res.nacin_prijema || capturedNacin,
+              tip_posjete: res.tip_posjete || capturedTip,
+            },
+          }))
+        }
       },
-      {
-        onSuccess: (res) => {
-          toast.success(`Posjeta kreirana: ${res.visit_id}`)
-          if (res.visit_id) {
-            setVisitMeta((prev) => ({
-              ...prev,
-              [res.visit_id]: {
-                nacin_prijema: res.nacin_prijema || nacinPrijema,
-                tip_posjete: res.tip_posjete || tipPosjete,
-              },
-            }))
-          }
-          setShowCreate(false)
-          setReason("")
-        },
-      },
-    )
+    })
   }
 
   const handleAction = (visitId: string, action: string) => {
@@ -286,7 +290,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
               Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
             </li>
             <li>
-              Izmjena podataka (olovka) dostupna samo za posjete u tijeku ili planirane.
+              Izmjena podataka dostupna samo za posjete u tijeku.
             </li>
           </ul>
         </div>
