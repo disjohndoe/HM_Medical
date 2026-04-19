@@ -37,4 +37,5 @@ class CezihCase(BaseTenantModel):
         String(30), nullable=False, default="unconfirmed",
     )
     onset_date: Mapped[str] = mapped_column(String(20), nullable=False)
+    abatement_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

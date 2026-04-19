@@ -1096,7 +1096,7 @@ async def _fetch_fresh_local_cases_by_patient(
                 "clinical_status": row.clinical_status or "",
                 "verification_status": row.verification_status,
                 "onset_date": row.onset_date,
-                "abatement_date": None,
+                "abatement_date": row.abatement_date,
                 "note": row.note,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
             }
@@ -1280,6 +1280,8 @@ async def _update_local_case(
     icd_code: str | None = None,
     icd_display: str | None = None,
     onset_date: str | None = None,
+    abatement_date: str | None = None,
+    clear_abatement: bool = False,
     note: str | None = None,
 ) -> None:
     """Patch the local CezihCase mirror if it exists. Non-fatal on failure."""
@@ -1312,6 +1314,10 @@ async def _update_local_case(
             row.icd_display = icd_display
         if onset_date is not None:
             row.onset_date = onset_date
+        if clear_abatement:
+            row.abatement_date = None
+        elif abatement_date is not None:
+            row.abatement_date = abatement_date
         if note is not None:
             row.note = note
         await db.flush()
@@ -1560,7 +1566,13 @@ async def dispatch_update_case(
         new_status = _CASE_ACTION_TO_STATUS.get(action)
         if new_status:
             await _update_local_case(
-                db, tenant_id, case_id, clinical_status=new_status,
+                db, tenant_id, case_id,
+                clinical_status=new_status,
+                abatement_date=(
+                    datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                    if action == "resolve" else None
+                ),
+                clear_abatement=(action == "reopen"),
             )
     return result
 
@@ -1617,7 +1629,8 @@ async def dispatch_update_case_data(
         clinical_status=current_clinical_status,
         verification_status=verification_status,
         icd_code=icd_code, icd_display=icd_display,
-        onset_date=onset_date, note=note_text,
+        onset_date=onset_date, abatement_date=abatement_date,
+        note=note_text,
     )
     return result
 
