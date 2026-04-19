@@ -23,6 +23,27 @@ _CARD_CONFLICT_DETAIL = (
 )
 
 
+_USERS_CONSTRAINT_MESSAGES = {
+    "ux_users_tenant_mbo_lijecnika": "MBO liječnika je već dodijeljen drugom korisniku u ovoj klinici.",
+    "ux_users_tenant_practitioner_id": "HZJZ broj je već dodijeljen drugom korisniku u ovoj klinici.",
+    "users_email_key": "Korisnik s tom email adresom već postoji.",
+    "ck_user_role_can_hold_doctor_ids": (
+        "HZJZ broj i MBO mogu se dodijeliti samo doktorima, adminima i medicinskim sestrama."
+    ),
+}
+
+
+def _translate_integrity_error(err: IntegrityError) -> HTTPException:
+    constraint = getattr(getattr(err.orig, "diag", None), "constraint_name", None)
+    detail = _USERS_CONSTRAINT_MESSAGES.get(constraint or "")
+    if detail:
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Zapis krši ograničenje baze. Provjerite unos i pokušajte ponovno.",
+    )
+
+
 async def _assert_card_unique(
     db: AsyncSession,
     *,
@@ -134,10 +155,16 @@ async def create_user(
         titula=data.titula,
         telefon=data.telefon,
         role=data.role,
+        practitioner_id=data.practitioner_id,
+        mbo_lijecnika=data.mbo_lijecnika,
         cezih_signing_method=data.cezih_signing_method,
     )
     db.add(user)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        raise _translate_integrity_error(e) from e
     return user
 
 
@@ -210,7 +237,11 @@ async def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        raise _translate_integrity_error(e) from e
     return user
 
 

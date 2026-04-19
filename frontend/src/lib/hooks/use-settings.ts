@@ -60,6 +60,24 @@ export function useCreatePairingToken() {
   })
 }
 
+interface GenerateOidResponse {
+  oid: string
+}
+
+export function useGenerateOid() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.post<GenerateOidResponse>("/settings/generate-oid", {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings", "clinic"] })
+      queryClient.invalidateQueries({ queryKey: ["settings", "cezih-status"] })
+      toast.success("OID uspješno generiran")
+    },
+    onError: (err: Error) => { toast.error(err.message) },
+  })
+}
+
 export function usePlanUsage() {
   return useQuery({
     queryKey: ["plan", "usage"],

@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/select"
 import {
   CEZIH_SIGNING_METHOD_OPTIONS,
+  DOCTOR_ID_RULES,
+  ROLES_CAN_HOLD_DOCTOR_IDS,
   USER_ROLE_OPTIONS,
 } from "@/lib/constants"
 import { useAutoBindCard, useUnbindCard, useCardStatus } from "@/lib/hooks/use-users"
@@ -61,7 +63,14 @@ const userSchema = z.object({
   titula: z.string().nullable().optional(),
   telefon: z.string().nullable().optional(),
   role: z.string().min(1, "Uloga je obavezna"),
-  practitioner_id: z.string().nullable().optional(),
+  practitioner_id: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z.string().regex(DOCTOR_ID_RULES.hzjz.pattern, DOCTOR_ID_RULES.hzjz.message).nullable().optional()
+  ),
+  mbo_lijecnika: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z.string().regex(DOCTOR_ID_RULES.mbo.pattern, DOCTOR_ID_RULES.mbo.message).nullable().optional()
+  ),
   cezih_signing_method: z.enum(["smartcard", "extsigner"]),
 })
 
@@ -112,6 +121,7 @@ export function UserFormDialog({
     telefon: user?.telefon ?? null,
     role: user?.role ?? "doctor",
     practitioner_id: user?.practitioner_id ?? null,
+    mbo_lijecnika: user?.mbo_lijecnika ?? null,
     cezih_signing_method: user?.cezih_signing_method ?? "extsigner",
   }), [user])
 
@@ -120,15 +130,29 @@ export function UserFormDialog({
     handleSubmit,
     reset,
     control,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<UserFormData>({
     resolver: standardSchemaResolver(userSchema),
     defaultValues: defaultFormValues,
   })
 
+  const selectedRole = watch("role")
+  const canHoldDoctorIds = (ROLES_CAN_HOLD_DOCTOR_IDS as readonly string[]).includes(
+    selectedRole
+  )
+
   useEffect(() => {
     reset(defaultFormValues)
   }, [user, defaultFormValues, reset])
+
+  useEffect(() => {
+    if (!canHoldDoctorIds) {
+      setValue("mbo_lijecnika", null)
+      setValue("practitioner_id", null)
+    }
+  }, [canHoldDoctorIds, setValue])
 
   const handleFormSubmit = (data: UserFormData) => {
     const payload = { ...data }
@@ -177,10 +201,37 @@ export function UserFormDialog({
             <Input id="titula" placeholder="dr. med., spec. ..." {...register("titula")} />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="practitioner_id">HZJZ broj</Label>
-            <Input id="practitioner_id" placeholder="Broj zdravstvenog djelatnika" {...register("practitioner_id")} />
-          </div>
+          {canHoldDoctorIds && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="practitioner_id">HZJZ broj</Label>
+                <Input
+                  id="practitioner_id"
+                  placeholder={DOCTOR_ID_RULES.hzjz.placeholder}
+                  maxLength={DOCTOR_ID_RULES.hzjz.length}
+                  {...register("practitioner_id")}
+                />
+                <p className="text-xs text-muted-foreground">{DOCTOR_ID_RULES.hzjz.hint}</p>
+                {errors.practitioner_id && (
+                  <p className="text-xs text-destructive">{errors.practitioner_id.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="mbo_lijecnika">MBO liječnika</Label>
+                <Input
+                  id="mbo_lijecnika"
+                  placeholder={DOCTOR_ID_RULES.mbo.placeholder}
+                  maxLength={DOCTOR_ID_RULES.mbo.length}
+                  {...register("mbo_lijecnika")}
+                />
+                <p className="text-xs text-muted-foreground">{DOCTOR_ID_RULES.mbo.hint}</p>
+                {errors.mbo_lijecnika && (
+                  <p className="text-xs text-destructive">{errors.mbo_lijecnika.message}</p>
+                )}
+              </div>
+            </>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>

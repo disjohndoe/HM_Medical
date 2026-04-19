@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { z } from "zod"
-import { Save, Loader2 } from "lucide-react"
+import { Save, Loader2, KeyRound } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -21,7 +21,8 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
-import { useClinicSettings, useUpdateClinicSettings, usePlanUsage } from "@/lib/hooks/use-settings"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import { useClinicSettings, useUpdateClinicSettings, usePlanUsage, useGenerateOid } from "@/lib/hooks/use-settings"
 import { TENANT_VRSTA_OPTIONS, PLAN_TIER, CEZIH_STATUS, CEZIH_STATUS_COLORS } from "@/lib/constants"
 
 const nullableString = z
@@ -47,7 +48,6 @@ const clinicSchema = z.object({
   zupanija: nullableString,
   web: nullableString,
   sifra_ustanove: nullableString,
-  oid: nullableString,
   has_hzzo_contract: z.boolean().optional(),
 })
 
@@ -65,6 +65,8 @@ function formatTrialRemaining(days: number): string {
 export default function KlinikaSettingsPage() {
   const { data: clinic, isLoading } = useClinicSettings()
   const updateClinic = useUpdateClinicSettings()
+  const generateOid = useGenerateOid()
+  const [showOidConfirm, setShowOidConfirm] = useState(false)
   const { data: usage } = usePlanUsage()
 
   const {
@@ -91,7 +93,6 @@ export default function KlinikaSettingsPage() {
         zupanija: clinic.zupanija ?? null,
         web: clinic.web ?? null,
         sifra_ustanove: clinic.sifra_ustanove ?? null,
-        oid: clinic.oid ?? null,
         has_hzzo_contract: clinic.has_hzzo_contract ?? false,
       })
     }
@@ -241,14 +242,42 @@ export default function KlinikaSettingsPage() {
                   placeholder="npr. 12345"
                   {...register("sifra_ustanove")}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Dobijete od HZZO-a pri registraciji zdravstvene ustanove
+                </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="oid">OID</Label>
-                <Input
-                  id="oid"
-                  placeholder="npr. 1.2.3.4.5"
-                  {...register("oid")}
-                />
+                <Label>OID informacijskog sustava</Label>
+                {clinic?.oid ? (
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm select-all bg-muted px-3 py-2 rounded-md">
+                      {clinic.oid}
+                    </span>
+                    <span className="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20 ring-inset">
+                      Automatski generirano
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      OID nije generiran. Potreban je za slanje dokumenata u CEZIH.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowOidConfirm(true)}
+                      disabled={generateOid.isPending}
+                    >
+                      {generateOid.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <KeyRound className="mr-2 h-4 w-4" />
+                      )}
+                      Generiraj OID
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -346,6 +375,19 @@ export default function KlinikaSettingsPage() {
           </CardContent>
         </Card>
       </form>
+
+      <ConfirmDialog
+        open={showOidConfirm}
+        onOpenChange={setShowOidConfirm}
+        title="Generiranje OID-a"
+        description="Ovo šalje zahtjev u CEZIH i ne može se poništiti. OID se nakon generiranja neće moći promijeniti."
+        confirmLabel="Generiraj OID"
+        onConfirm={() => {
+          setShowOidConfirm(false)
+          generateOid.mutate()
+        }}
+        loading={generateOid.isPending}
+      />
     </div>
   )
 }

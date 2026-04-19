@@ -158,6 +158,32 @@ export const USER_ROLE_OPTIONS = Object.entries(USER_ROLE).map(
   ([value, label]) => ({ value, label })
 );
 
+// --- Doctor identifiers (HZJZ / MBO) ---
+// Single source of truth for the format rules enforced on backend (Pydantic)
+// and DB (partial unique indexes + role CHECK). Keep in sync with
+// backend/app/schemas/user.py and alembic/versions/040_doctor_identifiers.py.
+
+export const DOCTOR_ID_RULES = {
+  hzjz: {
+    pattern: /^\d{7}$/,
+    length: 7,
+    message: "HZJZ broj mora imati točno 7 znamenki",
+    placeholder: "7 znamenki",
+    hint: "Broj zdravstvenog djelatnika iz HZJZ registra (7 znamenki)",
+  },
+  mbo: {
+    pattern: /^\d{9}$/,
+    length: 9,
+    message: "MBO liječnika mora imati točno 9 znamenki",
+    placeholder: "9 znamenki",
+    hint: "Matični broj osiguranika liječnika (9 znamenki)",
+  },
+} as const;
+
+// Roles allowed to hold HZJZ/MBO. Must match the ck_user_role_can_hold_doctor_ids
+// CHECK constraint in the DB.
+export const ROLES_CAN_HOLD_DOCTOR_IDS = ["doctor", "admin", "nurse"] as const;
+
 // --- CEZIH signing method (per-user preference) ---
 
 export const CEZIH_SIGNING_METHOD: Record<string, string> = {

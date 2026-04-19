@@ -68,6 +68,8 @@ export default function KorisniciPage() {
       role: data.role,
       titula: data.titula ?? undefined,
       telefon: data.telefon ?? undefined,
+      practitioner_id: data.practitioner_id ?? undefined,
+      mbo_lijecnika: data.mbo_lijecnika ?? undefined,
       cezih_signing_method: data.cezih_signing_method,
     }
     createUser.mutate(createData, {

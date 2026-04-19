@@ -36,6 +36,7 @@ export interface User {
   card_holder_name: string | null;
   card_certificate_oib: string | null;
   practitioner_id: string | null;
+  mbo_lijecnika: string | null;
   cezih_signing_method: CezihSigningMethod;
   card_certificate_serial: string | null;
   card_required: boolean;
@@ -73,6 +74,7 @@ export interface UserCreate {
   telefon?: string;
   role: string;
   practitioner_id?: string | null;
+  mbo_lijecnika?: string | null;
   cezih_signing_method?: CezihSigningMethod;
 }
 

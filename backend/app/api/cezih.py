@@ -88,7 +88,7 @@ async def _get_tenant_cezih_config(
     if not tenant.oid:
         raise HTTPException(
             status_code=422,
-            detail="OID informacijskog sustava nije konfiguriran. Postavite ga u Postavke > Organizacija.",
+            detail="OID informacijskog sustava nije generiran. Kliknite 'Generiraj OID' u Postavke > Klinika.",
         )
     return tenant.sifra_ustanove, tenant.oid
 

@@ -39,5 +39,4 @@ class TenantUpdate(BaseModel):
     zupanija: str | None = None
     web: str | None = None
     sifra_ustanove: str | None = None
-    oid: str | None = None
     has_hzzo_contract: bool | None = None

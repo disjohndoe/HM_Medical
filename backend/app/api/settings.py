@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import limiter
@@ -16,6 +17,7 @@ from app.models.user import User
 from app.schemas.tenant import TenantRead, TenantUpdate
 from app.services.agent_connection_manager import agent_manager
 from app.services.card_verification import get_card_status
+from app.services.cezih import dispatcher as cezih_dispatcher
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -75,6 +77,49 @@ async def get_cezih_status(
         agents_count=len(all_conns),
         last_heartbeat=latest_heartbeat,
     )
+
+
+class GenerateOidResponse(BaseModel):
+    oid: str
+
+
+@router.post("/generate-oid", response_model=GenerateOidResponse)
+async def generate_oid(
+    request: Request,
+    current_user: User = Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Tenant).where(Tenant.id == current_user.tenant_id).with_for_update()
+    )
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Klinika nije pronađena")
+    if tenant.oid:
+        raise HTTPException(
+            status_code=409,
+            detail="OID je već generiran. Kontaktirajte podršku ako ga trebate promijeniti.",
+        )
+    if not tenant.sifra_ustanove:
+        raise HTTPException(
+            status_code=422,
+            detail="Šifra ustanove mora biti postavljena prije generiranja OID-a. Unesite je u polje iznad.",
+        )
+
+    oid_result = await cezih_dispatcher.oid_generate(
+        quantity=1,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        http_client=request.app.state.http_client,
+    )
+    generated_oid = oid_result.get("generated_oid", "")
+    if not generated_oid:
+        raise HTTPException(status_code=502, detail="CEZIH nije vratio OID. Pokušajte ponovno.")
+
+    tenant.oid = generated_oid
+    await db.commit()
+    return GenerateOidResponse(oid=generated_oid)
 
 
 class AgentSecretResponse(BaseModel):
