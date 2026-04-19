@@ -35,7 +35,6 @@ export function BiljeskaDetail({ open, onOpenChange, biljeska, onEdit }: Biljesk
       { id: biljeska.id, data: { is_pinned: !biljeska.is_pinned } },
       {
         onSuccess: () => toast.success(biljeska.is_pinned ? "Bilješka otkvačena" : "Bilješka prikvačena"),
-        onError: (err) => toast.error(err.message),
       },
     )
   }

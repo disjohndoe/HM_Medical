@@ -77,7 +77,6 @@ export default function KorisniciPage() {
         toast.success("Korisnik kreiran")
         setDialogOpen(false)
       },
-      onError: (err) => toast.error(err.message),
     })
   }
 
@@ -91,7 +90,6 @@ export default function KorisniciPage() {
           setDialogOpen(false)
           setEditingUser(null)
         },
-        onError: (err) => toast.error(err.message),
       }
     )
   }
@@ -100,7 +98,6 @@ export default function KorisniciPage() {
     if (!confirm(`Deaktivirati korisnika ${user.ime} ${user.prezime}?`)) return
     deactivateUser.mutate(user.id, {
       onSuccess: () => toast.success("Korisnik deaktiviran"),
-      onError: (err) => toast.error(err.message),
     })
   }
 

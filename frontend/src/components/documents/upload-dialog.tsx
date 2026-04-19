@@ -88,7 +88,6 @@ export function UploadDialog({ open, onOpenChange, patientId }: UploadDialogProp
           onOpenChange(false)
           dialogRef.current?.close()
         },
-        onError: (err) => toast.error(err.message),
       }
     )
   }

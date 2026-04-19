@@ -73,10 +73,7 @@ export function InsuranceCheck() {
     }
     setImportedId(null)
     importPatient.reset()
-    checkInsurance.mutate(
-      { identifier_type: idType, identifier_value: value },
-      { onError: (err) => toast.error(err.message) },
-    )
+    checkInsurance.mutate({ identifier_type: idType, identifier_value: value })
   }
 
   const handleTypeChange = (v: IdType | null) => {
@@ -107,7 +104,6 @@ export function InsuranceCheck() {
               : "Pacijent dodan u kartoteku.",
           )
         },
-        onError: (err) => toast.error(err.message),
       },
     )
   }

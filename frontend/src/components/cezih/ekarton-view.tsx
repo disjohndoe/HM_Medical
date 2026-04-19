@@ -14,7 +14,6 @@ import {
   Shield,
   Stethoscope,
 } from "lucide-react"
-import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -156,7 +155,6 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
         a.click()
         URL.revokeObjectURL(url)
       },
-      onError: (err: Error) => toast.error(err.message || "Greška pri preuzimanju dokumenta"),
     })
   }
 

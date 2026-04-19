@@ -70,7 +70,6 @@ export function ForeignerSearch() {
               : "Pacijent dodan u kartoteku.",
           )
         },
-        onError: (err) => toast.error(err.message),
       },
     )
   }

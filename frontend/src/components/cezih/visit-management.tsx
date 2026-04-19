@@ -180,7 +180,6 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
           setShowCreate(false)
           setReason("")
         },
-        onError: (err) => toast.error(err.message),
       },
     )
   }
@@ -194,7 +193,6 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
           const label = VISIT_ACTIONS.find((a) => a.value === action)?.label || action
           toast.success(`${label}: ${visitId}`)
         },
-        onError: (err) => toast.error(err.message),
       },
     )
   }
@@ -225,7 +223,6 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
           }
           cancelEdit()
         },
-        onError: (err) => toast.error(err.message),
       },
     )
   }

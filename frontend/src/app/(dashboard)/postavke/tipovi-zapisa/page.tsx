@@ -93,7 +93,6 @@ export default function TipoviZapisaPage() {
           reset()
           setSelectedColor(null)
         },
-        onError: (err) => toast.error(err.message),
       }
     )
   }
@@ -107,7 +106,6 @@ export default function TipoviZapisaPage() {
           toast.success("Tip zapisa ažuriran")
           closeEdit()
         },
-        onError: (err) => toast.error(err.message),
       }
     )
   }
@@ -116,7 +114,6 @@ export default function TipoviZapisaPage() {
     if (!confirm("Sigurno želite obrisati ovaj tip zapisa?")) return
     deleteMutation.mutate(id, {
       onSuccess: () => toast.success("Tip zapisan obrisan"),
-      onError: (err) => toast.error(err.message),
     })
   }
 

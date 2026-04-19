@@ -51,7 +51,6 @@ export function PrescriptionDetail({ open, onOpenChange, prescription }: Prescri
   const handleSend = () => {
     sendPrescription.mutate(prescription.id, {
       onSuccess: (res) => toast.success(`e-Recept poslan (${res.cezih_recept_id})`),
-      onError: (err) => toast.error(err.message),
     })
   }
 
@@ -61,7 +60,6 @@ export function PrescriptionDetail({ open, onOpenChange, prescription }: Prescri
         toast.success("e-Recept storniran")
         setConfirmStorno(false)
       },
-      onError: (err) => toast.error(err.message),
     })
   }
 
@@ -72,7 +70,6 @@ export function PrescriptionDetail({ open, onOpenChange, prescription }: Prescri
         setConfirmDelete(false)
         onOpenChange(false)
       },
-      onError: (err) => toast.error(err.message),
     })
   }
 

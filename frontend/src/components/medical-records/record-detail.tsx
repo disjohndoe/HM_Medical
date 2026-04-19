@@ -59,7 +59,6 @@ export function RecordDetail({ open, onOpenChange, record, patientId, hasCezihId
         toast.success("e-Nalaz storniran na CEZIH")
         setConfirmCancel(false)
       },
-      onError: (err) => toast.error(err.message),
     })
   }
 
@@ -70,7 +69,6 @@ export function RecordDetail({ open, onOpenChange, record, patientId, hasCezihId
         toast.success("Dokument zamijenjen na CEZIH")
         setConfirmReplace(false)
       },
-      onError: (err) => toast.error(err.message),
     })
   }
 

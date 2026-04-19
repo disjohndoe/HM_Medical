@@ -104,7 +104,6 @@ export function PatientCezihTab({
     }
     insuranceCheck.mutate(patientId, {
       onSuccess: () => toast.success("Osiguranje provjereno"),
-      onError: (err: Error) => toast.error(err.message || "Greška pri provjeri osiguranja"),
     })
   }
 
@@ -360,7 +359,6 @@ export function PatientCezihTab({
             { referenceId, record_id: updated.id },
             {
               onSuccess: () => toast.success("e-Nalaz zamijenjen na CEZIH"),
-              onError: (err) => toast.error(err.message || "Greška pri zamjeni e-Nalaza"),
             },
           )
         }}
@@ -381,7 +379,6 @@ export function PatientCezihTab({
               toast.success("e-Nalaz storniran")
               setNalazStornoTarget(null)
             },
-            onError: (err) => toast.error(err.message || "Greška pri stornu e-Nalaza"),
           })
         }}
         loading={cancelDocument.isPending}

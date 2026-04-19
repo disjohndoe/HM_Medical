@@ -169,14 +169,12 @@ export function PrescriptionForm({ open, onOpenChange, patientId, prescription }
                   toast.success(`e-Recept poslan (${res.cezih_recept_id})`)
                   resetAndClose()
                 },
-                onError: (err) => toast.error(err.message),
               })
             } else {
               toast.success("Recept ažuriran")
               resetAndClose()
             }
           },
-          onError: (err) => toast.error(err.message),
         },
       )
       return
@@ -204,14 +202,12 @@ export function PrescriptionForm({ open, onOpenChange, patientId, prescription }
                 toast.success(`e-Recept poslan (${res.cezih_recept_id})`)
                 resetAndClose()
               },
-              onError: (err) => toast.error(err.message),
             })
           } else {
             toast.success("Recept spremljen kao nacrt")
             resetAndClose()
           }
         },
-        onError: (err) => toast.error(err.message),
       },
     )
   }

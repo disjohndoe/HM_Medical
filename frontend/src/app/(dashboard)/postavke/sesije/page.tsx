@@ -49,7 +49,6 @@ export default function SesijePage() {
     if (!confirm("Ukinuti ovu sesiju? Korisnik će biti odjavljen.")) return
     revokeSession.mutate(sessionId, {
       onSuccess: () => toast.success("Sesija ukinuta"),
-      onError: (err) => toast.error(err.message),
     })
   }
 
@@ -58,7 +57,6 @@ export default function SesijePage() {
     revokeOthers.mutate(undefined, {
       onSuccess: (data) =>
         toast.success(`Ukinuto ${data.revoked_count} sesija`),
-      onError: (err) => toast.error(err.message),
     })
   }
 
@@ -66,7 +64,6 @@ export default function SesijePage() {
     cleanup.mutate(undefined, {
       onSuccess: (data) =>
         toast.success(`Očišćeno ${data.cleaned_count} isteklih tokena`),
-      onError: (err) => toast.error(err.message),
     })
   }
 

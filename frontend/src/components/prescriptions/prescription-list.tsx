@@ -100,14 +100,12 @@ export function PrescriptionList({ patientId, onOpenNalaz }: PrescriptionListPro
   const handleQuickSend = (p: Prescription) => {
     sendPrescription.mutate(p.id, {
       onSuccess: (res) => toast.success(`e-Recept poslan (${res.cezih_recept_id})`),
-      onError: (err) => toast.error(err.message),
     })
   }
 
   const handleQuickDelete = (p: Prescription) => {
     deletePrescription.mutate(p.id, {
       onSuccess: () => toast.success("Nacrt recepta obrisan"),
-      onError: (err) => toast.error(err.message),
     })
   }
 

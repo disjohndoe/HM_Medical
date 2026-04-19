@@ -153,7 +153,6 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
           setVerification("confirmed")
           setNote("")
         },
-        onError: (err) => toast.error(err.message),
       }
     )
   }
@@ -164,7 +163,6 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
       { caseId, patientId, action },
       {
         onSuccess: () => toast.success(`${actionLabel} — uspješno`),
-        onError: (err) => toast.error(err.message),
       }
     )
   }
@@ -207,7 +205,6 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
           toast.success("Podaci slučaja ažurirani")
           cancelEdit()
         },
-        onError: (err) => toast.error(err.message),
       },
     )
   }

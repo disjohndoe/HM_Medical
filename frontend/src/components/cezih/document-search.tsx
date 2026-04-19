@@ -79,14 +79,12 @@ export function DocumentSearch() {
         URL.revokeObjectURL(url)
         toast.success("Dokument preuzet")
       },
-      onError: (err) => toast.error(err.message || "Greška pri dohvatu dokumenta"),
     })
   }
 
   const handleReplace = (id: string) => {
     replaceDoc.mutate({ referenceId: id }, {
       onSuccess: () => toast.success("Dokument zamijenjen"),
-      onError: (err) => toast.error(err.message || "Greška pri zamjeni dokumenta"),
     })
   }
 
@@ -97,7 +95,6 @@ export function DocumentSearch() {
         toast.success("Dokument storniran")
         setCancelTarget(null)
       },
-      onError: (err) => toast.error(err.message || "Greška pri stornu dokumenta"),
     })
   }
 

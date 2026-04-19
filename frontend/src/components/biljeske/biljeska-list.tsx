@@ -76,7 +76,6 @@ export function BiljeskaList({ patientId }: BiljeskaListProps) {
         toast.success("Bilješka obrisana")
         setDeleteTarget(null)
       },
-      onError: (err) => toast.error(err.message),
     })
   }
 

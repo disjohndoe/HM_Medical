@@ -101,7 +101,6 @@ export default function PacijentDetailPage() {
                 { patientId: id },
                 {
                   onSuccess: () => toast.success("Podaci uspješno izvezeni"),
-                  onError: (err) => toast.error(err.message),
                 },
               )
             }

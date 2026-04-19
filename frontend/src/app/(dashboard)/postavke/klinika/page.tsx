@@ -101,7 +101,6 @@ export default function KlinikaSettingsPage() {
   const onSubmit = (data: ClinicFormData) => {
     updateClinic.mutate(data, {
       onSuccess: () => toast.success("Postavke klinike spremljene"),
-      onError: (err) => toast.error(err.message),
     })
   }
 

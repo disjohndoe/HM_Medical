@@ -80,7 +80,6 @@ export function DocumentList({ patientId }: DocumentListProps) {
       { id: doc.id, patientId },
       {
         onSuccess: () => toast.success("Dokument obrisan"),
-        onError: (err) => toast.error(err.message),
       }
     )
   }

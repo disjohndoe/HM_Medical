@@ -100,7 +100,6 @@ export function UserFormDialog({
     if (!user) return
     autoBindCard.mutate(user.id, {
       onSuccess: () => toast.success("Kartica povezana"),
-      onError: (err) => toast.error(err.message),
     })
   }
 
@@ -108,7 +107,6 @@ export function UserFormDialog({
     if (!user) return
     unbindCard.mutate(user.id, {
       onSuccess: () => toast.success("Kartica odpojena"),
-      onError: (err) => toast.error(err.message),
     })
   }
 
