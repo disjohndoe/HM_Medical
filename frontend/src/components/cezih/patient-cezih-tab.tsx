@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil } from "lucide-react"
+import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -238,10 +238,16 @@ export function PatientCezihTab({
             <p className="font-medium">Kako koristiti:</p>
             <ul className="list-disc list-inside space-y-0.5">
               <li>
-                <strong>Pošalji</strong> — šalje obavezni nalaz na CEZIH. Zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
+                <strong><Send className="inline h-3 w-3" /> Pošalji</strong> — šalje obavezni nalaz na CEZIH. Zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
               </li>
               <li>
-                Gumb <em>Pošalji</em> je onemogućen ako pacijent nema CEZIH identifikator (MBO za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
+                <strong><Pencil className="inline h-3 w-3" /> Uredi</strong> — otvara uređivanje nalaza i šalje zamjenu na CEZIH.
+              </li>
+              <li>
+                <strong><Trash2 className="inline h-3 w-3" /> Storno</strong> — stornira e-Nalaz na CEZIH. Radnja se ne može poništiti.
+              </li>
+              <li>
+                Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
               </li>
             </ul>
           </div>
