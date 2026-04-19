@@ -244,7 +244,7 @@ export function PatientCezihTab({
                 <strong><Pencil className="inline h-3 w-3" /> Uredi</strong> — otvara uređivanje nalaza i šalje zamjenu na CEZIH.
               </li>
               <li>
-                <strong><Trash2 className="inline h-3 w-3" /> Storno</strong> — stornira e-Nalaz na CEZIH. Radnja se ne može poništiti.
+                <strong><Trash2 className="inline h-3 w-3" /> Storno</strong> — stornira e-Nalaz na CEZIH. <strong>Radnja se ne može poništiti.</strong>
               </li>
               <li>
                 Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
