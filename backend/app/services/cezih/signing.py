@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx
 
+from app.services.cezih.builders.common import _now_iso, org_ref, patient_ref, practitioner_ref
 from app.services.cezih.exceptions import CezihError
 
 logger = logging.getLogger(__name__)
@@ -23,28 +22,6 @@ logger = logging.getLogger(__name__)
 # Moved verbatim from message_builder.py:
 SIGNATURE_TYPE_SYSTEM = "urn:iso-astm:E1762-95:2013"
 SIGNATURE_TYPE_CODE = "1.2.840.10065.1.12.1.1"  # Author's signature
-
-# Local copies to avoid circular import during refactor (will be removed in Task 4)
-_ID_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
-_ID_ORG = "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije"
-_ID_PRACTITIONER = "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika"
-_TZ_ZAGREB = ZoneInfo("Europe/Zagreb")
-
-
-def _now_iso() -> str:
-    return datetime.now(_TZ_ZAGREB).isoformat()
-
-
-def patient_ref(value: str, system: str = _ID_MBO) -> dict[str, Any]:
-    return {"type": "Patient", "identifier": {"system": system, "value": value}}
-
-
-def org_ref(org_code: str) -> dict[str, Any]:
-    return {"type": "Organization", "identifier": {"system": _ID_ORG, "value": org_code}}
-
-
-def practitioner_ref(hzjz_id: str) -> dict[str, Any]:
-    return {"type": "Practitioner", "identifier": {"system": _ID_PRACTITIONER, "value": hzjz_id}}
 
 
 def _debug_dump_jws(source: str, jws_b64: str) -> None:

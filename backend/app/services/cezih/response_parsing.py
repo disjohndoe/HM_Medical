@@ -9,10 +9,9 @@ import json
 import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.services.cezih.builders.common import ID_CASE_GLOBAL
 
-# Local copy to avoid circular import during refactor (will be removed in Task 4)
-_ID_CASE_GLOBAL = "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-slucaja"
+logger = logging.getLogger(__name__)
 
 # Croatian user-friendly messages for known CEZIH error codes and patterns.
 # Keys are either exact CEZIH error codes (from OperationOutcome.details.coding[0].code)
@@ -107,7 +106,7 @@ def parse_message_response(response_body: dict[str, Any]) -> dict[str, Any]:
 
         elif rt == "Condition":
             for ident in resource.get("identifier", []):
-                if ident.get("system", "") == _ID_CASE_GLOBAL:
+                if ident.get("system", "") == ID_CASE_GLOBAL:
                     result["identifier"] = ident.get("value")
                     break
 
