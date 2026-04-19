@@ -68,17 +68,6 @@ export default function CezihNalaziPage() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
-        <p className="font-medium">Kako koristiti:</p>
-        <ul className="list-disc list-inside space-y-0.5">
-          <li>
-            <strong>Pošalji</strong> — šalje obavezni nalaz na CEZIH. Zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
-          </li>
-          <li>
-            Gumb <em>Pošalji</em> je onemogućen ako pacijent nema CEZIH identifikator (MBO za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
-          </li>
-        </ul>
-      </div>
       <div className="flex items-start gap-2">
         <PageHeader
           title="Slanje e-Nalaza"
