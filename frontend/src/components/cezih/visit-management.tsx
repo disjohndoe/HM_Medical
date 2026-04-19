@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Loader2, Building2, ExternalLink, Pencil } from "lucide-react"
+import { Plus, Loader2, Building2, ExternalLink, Pencil, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
@@ -19,6 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Table,
   TableBody,
@@ -449,24 +455,25 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                               </Button>
                             )}
                             {actions.length > 0 && (
-                              <Select
-                                value=""
-                                onValueChange={(action) => {
-                                  if (action) handleAction(v.visit_id, action)
-                                }}
-                                disabled={visitAction.isPending}
-                              >
-                                <SelectTrigger className="w-[120px] h-6 text-xs">
-                                  <SelectValue placeholder="Akcija..." />
-                                </SelectTrigger>
-                                <SelectContent>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  disabled={visitAction.isPending}
+                                  className="flex h-6 w-[120px] items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 data-[popup-open]:bg-accent"
+                                >
+                                  <span>Akcija...</span>
+                                  <ChevronDown className="size-3" />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
                                   {actions.map((a) => (
-                                    <SelectItem key={a.value} value={a.value}>
+                                    <DropdownMenuItem
+                                      key={a.value}
+                                      onClick={() => handleAction(v.visit_id, a.value)}
+                                    >
                                       {a.label}
-                                    </SelectItem>
+                                    </DropdownMenuItem>
                                   ))}
-                                </SelectContent>
-                              </Select>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             )}
                           </div>
                         </TableCell>

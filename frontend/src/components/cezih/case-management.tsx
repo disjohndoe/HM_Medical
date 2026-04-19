@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { FileText, Plus, Loader2, Pencil } from "lucide-react"
+import { FileText, Plus, Loader2, Pencil, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
 
@@ -26,6 +26,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Table,
   TableBody,
@@ -446,24 +452,27 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                             >
                               <Pencil className="h-3 w-3" />
                             </Button>
-                            <Select
-                              value=""
-                              onValueChange={(action) => {
-                                if (action) handleAction(c.case_id, action)
-                              }}
-                              disabled={updateStatus.isPending}
-                            >
-                              <SelectTrigger className="w-[120px] h-6 text-xs">
-                                <SelectValue placeholder="Akcija..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {actions.map((a) => (
-                                  <SelectItem key={a.value} value={a.value}>
-                                    {a.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            {actions.length > 0 && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  disabled={updateStatus.isPending}
+                                  className="flex h-6 w-[120px] items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 data-[popup-open]:bg-accent"
+                                >
+                                  <span>Akcija...</span>
+                                  <ChevronDown className="size-3" />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {actions.map((a) => (
+                                    <DropdownMenuItem
+                                      key={a.value}
+                                      onClick={() => handleAction(c.case_id, a.value)}
+                                    >
+                                      {a.label}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
