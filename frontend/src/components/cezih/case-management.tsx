@@ -85,7 +85,6 @@ const CEZIH_VERIFICATION_STATUSES = ["unconfirmed", "provisional", "differential
 // Delete (2.7) is intentionally omitted from UI per product rule.
 // For mistaken entries: use 2.6 Data update + verificationStatus=entered-in-error.
 const CASE_ACTIONS = [
-  { value: "create_recurring", label: "Ponavljajući slučaj" },
   { value: "remission", label: "Remisija" },
   { value: "relapse", label: "Relaps" },
   { value: "resolve", label: "Zatvori" },
@@ -369,7 +368,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
               <strong>Novi slučaj</strong> — upišite MKB šifru, datum početka i status verifikacije.
             </li>
             <li>
-              Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori, Ponovno otvori ili Ponavljajući slučaj. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
+              Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori ili Ponovno otvori. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
             </li>
           </ul>
         </div>

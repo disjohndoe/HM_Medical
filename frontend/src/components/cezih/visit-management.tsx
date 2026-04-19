@@ -275,6 +275,21 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
+          <p className="font-medium">Kako koristiti:</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li>
+              <strong>Nova posjeta</strong> — odaberite način prijema, tip posjete i razlog.
+            </li>
+            <li>
+              Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Zatvori, Ponovno otvori ili Storniraj.
+              Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
+            </li>
+            <li>
+              Izmjena podataka (olovka) dostupna samo za posjete u tijeku ili planirane.
+            </li>
+          </ul>
+        </div>
         <Dialog open={showCreate} onOpenChange={setShowCreate}>
           <DialogContent className="max-w-lg">
             <DialogHeader>

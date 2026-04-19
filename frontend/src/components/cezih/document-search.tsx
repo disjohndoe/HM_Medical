@@ -102,6 +102,18 @@ export function DocumentSearch() {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
+        <p className="font-medium">Kako koristiti:</p>
+        <ul className="list-disc list-inside space-y-0.5">
+          <li>
+            <strong>Pretraga</strong> — odaberite pacijenta i filtere (tip, datum, status).
+          </li>
+          <li>
+            <strong>Preuzmi</strong> — skida PDF dokument. <strong>Zamijeni</strong> šalje novu verziju preko CEZIH-a.
+            <strong>Storno</strong> poništava dokument. Zamjena i storno zahtijevaju digitalni potpis.
+          </li>
+        </ul>
+      </div>
       {/* Patient selector */}
       <Card>
         <CardHeader className="pb-2">
