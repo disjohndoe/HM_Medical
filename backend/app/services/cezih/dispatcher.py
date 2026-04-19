@@ -1517,7 +1517,6 @@ async def dispatch_update_case(
         if action == "create_recurring":
             # 2.2 Ponavljajući creates a NEW case inheriting the parent's ICD.
             # Look up parent via QEDm since we don't persist cases locally.
-            from datetime import UTC, datetime
             existing = await real_service.retrieve_cases(http_client, identifier_system, identifier_value)
             parent = next((c for c in existing if c.get("case_id") == case_id), None)
             if parent is None:
