@@ -318,6 +318,9 @@ __all__ = [
     "CS_NACIN_PRIJEMA",
     "CS_VRSTA_POSJETE",
     "CS_TIP_POSJETE",
+    # Profiles
+    "PROFILE_ENCOUNTER",
+    "PROFILE_ENCOUNTER_MSG_HEADER",
     # Maps
     "NACIN_PRIJEMA_MAP",
     "VRSTA_POSJETE_MAP",
