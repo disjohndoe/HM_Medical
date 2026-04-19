@@ -380,6 +380,9 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
             <li>
               Promjena stanja ide kroz <em>Akcija…</em> u desnoj koloni: Remisija, Relaps, Zatvori ili Ponovno otvori. Svaka zahtijeva digitalni potpis (kartica ili mobilna aplikacija).
             </li>
+            <li>
+              Promjena statusa Verifikacije ide kroz <Pencil className="inline h-3 w-3" />.
+            </li>
           </ul>
         </div>
         {casesQuery.isLoading ? (
