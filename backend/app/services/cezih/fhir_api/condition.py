@@ -35,15 +35,8 @@ async def retrieve_cases(
 
     cases = []
     if response.get("resourceType") == "Bundle":
-        entries = response.get("entry", [])
-        logger.info("QEDm Condition bundle: total=%s, entries=%d", response.get("total"), len(entries))
-        for entry in entries:
+        for entry in response.get("entry", []):
             cond = entry.get("resource", {})
-            _icd = ((cond.get("code") or {}).get("coding") or [{}])[0].get("code")
-            _clin = ((cond.get("clinicalStatus") or {}).get("coding") or [{}])[0].get("code")
-            _ver = ((cond.get("verificationStatus") or {}).get("coding") or [{}])[0].get("code")
-            _ids = [i.get("value") for i in (cond.get("identifier") or [])]
-            logger.info("QEDm Condition: id=%s icd=%s clin=%s ver=%s idents=%s", cond.get("id"), _icd, _clin, _ver, _ids)
             case_id = ""
             for ident in cond.get("identifier", []):
                 if "identifikator-slucaja" in (ident.get("system") or ""):

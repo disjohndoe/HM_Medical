@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -15,9 +14,6 @@ from app.services.cezih.dispatchers.common import _require_audit_params, _write_
 from app.services.cezih.exceptions import CezihError
 
 logger = logging.getLogger(__name__)
-
-# How long to keep local rows as "fresh" in the merge window.
-_LOCAL_MIRROR_WINDOW_MINUTES = 10
 
 
 async def _lookup_patient_id(
@@ -86,20 +82,22 @@ async def _persist_local_case_by_patient_id(
 async def _fetch_fresh_local_cases_by_patient(
     db: AsyncSession | None, tenant_id: UUID | None, patient_id: UUID,
 ) -> list[dict]:
-    """Fetch local CezihCase mirror rows created within the merge window."""
+    """Fetch all local CezihCase mirror rows for this patient.
+
+    No cutoff: CEZIH QEDm read-side indexing lag is often >30 minutes and
+    sometimes indefinite in the test environment. Our DB is the authoritative
+    record for cases this clinic created; CEZIH is merged in for cases
+    created elsewhere.
+    """
     if not db or not tenant_id:
         return []
     try:
-        from datetime import timedelta
-
         from app.models.cezih_case import CezihCase
 
-        cutoff = datetime.now(UTC) - timedelta(minutes=_LOCAL_MIRROR_WINDOW_MINUTES)
         result = await db.execute(
             select(CezihCase).where(
                 CezihCase.tenant_id == tenant_id,
                 CezihCase.patient_id == patient_id,
-                CezihCase.created_at >= cutoff,
             ).order_by(CezihCase.created_at.desc())
         )
         rows = result.scalars().all()
