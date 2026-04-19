@@ -1,9 +1,12 @@
-"""CEZIH dispatcher functions — re-export shim for backward compatibility.
+"""CEZIH dispatcher functions — re-exported by domain.
 
-This file re-exports all public symbols from the new dispatchers/ subpackage
-to maintain backward compatibility with existing imports.
+Dispatcher functions wrap FHIR API calls with:
+- Audit logging (mandatory)
+- Local DB synchronization (cases, visits)
+- Error handling and translation
+- Tenant/user context management
 
-New code should import directly from the appropriate module:
+Import from domain modules:
   - app.services.cezih.dispatchers.common for audit helpers
   - app.services.cezih.dispatchers.patient for patient import/insurance
   - app.services.cezih.dispatchers.documents for document operations
@@ -13,7 +16,6 @@ New code should import directly from the appropriate module:
 """
 from __future__ import annotations
 
-# Re-export from new dispatchers package for back-compat during refactor
 from app.services.cezih.dispatchers.cases import *  # noqa: F401,F403
 from app.services.cezih.dispatchers.common import *  # noqa: F401,F403
 from app.services.cezih.dispatchers.documents import *  # noqa: F401,F403
