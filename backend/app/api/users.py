@@ -33,8 +33,24 @@ _USERS_CONSTRAINT_MESSAGES = {
 }
 
 
+def _extract_constraint_name(err: IntegrityError) -> str | None:
+    orig = err.orig
+    name = getattr(orig, "constraint_name", None)
+    if name:
+        return name
+    diag = getattr(orig, "diag", None)
+    name = getattr(diag, "constraint_name", None) if diag else None
+    if name:
+        return name
+    message = str(orig or err)
+    for constraint in _USERS_CONSTRAINT_MESSAGES:
+        if constraint in message:
+            return constraint
+    return None
+
+
 def _translate_integrity_error(err: IntegrityError) -> HTTPException:
-    constraint = getattr(getattr(err.orig, "diag", None), "constraint_name", None)
+    constraint = _extract_constraint_name(err)
     detail = _USERS_CONSTRAINT_MESSAGES.get(constraint or "")
     if detail:
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
