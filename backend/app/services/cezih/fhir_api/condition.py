@@ -21,6 +21,31 @@ from app.services.cezih.message_builder import (
 logger = logging.getLogger(__name__)
 
 
+async def _ensure_case_session(fhir_client: CezihFhirClient) -> None:
+    """Pre-flight GET before POST to health-issue-services.
+
+    Per TC11 (docs/CEZIH/findings/TC11-PMIR-auth-blocker.md): CEZIH's gateway
+    establishes session cookies per service-domain. A first POST on a cold
+    domain gets redirected to Keycloak, which rejects the fhir+json body with
+    415 and surfaces as ERR_DS_1002. A GET goes through the redirect cleanly
+    (no body) and sets the cookie.
+
+    Extsigner users (certpubws.cezih.hr) need this before every case POST
+    because their encounter-services cookie doesn't carry over to
+    health-issue-services. Smartcard users (certws2.cezih.hr) are already
+    warmed up by the agent on connect but the pre-flight is harmless either way.
+    """
+    try:
+        await fhir_client.get(
+            "ihe-qedm-services/api/v1/Condition",
+            params={"_count": "0"},
+            timeout=10,
+        )
+        logger.info("Case: gateway session established via pre-flight GET")
+    except CezihError as e:
+        logger.warning("Case: pre-flight GET failed (%s), POST may also fail", str(e)[:100])
+
+
 async def retrieve_cases(
     client,
     system_uri: str,
@@ -99,6 +124,7 @@ async def create_case(
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
+    await _ensure_case_session(fhir_client)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -147,6 +173,7 @@ async def create_recurring_case(
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
+    await _ensure_case_session(fhir_client)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -202,6 +229,7 @@ async def update_case(
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
+    await _ensure_case_session(fhir_client)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -247,6 +275,7 @@ async def update_case_data(
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
+    await _ensure_case_session(fhir_client)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
