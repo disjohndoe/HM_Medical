@@ -385,7 +385,7 @@ async def dispatch_update_case(
     except CezihError as e:
         await record_cezih_error("case", local_case_id, tenant_id, e)
         _raise_cezih_error(e)
-    await clear_cezih_error("case", local_case_id, tenant_id)
+    await clear_cezih_error("case", local_case_id, tenant_id, session=db)
     await _write_audit(
         db, tenant_id, user_id, action=f"case_{action}",
         details={"case_id": case_id, "action": action, "patient_id": str(patient_id)},
@@ -469,7 +469,7 @@ async def dispatch_update_case_data(
         await record_cezih_error("case", local_case_id, tenant_id, e)
         _raise_cezih_error(e)
 
-    await clear_cezih_error("case", local_case_id, tenant_id)
+    await clear_cezih_error("case", local_case_id, tenant_id, session=db)
     await _write_audit(
         db, tenant_id, user_id, action="case_update_data",
         details={"case_id": case_id},

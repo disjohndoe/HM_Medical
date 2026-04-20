@@ -123,7 +123,7 @@ async def send_enalaz(
         await record_cezih_error("medical_record", record_id, tenant_id, e)
         _raise_cezih_error(e)
 
-    await clear_cezih_error("medical_record", record_id, tenant_id)
+    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
     ref = result["reference_id"]
     doc_oid = result.get("document_oid", "")
     now = datetime.now(UTC)
@@ -391,7 +391,7 @@ async def dispatch_replace_document(
         await record_cezih_error("medical_record", record_id, tenant_id, e)
         _raise_cezih_error(e)
 
-    await clear_cezih_error("medical_record", record_id, tenant_id)
+    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
     # Update the DB record's reference_id and OID to the new document created by replace
     new_ref = result.get("new_reference_id")
     new_oid = result.get("new_document_oid", "")
@@ -529,7 +529,7 @@ async def dispatch_replace_document_with_edit(
         record.cezih_document_oid = new_oid
     await db.flush()
 
-    await clear_cezih_error("medical_record", record_id, tenant_id)
+    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
 
     await _write_audit(
         db, tenant_id, user_id, action="e_nalaz_replace_with_edit",
@@ -618,7 +618,7 @@ async def dispatch_cancel_document(
         await record_cezih_error("medical_record", record_id, tenant_id, e)
         _raise_cezih_error(e)
 
-    await clear_cezih_error("medical_record", record_id, tenant_id)
+    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
     # Mark record as storniran in DB
     if db and tenant_id:
         rec_result = await db.execute(
@@ -680,7 +680,7 @@ async def dispatch_retrieve_document(
         await record_cezih_error("medical_record", record_id, tenant_id, e)
         _raise_cezih_error(e)
 
-    await clear_cezih_error("medical_record", record_id, tenant_id)
+    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
     await _write_audit(
         db, tenant_id, user_id, action="document_retrieve",
         details={"reference_id": reference_id},

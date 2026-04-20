@@ -445,7 +445,7 @@ async def dispatch_update_visit(
     except CezihError as e:
         await record_cezih_error("visit", local_visit_id, tenant_id, e)
         _raise_cezih_error(e)
-    await clear_cezih_error("visit", local_visit_id, tenant_id)
+    await clear_cezih_error("visit", local_visit_id, tenant_id, session=db)
     await _write_audit(
         db, tenant_id, user_id, action="visit_update",
         details={"visit_id": visit_id, "patient_id": str(patient_id)},
@@ -563,7 +563,7 @@ async def dispatch_visit_action(
     except CezihError as e:
         await record_cezih_error("visit", local_visit_id, tenant_id, e)
         _raise_cezih_error(e)
-    await clear_cezih_error("visit", local_visit_id, tenant_id)
+    await clear_cezih_error("visit", local_visit_id, tenant_id, session=db)
     await _write_audit(
         db, tenant_id, user_id, action=f"visit_{action}",
         details={"visit_id": visit_id, "action": action},

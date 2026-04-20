@@ -14,6 +14,7 @@ from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models.cezih_case import CezihCase
@@ -91,32 +92,38 @@ async def clear_cezih_error(
     target: ErrorTarget,
     row_id: UUID | None,
     tenant_id: UUID | None,
+    *,
+    session: AsyncSession | None = None,
 ) -> None:
-    """Clear error columns for the given row. Intended to run inside the main
-    dispatcher transaction after a successful CEZIH call — so it shares the
-    commit with the state change and won't get cleared if the commit is
-    later rolled back. If the caller's txn is compromised we still try a
-    fresh-session fallback."""
+    """Clear error columns for the given row. When `session` is provided the
+    UPDATE runs inside the caller's transaction — required when the caller has
+    already modified the same row via `setattr` + `flush`, because opening a
+    fresh session here would self-deadlock on the row lock held by the caller's
+    uncommitted UPDATE (seen in TC19 retry-after-400 path on 2026-04-20)."""
     if row_id is None or tenant_id is None:
         return
     try:
         model, code_col, display_col, diag_col, at_col = _target_columns(target)
-        async with async_session() as session:
-            await session.execute(
-                update(model)
-                .where(
-                    model.id == row_id,
-                    model.tenant_id == tenant_id,
-                    code_col.isnot(None),
-                )
-                .values({
-                    code_col: None,
-                    display_col: None,
-                    diag_col: None,
-                    at_col: None,
-                })
+        stmt = (
+            update(model)
+            .where(
+                model.id == row_id,
+                model.tenant_id == tenant_id,
+                code_col.isnot(None),
             )
-            await session.commit()
+            .values({
+                code_col: None,
+                display_col: None,
+                diag_col: None,
+                at_col: None,
+            })
+        )
+        if session is not None:
+            await session.execute(stmt)
+            return
+        async with async_session() as fresh:
+            await fresh.execute(stmt)
+            await fresh.commit()
     except Exception:
         logger.warning(
             "Failed to clear CEZIH row error for %s %s (tenant=%s)",
