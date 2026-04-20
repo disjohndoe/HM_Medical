@@ -326,6 +326,9 @@ async def get_patient_cezih_summary(
             cezih_signed=bool(r.cezih_signature_data),
             cezih_signed_at=r.cezih_signed_at,
             updated_at=r.updated_at,
+            cezih_last_error_code=r.cezih_last_error_code,
+            cezih_last_error_display=r.cezih_last_error_display,
+            cezih_last_error_diagnostics=r.cezih_last_error_diagnostics,
         )
         for r in records
     ]

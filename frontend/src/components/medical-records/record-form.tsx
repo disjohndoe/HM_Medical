@@ -41,19 +41,27 @@ interface RecordFormProps {
   onOpenChange: (open: boolean) => void
   patientId: string
   record?: MedicalRecord | null
-  onSaved?: (record: MedicalRecord) => void
+  onSaved?: (record: MedicalRecord) => void | Promise<void>
   submitLabel?: string
   /** When provided, the form skips its own PATCH and delegates the edited
    *  payload to the caller. Used by the CEZIH edit-and-replace flow to
    *  ensure the local record is only mutated after CEZIH returns 2xx. */
   submitOverride?: (payload: MedicalRecordUpdate) => Promise<void>
+  /** Override auto-detection of create-vs-edit. When "create" is passed with
+   *  a `record`, the form prefills from that record but creates a new one on
+   *  submit — used by the CEZIH "recreate locked nalaz" flow. */
+  mode?: "create" | "edit"
+  /** Optional title override. Defaults to "Novi medicinski zapis" / "Uredi zapis". */
+  title?: string
+  /** Optional subtitle override. */
+  subtitle?: string
 }
 
 const ACCEPTED_TYPES = ".jpeg,.jpg,.png,.pdf"
 const MAX_SIZE_MB = 10
 
-export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel, submitOverride }: RecordFormProps) {
-  const isEdit = !!record
+export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel, submitOverride, mode, title, subtitle }: RecordFormProps) {
+  const isEdit = mode === "edit" || (mode === undefined && !!record)
   const createMutation = useCreateMedicalRecord()
   const updateMutation = useUpdateMedicalRecord()
   const uploadDoc = useUploadDocument()
@@ -191,7 +199,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           sadrzaj: data.sadrzaj,
           preporucena_terapija: therapy.length > 0 ? therapy : null,
         }
-        await createMutation.mutateAsync(payload)
+        const created = await createMutation.mutateAsync(payload)
         if (attachedFile) {
           try {
             await uploadDoc.mutateAsync({ patientId, file: attachedFile, kategorija: "nalaz" })
@@ -199,7 +207,16 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             toast.error("Zapis kreiran, ali prilog nije uploadan")
           }
         }
-        toast.success("Zapis kreiran")
+        // When a caller wires onSaved it owns the success UX (e.g. the CEZIH
+        // "recreate locked nalaz" flow chains straight into the send dialog).
+        // Await so any state transitions / refetches finish before the dialog
+        // closes below — avoids a flicker where the send dialog briefly opens
+        // with an empty list.
+        if (onSaved) {
+          await onSaved(created)
+        } else {
+          toast.success("Zapis kreiran")
+        }
       }
       onOpenChange(false)
       dialogRef.current?.close()
@@ -242,10 +259,10 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         <div className="flex items-center justify-between">
           <div>
             <h2 id="record-form-title" className="font-heading text-base font-medium">
-              {isEdit ? "Uredi zapis" : "Novi medicinski zapis"}
+              {title ?? (isEdit ? "Uredi zapis" : "Novi medicinski zapis")}
             </h2>
             <p className="text-muted-foreground text-sm">
-              {isEdit ? "Promijenite podatke o medicinskom zapisu" : "Kreirajte novi medicinski zapis za pacijenta"}
+              {subtitle ?? (isEdit ? "Promijenite podatke o medicinskom zapisu" : "Kreirajte novi medicinski zapis za pacijenta")}
             </p>
           </div>
           <button

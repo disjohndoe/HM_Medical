@@ -37,6 +37,9 @@ import type {
 } from "@/lib/types"
 
 /** Helper: show actionable toast for CEZIH errors.
+ *  - ERR_DOCTRANSVAL_1100 → friendly copy (CEZIH says "replace window
+ *    expired" but in the test env this is sometimes transient, so we hedge:
+ *    offer retry AND recreate as next steps).
  *  - Structured CEZIH errors (CezihApiError) → show code + diagnostics for 15s
  *  - Signing config errors → "Idi na Postavke" action
  *  - Generic errors → plain toast
@@ -44,6 +47,16 @@ import type {
 function showCezihErrorToast(err: Error) {
   if (err instanceof CezihApiError && err.cezih_error) {
     const ce = err.cezih_error
+    if (ce.code === "ERR_DOCTRANSVAL_1100") {
+      toast.error(
+        "CEZIH trenutno ne može zamijeniti ovaj e-Nalaz.",
+        {
+          description: "Moguće da je prozor za zamjenu istekao. Pokušajte ponovno ili koristite 'Pošalji ponovno' za kreiranje novog e-Nalaza.",
+          duration: 12_000,
+        },
+      )
+      return
+    }
     toast.error("Greška na CEZIH-u, pokušajte ponovno", {
       description: [ce.code && `Kod: ${ce.code}`, ce.diagnostics].filter(Boolean).join("\n"),
       duration: 15_000,
@@ -275,12 +288,21 @@ export function useCezihActivity(skip = 0, limit = 20) {
 // --- Feature 2: Patient CEZIH Summary ---
 
 export function usePatientCezihSummary(patientId: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["cezih", "patient", patientId],
     queryFn: () =>
       api.get<PatientCezihSummary>(`/cezih/patient/${patientId}/summary`),
     enabled: !!patientId,
   })
+  useEffect(() => {
+    if (query.data?.e_nalaz_history) {
+      syncCezihRowErrors(
+        query.data.e_nalaz_history,
+        (r) => r.reference_id || r.record_id,
+      )
+    }
+  }, [query.data])
+  return query
 }
 
 // --- Feature 3: Dashboard Stats ---

@@ -174,6 +174,9 @@ class PatientCezihENalaz(BaseModel):
     cezih_signed: bool = False
     cezih_signed_at: datetime | None = None
     updated_at: datetime | None = None
+    cezih_last_error_code: str | None = None
+    cezih_last_error_display: str | None = None
+    cezih_last_error_diagnostics: str | None = None
 
 
 class PatientCezihERecept(BaseModel):
