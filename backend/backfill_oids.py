@@ -88,6 +88,7 @@ async def backfill():
 
         async with httpx.AsyncClient() as http_client:
             fhir_client = CezihFhirClient(http_client, tenant_id=DEFAULT_TENANT_ID)
+            fhir_client._signing_method = "smartcard"  # Force VPN path via agent
 
             for mbo, recs in patient_mbos.items():
                 logger.info("Looking up OIDs for patient MBO=%s (%d docs)...", mbo, len(recs))
