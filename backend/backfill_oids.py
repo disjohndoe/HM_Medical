@@ -12,10 +12,7 @@ from urllib.parse import urlparse, parse_qs
 from app.database import async_session
 from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
-from app.services.cezih.client import CezihFhirClient
-from app.services.agent_connection_manager import agent_manager
-from app.config import settings
-from app.core.tenant_context import current_tenant_id
+from app.services.cezih.client import CezihFhirClient, current_tenant_id
 from sqlalchemy import select
 import httpx
 
