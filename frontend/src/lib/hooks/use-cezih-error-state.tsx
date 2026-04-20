@@ -102,6 +102,16 @@ export function syncCezihRowErrors<
   if (changed) emitChange()
 }
 
+function errorLabel(err: CezihRowError): string {
+  // ERR_DOCTRANSVAL_1000 = CEZIH internal gateway/backend timeout on replace
+  // or cancel. The document is still live on their side; retrying the same
+  // action later typically succeeds.
+  if (err.cezihCode === "ERR_DOCTRANSVAL_1000") {
+    return "Greška na CEZIH-u, pokušajte poslati nalaz ponovno"
+  }
+  return "Greška na CEZIH-u, pokušajte ponovno"
+}
+
 /** Inline error badge for CEZIH table rows. Must be a component (hook in map). */
 export function CezihRowErrorBadge({ rowId }: { rowId: string }) {
   const err = useCezihRowError(rowId)
@@ -137,7 +147,7 @@ export function CezihRowErrorBadge({ rowId }: { rowId: string }) {
         aria-expanded={expanded}
       >
         <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-700" aria-hidden="true" />
-        <span className="flex-1">Greška na CEZIH-u, pokušajte ponovno</span>
+        <span className="flex-1">{errorLabel(err)}</span>
         {hasDetails && (expanded
           ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-red-700" aria-hidden="true" />
           : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-red-700" aria-hidden="true" />
