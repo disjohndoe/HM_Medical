@@ -9,7 +9,7 @@ import logging
 
 from urllib.parse import urlparse, parse_qs
 
-from app.database import async_session_factory
+from app.database import async_session
 from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
 from app.services.cezih.client import CezihFhirClient
@@ -55,7 +55,7 @@ def _extract_oid_from_doc(doc_ref: dict) -> str:
 async def backfill():
     current_tenant_id.set(DEFAULT_TENANT_ID)
 
-    async with async_session_factory() as db:
+    async with async_session() as db:
         result = await db.execute(
             select(MedicalRecord).where(
                 MedicalRecord.cezih_reference_id.isnot(None),
