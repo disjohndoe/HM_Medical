@@ -166,7 +166,14 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
     })
   }
 
+  const isOptimisticId = (id: string) => id.startsWith("temp-") || id.startsWith("pending-")
+  const isOptimistic = (c: CaseItem) => isOptimisticId(c.case_id)
+
   const handleAction = (caseId: string, action: string) => {
+    if (isOptimisticId(caseId)) {
+      toast.info("Pričekajte dovršetak kreiranja slučaja...")
+      return
+    }
     const actionLabel = CASE_ACTIONS.find((a) => a.value === action)?.label || action
     updateStatus.mutate(
       { caseId, patientId, action },
@@ -177,6 +184,10 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
   }
 
   const startEdit = (c: CaseItem) => {
+    if (isOptimistic(c)) {
+      toast.info("Pričekajte dovršetak kreiranja slučaja...")
+      return
+    }
     setEditCaseId(c.case_id)
     setEditNote(c.note || "")
     setEditVerification(c.verification_status || "unconfirmed")
@@ -197,6 +208,10 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
   }
 
   const handleEditSave = (caseId: string, clinicalStatus: string) => {
+    if (isOptimisticId(caseId)) {
+      toast.info("Pričekajte dovršetak kreiranja slučaja...")
+      return
+    }
     updateData.mutate(
       {
         caseId,
@@ -219,6 +234,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
   }
 
   const getAvailableActions = (c: CaseItem) => {
+    if (isOptimistic(c)) return []
     const filter = (actions: string[]) =>
       CASE_ACTIONS.filter((a) => actions.includes(a.value))
 
@@ -446,12 +462,19 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                         <TableCell className="text-sm">{c.abatement_date ? formatDateTimeHR(c.abatement_date) : "—"}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            {isOptimistic(c) && (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Sprema se...
+                              </span>
+                            )}
                             <Button
                               size="sm"
                               variant="ghost"
                               className="h-6 text-xs px-2"
                               onClick={() => startEdit(c)}
-                              title="Izmijeni podatke slučaja (2.6)"
+                              disabled={isOptimistic(c)}
+                              title={isOptimistic(c) ? "Čeka potvrdu CEZIH-a..." : "Izmijeni podatke slučaja (2.6)"}
                             >
                               <Pencil className="h-3 w-3" />
                             </Button>

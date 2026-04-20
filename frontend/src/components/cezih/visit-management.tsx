@@ -141,6 +141,9 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   const isExternalVisit = (v: VisitItem) =>
     !!myOrgCode && !!v.service_provider_code && v.service_provider_code !== myOrgCode
 
+  const isOptimisticId = (id: string) => id.startsWith("temp-")
+  const isOptimistic = (v: VisitItem) => isOptimisticId(v.visit_id)
+
   const { sorted: sortedVisits, sortKey: vSortKey, sortDir: vSortDir, toggleSort: toggleVSort } = useTableSort(visits, {
     defaultKey: "period_start",
     defaultDir: "desc",
@@ -195,6 +198,10 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   }
 
   const handleAction = (visitId: string, action: string) => {
+    if (isOptimisticId(visitId)) {
+      toast.info("Pričekajte dovršetak kreiranja posjete...")
+      return
+    }
     const visit = visits.find((v) => v.visit_id === visitId)
     visitAction.mutate(
       { visitId, action, patientId, periodStart: visit?.period_start },
@@ -208,6 +215,10 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   }
 
   const handleEdit = (visitId: string) => {
+    if (isOptimisticId(visitId)) {
+      toast.info("Pričekajte dovršetak kreiranja posjete...")
+      return
+    }
     updateVisit.mutate(
       {
         visitId,
@@ -238,6 +249,10 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   }
 
   const startEdit = (v: VisitItem) => {
+    if (isOptimistic(v)) {
+      toast.info("Pričekajte dovršetak kreiranja posjete...")
+      return
+    }
     setEditVisitId(v.visit_id)
     setEditReason(v.reason || "")
     setEditNacinPrijema(v.visit_type || "6")
@@ -258,6 +273,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   }
 
   const getAvailableActions = (v: VisitItem) => {
+    if (isOptimistic(v)) return []
     if (v.status === "entered-in-error" || v.status === "cancelled") return []
     if (isExternalVisit(v)) return []
     if (v.status === "in-progress") return VISIT_ACTIONS.filter((a) => a.value === "close" || a.value === "storno")
@@ -266,7 +282,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   }
 
   const canEdit = (v: VisitItem) =>
-    !isExternalVisit(v) && (v.status === "in-progress" || v.status === "planned")
+    !isExternalVisit(v) && !isOptimistic(v) && (v.status === "in-progress" || v.status === "planned")
 
   return (
     <Card>
@@ -443,6 +459,12 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            {isOptimistic(v) && (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Sprema se...
+                              </span>
+                            )}
                             {canEdit(v) && (
                               <Button
                                 size="sm"

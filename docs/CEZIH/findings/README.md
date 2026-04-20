@@ -97,3 +97,9 @@ What needs to be done next...
 | File | Date | Status | Summary |
 |------|------|--------|---------|
 | [posjete-spec-audit.md](posjete-spec-audit.md) | 2026-04-09 | fixed | 6 mismatches found vs official Posjete examples — all fixed |
+
+### Frontend UX
+
+| File | Date | Status | Summary |
+|------|------|--------|---------|
+| [tempid-remount-race-fix.md](tempid-remount-race-fix.md) | 2026-04-20 | resolved | TC12→TC13 and TC16→TC17 back-to-back blocker — optimistic tempId row captured by edit dialog → 502 on PATCH. Fixed by disabling actions + guarding handlers on `temp-`/`pending-` rows. |
