@@ -73,7 +73,9 @@ export function PatientCezihTab({
   const [eReceptOpen, setEReceptOpen] = useState(false)
   const [nalazStornoTarget, setNalazStornoTarget] = useState<string | null>(null)
   const [editTarget, setEditTarget] = useState<{ recordId: string; referenceId: string } | null>(null)
+  const [localEditRecordId, setLocalEditRecordId] = useState<string | null>(null)
   const [sendTargetRecordId, setSendTargetRecordId] = useState<string | null>(null)
+  const { data: localEditRecord } = useMedicalRecord(localEditRecordId ?? "")
   const { data: editRecord } = useMedicalRecord(editTarget?.recordId ?? "")
 
   const enalazRows = (summary?.e_nalaz_history ?? []).map((item) => {
@@ -377,15 +379,26 @@ export function PatientCezihTab({
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
                             {!item.cezih_sent_at && !item.cezih_storno && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => setSendTargetRecordId(item.record_id)}
-                                title="Pošalji e-Nalaz na CEZIH"
-                              >
-                                <Send className="h-3.5 w-3.5" />
-                              </Button>
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => setLocalEditRecordId(item.record_id)}
+                                  title="Uredi nalaz"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => setSendTargetRecordId(item.record_id)}
+                                  title="Pošalji e-Nalaz na CEZIH"
+                                >
+                                  <Send className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
                             )}
                             {!item.cezih_storno && item.reference_id && (
                               <>
@@ -463,6 +476,14 @@ export function PatientCezihTab({
         patientId={patientId}
         hasCezihIdentifier={hasCezihIdentifier}
         onlyRecordId={sendTargetRecordId ?? undefined}
+      />
+
+      <RecordForm
+        open={!!localEditRecordId && !!localEditRecord}
+        onOpenChange={(open) => !open && setLocalEditRecordId(null)}
+        patientId={patientId}
+        record={localEditRecord ?? null}
+        onSaved={() => setLocalEditRecordId(null)}
       />
 
       {/* Storno e-Nalaz confirmation dialog */}
