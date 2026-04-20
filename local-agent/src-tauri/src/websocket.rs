@@ -241,10 +241,13 @@ fn do_cezih_request(
         }
     }
 
-    // Enable verbose mode for POST to encounter-services (debug ERR_DS_1002)
-    if method.eq_ignore_ascii_case("POST") && url.contains("encounter-services") {
+    // Enable verbose mode for POST to encounter-services / health-issue-services
+    // (debug ERR_DS_1002 — TC16 diagnostics include Set-Cookie visibility).
+    if method.eq_ignore_ascii_case("POST")
+        && (url.contains("encounter-services") || url.contains("health-issue-services"))
+    {
         session.verbose(true).map_err(|e| e.to_string())?;
-        info!("Verbose curl enabled for POST to encounter-services");
+        info!("Verbose curl enabled for POST to {}", url);
     }
 
     // Execute (blocking — PIN prompted on first TLS handshake, cached after)

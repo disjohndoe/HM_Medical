@@ -1,6 +1,8 @@
 """CEZIH Condition (case) service — FHIR Messaging + QEDm (TC15-17)."""
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -19,6 +21,23 @@ from app.services.cezih.message_builder import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _log_bundle_identity(tag: str, bundle: dict) -> None:
+    """TC16 diagnostics — log sha256 + compact JSON of the bundle about to be POSTed.
+
+    Pairs with the extsigner signed-document sha256 in cezih_signing.py to
+    detect post-signature mutation. Remove after TC16 root cause identified.
+    """
+    try:
+        raw = json.dumps(bundle, ensure_ascii=False).encode("utf-8")
+        sha = hashlib.sha256(raw).hexdigest()[:16]
+        logger.info(
+            "Case POST bundle (%s): size=%d bytes, sha256-prefix=%s, compact=%s",
+            tag, len(raw), sha, raw.decode("utf-8", errors="replace")[:30000],
+        )
+    except Exception as e:  # pragma: no cover — best-effort diagnostic
+        logger.warning("Case POST bundle (%s): failed to log (%s)", tag, e)
 
 
 async def _ensure_case_session(fhir_client: CezihFhirClient) -> None:
@@ -133,6 +152,7 @@ async def create_case(
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
     await _ensure_case_session(fhir_client)
+    _log_bundle_identity("create_case/2.1", bundle)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -182,6 +202,7 @@ async def create_recurring_case(
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
     await _ensure_case_session(fhir_client)
+    _log_bundle_identity("create_recurring_case/2.2", bundle)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -238,6 +259,7 @@ async def update_case(
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
     await _ensure_case_session(fhir_client)
+    _log_bundle_identity(f"update_case/{event_code}/{action}", bundle)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -284,6 +306,7 @@ async def update_case_data(
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
     await _ensure_case_session(fhir_client)
+    _log_bundle_identity("update_case_data/2.6", bundle)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:

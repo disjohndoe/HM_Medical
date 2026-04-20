@@ -597,8 +597,38 @@ async def sign_bundle_via_extsigner(
 
         logger.info(
             "CEZIH extsigner retrieve response: %s",
-            json.dumps(retrieve_result, ensure_ascii=False)[:2000],
+            json.dumps(retrieve_result, ensure_ascii=False)[:50000],
         )
+
+        # TC16 diagnostics: sha256 + head of the decoded signed payload so we can
+        # diff against the bundle actually POSTed (logged in condition.py).
+        # A mismatch means the bundle was mutated after add_signature, which
+        # invalidates the signature → ERR_DS_1002 / business-rule on verify.
+        try:
+            docs = (
+                retrieve_result.get("documents")
+                or retrieve_result.get("signedDocuments")
+                or []
+            )
+            if docs:
+                import base64 as _b64
+                import hashlib as _hashlib
+                doc = docs[0] or {}
+                doc_b64 = (
+                    doc.get("document")
+                    or doc.get("content")
+                    or doc.get("signedDocument")
+                    or ""
+                )
+                if doc_b64:
+                    raw = _b64.b64decode(doc_b64)
+                    sha = _hashlib.sha256(raw).hexdigest()[:16]
+                    logger.info(
+                        "Extsigner signed-document: size=%d bytes, sha256-prefix=%s, head=%s",
+                        len(raw), sha, raw[:500].decode("utf-8", errors="replace"),
+                    )
+        except Exception as _diag_err:  # pragma: no cover — best-effort
+            logger.warning("Extsigner signed-document diag failed: %s", _diag_err)
 
         # Check if we got signed documents back
         status_code = retrieve_result.get("status_code", 0)

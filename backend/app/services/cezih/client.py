@@ -188,7 +188,23 @@ class CezihFhirClient:
         status_code = result.get("status_code", 0)
         logger.info("CEZIH response via agent: %s %s -> %d (%.1fms)", method, url, status_code, duration_ms)
         if status_code >= 400:
-            logger.warning("CEZIH agent proxy error body: %s", result.get("body", "")[:3000])
+            body_text_raw = result.get("body", "") or ""
+            # TC16 diagnostics: full body + Keycloak-redirect signal for health-issue-services.
+            # Distinguishes cold-gateway rejection (HTML/auth-realm) from a FHIR OperationOutcome.
+            if "health-issue-services" in url:
+                is_keycloak_redirect = (
+                    "/auth/realms/" in body_text_raw
+                    or body_text_raw.lstrip().startswith("<")
+                )
+                logger.info(
+                    "CEZIH diag health-issue-services error: status=%d is_keycloak_redirect=%s headers=%r body=%s",
+                    status_code,
+                    is_keycloak_redirect,
+                    result.get("headers") or {},
+                    body_text_raw,
+                )
+            else:
+                logger.warning("CEZIH agent proxy error body: %s", body_text_raw[:3000])
 
         body_text = result.get("body", "")
         body_bytes = result.get("body_bytes")  # Agent sends binary as base64
