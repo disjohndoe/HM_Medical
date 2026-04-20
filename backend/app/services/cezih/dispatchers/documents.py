@@ -373,6 +373,11 @@ async def dispatch_replace_document(
             if not case_id and record.cezih_case_id:
                 case_id = record.cezih_case_id
 
+    # Use stored OID if available — avoids unreliable ITI-67 lookup
+    stored_oid = ""
+    if record and hasattr(record, "cezih_document_oid"):
+        stored_oid = record.cezih_document_oid or ""
+
     try:
         result = await real_service.replace_document(
             http_client, original_reference_id, patient_data or {}, record_data or {},
@@ -380,6 +385,7 @@ async def dispatch_replace_document(
             org_code=org_code,
             encounter_id=encounter_id, case_id=case_id,
             practitioner_name=practitioner_name,
+            original_document_oid=stored_oid,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -485,6 +491,9 @@ async def dispatch_replace_document_with_edit(
     if not case_id and record.cezih_case_id:
         case_id = record.cezih_case_id
 
+    # Use stored OID if available — avoids unreliable ITI-67 lookup
+    stored_oid = record.cezih_document_oid or "" if record else ""
+
     try:
         result = await real_service.replace_document(
             http_client, original_reference_id, patient_data, record_data,
@@ -492,6 +501,7 @@ async def dispatch_replace_document_with_edit(
             org_code=org_code,
             encounter_id=encounter_id, case_id=case_id,
             practitioner_name=practitioner_name,
+            original_document_oid=stored_oid,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -590,6 +600,11 @@ async def dispatch_cancel_document(
                 "created_at": record.created_at.isoformat() if record.created_at else None,
             }
 
+    # Use stored OID if available — avoids unreliable ITI-67 lookup
+    stored_oid = ""
+    if record:
+        stored_oid = record.cezih_document_oid or ""
+
     try:
         result = await real_service.cancel_document(
             http_client, reference_id,
@@ -597,6 +612,7 @@ async def dispatch_cancel_document(
             org_code=org_code, practitioner_id=practitioner_id,
             encounter_id=encounter_id, case_id=case_id,
             practitioner_name=practitioner_name,
+            original_document_oid=stored_oid,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
