@@ -4,7 +4,6 @@ import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe } from "lucide-react"
 import { toast } from "sonner"
-import { CezihRowErrorBadge, useCezihRowError } from "@/lib/hooks/use-cezih-error-state"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -77,10 +76,8 @@ export function PatientCezihTab({
   const [editTarget, setEditTarget] = useState<{ recordId: string; referenceId: string } | null>(null)
   const [localEditRecordId, setLocalEditRecordId] = useState<string | null>(null)
   const [sendTargetRecordId, setSendTargetRecordId] = useState<string | null>(null)
-  const [resendTarget, setResendTarget] = useState<{ recordId: string } | null>(null)
   const { data: localEditRecord } = useMedicalRecord(localEditRecordId ?? "")
   const { data: editRecord } = useMedicalRecord(editTarget?.recordId ?? "")
-  const { data: resendRecord } = useMedicalRecord(resendTarget?.recordId ?? "")
 
   const enalazRows = (summary?.e_nalaz_history ?? []).map((item) => {
     const sentMs = item.cezih_sent_at ? new Date(item.cezih_sent_at).getTime() : 0
@@ -366,7 +363,6 @@ export function PatientCezihTab({
                           onSend={(id) => setSendTargetRecordId(id)}
                           onReplaceEdit={(recordId, referenceId) => setEditTarget({ recordId, referenceId })}
                           onStorno={(referenceId) => setNalazStornoTarget(referenceId)}
-                          onRecreate={(recordId) => setResendTarget({ recordId })}
                         />
                       </TableRow>
                     )
@@ -422,29 +418,6 @@ export function PatientCezihTab({
         onlyRecordId={sendTargetRecordId ?? undefined}
       />
 
-      {/* Recreate (Pošalji ponovno) — open a create form prefilled from the
-       *  locked/errored nalaz. `mode="create"` forces the form through its
-       *  create path even though a record is passed (the record is only
-       *  used for prefill). On save we refetch medical-records (so the new
-       *  record passes SendNalazDialog's `!cezih_sent` filter) and open the
-       *  send dialog with the new id for visit+case selection. */}
-      <RecordForm
-        open={!!resendTarget && !!resendRecord}
-        onOpenChange={(open) => !open && setResendTarget(null)}
-        patientId={patientId}
-        record={resendRecord ?? null}
-        mode="create"
-        title="Novi e-Nalaz (iz zaključanog)"
-        subtitle="Podaci su preuzeti iz zaključanog e-Nalaza. Uredite po potrebi i spremite."
-        submitLabel="Spremi i pošalji na CEZIH"
-        onSaved={async (newRecord) => {
-          await queryClient.refetchQueries({ queryKey: ["medical-records"], type: "active" })
-          setResendTarget(null)
-          setSendTargetRecordId(newRecord.id)
-          toast.success("Novi nalaz kreiran — odaberite posjetu i slučaj za slanje")
-        }}
-      />
-
       <RecordForm
         open={!!localEditRecordId && !!localEditRecord}
         onOpenChange={(open) => !open && setLocalEditRecordId(null)}
@@ -479,10 +452,6 @@ export function PatientCezihTab({
   )
 }
 
-/** Status cell for a single e-Nalaz row — renders the Storniran/Poslan/
- *  Neposlan badge plus any persisted CEZIH row error. Status display is
- *  unchanged from the pre-"recreate" UX; the only behavior shift lives in
- *  ENalazActionsCell below. */
 function ENalazStatusCell({
   item,
 }: {
@@ -504,23 +473,16 @@ function ENalazStatusCell({
   return (
     <TableCell>
       <Badge variant="outline" className={cls}>{label}</Badge>
-      <CezihRowErrorBadge rowId={item.reference_id || item.record_id} />
     </TableCell>
   )
 }
 
-/** Actions cell. Storno + Uredi i zamijeni stay visible on every sent,
- *  non-stornoed row — even after a CEZIH error — so doctors can retry if
- *  the error turns out to be transient (e.g. certpubws/test-env flakiness).
- *  Pošalji ponovno appears whenever the row has a persisted error and opens
- *  the recreate-with-prefill flow (new MedicalRecord → new e-Nalaz). */
 function ENalazActionsCell({
   item,
   onLocalEdit,
   onSend,
   onReplaceEdit,
   onStorno,
-  onRecreate,
 }: {
   item: {
     record_id: string
@@ -532,11 +494,7 @@ function ENalazActionsCell({
   onSend: (id: string) => void
   onReplaceEdit: (recordId: string, referenceId: string) => void
   onStorno: (referenceId: string) => void
-  onRecreate: (recordId: string) => void
 }) {
-  const rowId = item.reference_id || item.record_id
-  const err = useCezihRowError(rowId)
-  const hasError = !!err
   const isUnsent = !item.cezih_sent_at && !item.cezih_storno
 
   return (
@@ -566,9 +524,6 @@ function ENalazActionsCell({
         )}
         {!item.cezih_storno && item.reference_id && (
           <>
-            {hasError && (
-              <RecreateNalazButton onClick={() => onRecreate(item.record_id)} />
-            )}
             <Button
               variant="ghost"
               size="sm"
@@ -591,25 +546,5 @@ function ENalazActionsCell({
         )}
       </div>
     </TableCell>
-  )
-}
-
-/** "Pošalji ponovno" — opens a prefilled RecordForm that creates a BRAND NEW
- *  MedicalRecord and then sends it to CEZIH as a fresh e-Nalaz (new
- *  reference_id + OID). Used when the previous storno/replace failed (e.g.
- *  CEZIH replace window expired) — gives the doctor a one-click path to put
- *  corrected data on CEZIH without touching the original document. */
-function RecreateNalazButton({ onClick }: { onClick: () => void }) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="h-8 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
-      onClick={onClick}
-      title="Kreiraj novi e-Nalaz s istim podacima i pošalji na CEZIH"
-    >
-      <Send className="mr-1 h-3.5 w-3.5" />
-      Pošalji ponovno
-    </Button>
   )
 }

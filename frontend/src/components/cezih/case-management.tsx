@@ -4,7 +4,7 @@ import { useState } from "react"
 import { FileText, Plus, Loader2, Pencil, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
-import { CezihRowErrorBadge } from "@/lib/hooks/use-cezih-error-state"
+
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -441,7 +441,6 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                           <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100"}>
                             {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status}
                           </Badge>
-                          <CezihRowErrorBadge rowId={c.case_id} />
                         </TableCell>
                         <TableCell>
                           <span className="text-xs text-muted-foreground">
