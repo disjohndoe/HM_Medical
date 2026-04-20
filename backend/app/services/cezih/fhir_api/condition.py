@@ -21,7 +21,11 @@ from app.services.cezih.message_builder import (
 logger = logging.getLogger(__name__)
 
 
-async def _ensure_case_session(fhir_client: CezihFhirClient) -> None:
+async def _ensure_case_session(
+    fhir_client: CezihFhirClient,
+    patient_mbo: str,
+    identifier_system: str = ID_MBO,
+) -> None:
     """Pre-flight GET before POST to health-issue-services.
 
     Per TC11 (docs/CEZIH/findings/TC11-PMIR-auth-blocker.md): CEZIH's gateway
@@ -29,6 +33,12 @@ async def _ensure_case_session(fhir_client: CezihFhirClient) -> None:
     domain gets redirected to Keycloak, which rejects the fhir+json body with
     415 and surfaces as ERR_DS_1002. A GET goes through the redirect cleanly
     (no body) and sets the cookie.
+
+    Uses a valid Condition search (patient.identifier + _count=0) rather than
+    a bare _count=0. QEDm requires the `patient` query param — without it the
+    server returns 400 ("Missing mandatory parameter"). The 400 still warms
+    the cookie but surfaces as noisy errors in logs/metrics. Since we always
+    have the patient MBO at call time, we do a real 200-OK query instead.
 
     Extsigner users (certpubws.cezih.hr) need this before every case POST
     because their encounter-services cookie doesn't carry over to
@@ -38,7 +48,10 @@ async def _ensure_case_session(fhir_client: CezihFhirClient) -> None:
     try:
         await fhir_client.get(
             "ihe-qedm-services/api/v1/Condition",
-            params={"_count": "0"},
+            params={
+                "patient.identifier": f"{identifier_system}|{patient_mbo}",
+                "_count": "0",
+            },
             timeout=10,
         )
         logger.info("Case: gateway session established via pre-flight GET")
@@ -124,7 +137,7 @@ async def create_case(
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
-    await _ensure_case_session(fhir_client)
+    await _ensure_case_session(fhir_client, patient_mbo, identifier_system or ID_MBO)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -173,7 +186,7 @@ async def create_recurring_case(
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
-    await _ensure_case_session(fhir_client)
+    await _ensure_case_session(fhir_client, patient_mbo, identifier_system or ID_MBO)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -229,7 +242,7 @@ async def update_case(
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
-    await _ensure_case_session(fhir_client)
+    await _ensure_case_session(fhir_client, patient_mbo, identifier_system or ID_MBO)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:
@@ -275,7 +288,7 @@ async def update_case_data(
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
-    await _ensure_case_session(fhir_client)
+    await _ensure_case_session(fhir_client, patient_mbo, identifier_system or ID_MBO)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
     result = parse_message_response(response)
     if not result["success"]:

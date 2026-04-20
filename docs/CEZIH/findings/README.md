@@ -89,6 +89,7 @@ What needs to be done next...
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
+| [TC16-case-session-preflight-fix.md](TC16-case-session-preflight-fix.md) | 2026-04-20 | resolved | TC16 via extsigner was hitting ERR_DS_1002 cold — Keycloak rejected POST body on cold `health-issue-services`. Added TC11-style pre-flight GET to all 4 condition.py entry points. VERIFIED live. |
 | [case-lifecycle-profile-matrix.md](case-lifecycle-profile-matrix.md) | 2026-04-16 | active | Full per-event matrix; 2.3/2.4/2.5/2.9 ALL VERIFIED (commit b314a4e); event codes were swapped in old code — 2.4=Resolve, 2.5=Relapse, 2.9=Reopen; 2.7=Delete NOT SHIPPING |
 | [spec-research-2026-04-16.md](spec-research-2026-04-16.md) | 2026-04-16 | active | Simplifier cezih.hr.condition-management/0.2.1 ground truth — event code table, passport/EHIC identifier URIs, annotation-type CodeSystem |
 
