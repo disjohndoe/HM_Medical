@@ -11,6 +11,78 @@ related: TC11-PMIR-auth-blocker.md
 
 Extension of the TC11 pattern — CEZIH's gateway establishes session cookies **per service-domain**, so every POST-first path on a cold domain needs its own pre-flight GET.
 
+---
+
+## ⚠️ 2026-04-20 15:30 UTC — CORRECTION to the root-cause section
+
+The "session cookies per service-domain" framing below is **wrong for this deployment.**
+A later TC16 regression (~13:00 UTC) was misdiagnosed using this doc's framing, which
+led to two attempted pre-flight tweaks (`b602342` → `5e4ca23` → `75dcda2`), all
+ineffective. Diagnostic PR `74bab64` / `edeba7d` forced the failing POST to print
+full response body + `is_keycloak_redirect` flag + bundle sha. The 13:24 UTC repro
+then returned 200 with these observations:
+
+- `cezih_signing_method=extsigner` in DB for the test user, resolved correctly at request time.
+- Extsigner signing itself ran against `https://certws2.cezih.hr:8443/extsigner/api/sign`
+  — the **VPN smartcard host**, not `certpubws`. (`CEZIH_FHIR_PUB_BASE_URL` is unset in
+  prod `.env`, so `client.py:_pub_base_url` falls back to `_vpn_base_url = certws2`.)
+- FHIR POST `certws2:…/health-issue-services/$process-message` → 200.
+- Pre-flight GET on `ihe-qedm-services/Condition?_count=0` still returned 400
+  ("Missing mandatory parameter 'patient'") — yet the POST to a *different* backend
+  (`health-issue-services`) on the **same host** succeeded.
+
+### Corrected root cause
+
+Gateway cookies are **host-scoped**, not per-backend-service path. In this deployment
+everything runs through `certws2.cezih.hr:8443` for both signing methods — extsigner
+does not hit a separate `certpubws` host because the pub URL is unset. The agent's
+on-connect warmup (`patient-registry-services/api/v1/Patient?_count=0`, set in
+`agent_ws.py` from `CEZIH_FHIR_BASE_URL`) establishes the cookie once per agent
+session; every subsequent backend on that host shares it. The `ihe-qedm-services`
+pre-flight "works" only because it is on the same host as the POST — the specific
+backend path is irrelevant.
+
+### What the 13:00 UTC regression actually was
+
+Transient CEZIH test-environment state. Neither `b602342` nor the revert of `5e4ca23`
+changed anything material — the same code that "failed" at 13:00 produced a 200 at
+13:24 without further edits.
+
+### Implications
+
+- **Do not** reintroduce this doc's "per-service-domain cookies" claim in any future
+  fix. It does not match what `client.py:_full_url` and `agent_ws.py` actually do in
+  this deployment.
+- **Do not** switch the pre-flight to `health-issue-services/api/v1/metadata` or any
+  other same-backend URL "for safety" — the current bare `?_count=0` GET on any
+  warmable backend of `certws2` is sufficient. The 400 in the log is noise, not a
+  bug.
+- **If** a future deployment actually sets `CEZIH_FHIR_PUB_BASE_URL` to a distinct
+  `certpubws` host, this whole analysis has to be revisited: then cookies really
+  would be per-host and extsigner would hit a cold gateway with no warmup. The
+  `agent_ws.py:warmup_url` would need to warm both hosts. Today that is a
+  hypothetical, not a bug.
+- **Diagnostic PR** (`74bab64` + `edeba7d`) stays in place until one full green
+  TC11/TC16/TC17 run confirms stability, then gets removed in a tidy-up commit.
+
+### How to diagnose this class of confusion next time
+
+Before shipping a session-cookie fix, check the log line
+`CEZIH response via agent: <METHOD> <URL> -> <status>`. If the POST URL's **host**
+matches the URL of the request that most recently returned 2xx or 4xx-FHIR-OO on
+this agent connection, the cookie is warm and the error is not session-related —
+look at bundle structure or signature verification instead. The `health-issue-services`-specific
+`is_keycloak_redirect` diagnostic (`client.py:_request_via_agent`) makes this call
+for you; `is_keycloak_redirect=false` rules session out.
+
+---
+
+## Original 2026-04-20 12:15 UTC investigation (preserved for history)
+
+The below was written before the 13:24 UTC evidence was collected. Treat the
+framing as obsolete; the implementation (bare `?_count=0` pre-flight) stayed and
+still works, but for a different reason than stated.
+
 ## Symptom
 
 - 2026-04-20: `POST health-issue-services/$process-message` → `ERR_DS_1002` with `code: "business-rule"` when signed via Certilia mobile (extsigner on `certpubws.cezih.hr:8443`).
