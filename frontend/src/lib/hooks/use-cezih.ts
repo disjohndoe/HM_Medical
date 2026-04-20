@@ -702,7 +702,7 @@ export function useCreateCase() {
       })
       return { prev, tempId, queryKey }
     },
-    onSuccess: (resp, _vars, ctx) => {
+    onSuccess: (resp, vars, ctx) => {
       if (ctx) {
         clearError(ctx.tempId)
         const realId = resp.cezih_case_id || resp.local_case_id
@@ -718,6 +718,7 @@ export function useCreateCase() {
           }
         })
       }
+      qc.invalidateQueries({ queryKey: ["cezih", "cases", vars.patient_id] })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
