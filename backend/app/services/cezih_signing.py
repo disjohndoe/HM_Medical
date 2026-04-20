@@ -615,7 +615,8 @@ async def sign_bundle_via_extsigner(
                 import hashlib as _hashlib
                 doc = docs[0] or {}
                 doc_b64 = (
-                    doc.get("document")
+                    doc.get("base64Document")
+                    or doc.get("document")
                     or doc.get("content")
                     or doc.get("signedDocument")
                     or ""
