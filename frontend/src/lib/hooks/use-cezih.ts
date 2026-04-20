@@ -960,32 +960,16 @@ export function useCancelDocument() {
   return useMutation({
     mutationFn: (referenceId: string) =>
       api.delete<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}`),
-    onMutate: async (referenceId) => {
-      const queryFilter = { queryKey: ["cezih", "documents"], exact: false }
-      await qc.cancelQueries(queryFilter)
-      const prev = qc.getQueriesData<DocumentSearchItem[]>(queryFilter)
-      qc.setQueriesData<DocumentSearchItem[]>(queryFilter, (old) => {
-        if (!old) return old
-        return old.map((d) =>
-          d.id === referenceId ? { ...d, status: "Pogreška", _local: true } : d,
-        )
-      })
-      return { prev }
-    },
     onSuccess: (_resp, referenceId) => {
       clearError(referenceId)
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
+      qc.invalidateQueries({ queryKey: ["cezih", "documents"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
-    onError: (err, referenceId, ctx) => {
+    onError: (err, referenceId) => {
       showCezihErrorToast(err)
       setError(referenceId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
-      if (ctx?.prev) {
-        for (const [key, data] of ctx.prev) {
-          qc.setQueryData(key, data)
-        }
-      }
     },
   })
 }
