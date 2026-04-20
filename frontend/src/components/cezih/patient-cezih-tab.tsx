@@ -404,7 +404,7 @@ export function PatientCezihTab({
                               <>
                                 <RetryStornoButton
                                   rowId={item.reference_id}
-                                  onClick={() => setNalazStornoTarget(item.reference_id)}
+                                  onClick={() => setSendTargetRecordId(item.record_id)}
                                 />
                                 <Button
                                   variant="ghost"
@@ -516,11 +516,12 @@ export function PatientCezihTab({
   )
 }
 
-/** Inline "Pošalji ponovno" button — visible only when the row carries a
- *  CEZIH error from a previous storno attempt. Triggers the same storno
- *  confirm dialog as the trash icon, but with copy that matches the
- *  badge's "pokušajte poslati nalaz ponovno" hint so the doctor doesn't
- *  have to map "send again" → "click trash icon" in their head. */
+/** "Pošalji ponovno" — visible when the row carries a CEZIH error from a
+ *  previous storno/replace attempt. Resends the underlying medical record
+ *  as a new e-Nalaz on CEZIH (fresh DocumentReference + reference_id). The
+ *  doctor's intent on a stuck/errored row is "get this nalaz on CEZIH",
+ *  not "keep poking the failing storno"; the original CEZIH document is
+ *  already orphaned by their replace-window expiry. */
 function RetryStornoButton({ rowId, onClick }: { rowId: string; onClick: () => void }) {
   const err = useCezihRowError(rowId)
   if (!err) return null
@@ -530,7 +531,7 @@ function RetryStornoButton({ rowId, onClick }: { rowId: string; onClick: () => v
       size="sm"
       className="h-8 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
       onClick={onClick}
-      title="Pošalji storno ponovno"
+      title="Pošalji nalaz ponovno na CEZIH"
     >
       <Send className="mr-1 h-3.5 w-3.5" />
       Pošalji ponovno
