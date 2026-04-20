@@ -43,12 +43,16 @@ interface RecordFormProps {
   record?: MedicalRecord | null
   onSaved?: (record: MedicalRecord) => void
   submitLabel?: string
+  /** When provided, the form skips its own PATCH and delegates the edited
+   *  payload to the caller. Used by the CEZIH edit-and-replace flow to
+   *  ensure the local record is only mutated after CEZIH returns 2xx. */
+  submitOverride?: (payload: MedicalRecordUpdate) => Promise<void>
 }
 
 const ACCEPTED_TYPES = ".jpeg,.jpg,.png,.pdf"
 const MAX_SIZE_MB = 10
 
-export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel }: RecordFormProps) {
+export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel, submitOverride }: RecordFormProps) {
   const isEdit = !!record
   const createMutation = useCreateMedicalRecord()
   const updateMutation = useUpdateMedicalRecord()
@@ -163,9 +167,20 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           sadrzaj: data.sadrzaj,
           preporucena_terapija: therapy.length > 0 ? therapy : null,
         }
-        const updated = await updateMutation.mutateAsync({ id: record.id, data: payload })
-        toast.success("Zapis ažuriran")
-        onSaved?.(updated)
+        if (submitOverride) {
+          // Caller owns the write (e.g. CEZIH atomic edit-and-replace). Dialog
+          // stays open on failure so the doctor can retry without losing input.
+          setOverrideSubmitting(true)
+          try {
+            await submitOverride(payload)
+          } finally {
+            setOverrideSubmitting(false)
+          }
+        } else {
+          const updated = await updateMutation.mutateAsync({ id: record.id, data: payload })
+          toast.success("Zapis ažuriran")
+          onSaved?.(updated)
+        }
       } else {
         const payload: MedicalRecordCreate = {
           patient_id: patientId,
@@ -189,11 +204,17 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
       onOpenChange(false)
       dialogRef.current?.close()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
+      // submitOverride owns its own error toast (e.g. structured CEZIH error).
+      // For the default path, surface a generic toast so the doctor sees the
+      // failure reason.
+      if (!submitOverride) {
+        toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
+      }
     }
   }
 
-  const isSubmitting = createMutation.isPending || updateMutation.isPending || uploadDoc.isPending
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false)
+  const isSubmitting = createMutation.isPending || updateMutation.isPending || uploadDoc.isPending || overrideSubmitting
 
   const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]

@@ -1,7 +1,9 @@
+import { useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, isSigningError } from "@/lib/api-client"
+import { api, CezihApiError, isSigningError } from "@/lib/api-client"
+import { clearError, setError, syncCezihRowErrors } from "@/lib/hooks/use-cezih-error-state"
 import type {
   CaseActionResponse,
   CaseItem,
@@ -34,18 +36,36 @@ import type {
   VisitsListResponse,
 } from "@/lib/types"
 
-/** Helper: show actionable toast for signing configuration errors. */
-function showSigningErrorToast(message: string) {
-  if (isSigningError(message)) {
-    toast.error(message, {
+/** Helper: show actionable toast for CEZIH errors.
+ *  - Structured CEZIH errors (CezihApiError) → show code + diagnostics for 15s
+ *  - Signing config errors → "Idi na Postavke" action
+ *  - Generic errors → plain toast
+ */
+function showCezihErrorToast(err: Error) {
+  if (err instanceof CezihApiError && err.cezih_error) {
+    const ce = err.cezih_error
+    toast.error("Greška na CEZIH-u, pokušajte ponovno", {
+      description: [ce.code && `Kod: ${ce.code}`, ce.diagnostics].filter(Boolean).join("\n"),
+      duration: 15_000,
+    })
+  } else if (isSigningError(err.message)) {
+    toast.error(err.message, {
       action: {
         label: "Idi na Postavke",
         onClick: () => (window.location.href = "/postavke/korisnici"),
       },
     })
   } else {
-    toast.error(message)
+    toast.error(err.message)
   }
+}
+
+/** Extract code + diagnostics from an error for row-bound setError calls. */
+function cezihErrorParts(err: Error): { code?: string; diagnostics?: string } {
+  if (err instanceof CezihApiError && err.cezih_error) {
+    return { code: err.cezih_error.code, diagnostics: err.cezih_error.diagnostics }
+  }
+  return {}
 }
 
 export function useCezihStatus() {
@@ -201,13 +221,17 @@ export function useSendENalaz() {
         encounter_id: encounter_id || "",
         case_id: case_id || "",
       }),
-    onSuccess: () => {
+    onSuccess: (_resp, vars) => {
+      clearError(vars.record_id)
       queryClient.invalidateQueries({ queryKey: ["medical-records"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "activity"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
     },
-    onError: (err) => showSigningErrorToast(err.message),
+    onError: (err, vars) => {
+      showCezihErrorToast(err)
+      setError(vars.record_id, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
+    },
   })
 }
 
@@ -385,7 +409,7 @@ export function useRegisterForeigner() {
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patients", "search"] })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showCezihErrorToast(err),
   })
 }
 
@@ -407,12 +431,18 @@ export function useForeignerSearch(system: string, value: string) {
 // ============================================================
 
 export function useListVisits(patientId: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["cezih", "visits", patientId],
     queryFn: () =>
       api.get<VisitsListResponse>(`/cezih/visits?patient_id=${encodeURIComponent(patientId)}`),
     enabled: !!patientId,
   })
+  useEffect(() => {
+    if (query.data?.visits) {
+      syncCezihRowErrors(query.data.visits, (v) => v.visit_id)
+    }
+  }, [query.data])
+  return query
 }
 
 export function useCreateVisit() {
@@ -451,6 +481,10 @@ export function useCreateVisit() {
       return { prev, tempId, queryKey }
     },
     onSuccess: (resp, vars, ctx) => {
+      if (ctx) {
+        clearError(ctx.tempId)
+        if (resp.visit_id) clearError(resp.visit_id)
+      }
       // Replace temp ID with real one from CEZIH
       if (ctx) {
         qc.setQueryData<VisitsListResponse>(ctx.queryKey, (old) => {
@@ -475,8 +509,11 @@ export function useCreateVisit() {
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
     onError: (err, vars, ctx) => {
-      showSigningErrorToast(err.message)
-      if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
+      showCezihErrorToast(err)
+      if (ctx) {
+        setError(ctx.tempId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
+        qc.setQueryData(ctx.queryKey, ctx.prev)
+      }
     },
   })
 }
@@ -533,11 +570,13 @@ export function useUpdateVisit() {
       return { prev, queryKey }
     },
     onSuccess: (_resp, vars) => {
+      clearError(vars.visitId)
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
     },
-    onError: (err, _vars, ctx) => {
-      showSigningErrorToast(err.message)
+    onError: (err, vars, ctx) => {
+      showCezihErrorToast(err)
+      setError(vars.visitId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
       if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
@@ -582,11 +621,13 @@ export function useVisitAction() {
       return { prev, queryKey }
     },
     onSuccess: (_resp, vars) => {
+      clearError(vars.visitId)
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
     },
-    onError: (err, _vars, ctx) => {
-      showSigningErrorToast(err.message)
+    onError: (err, vars, ctx) => {
+      showCezihErrorToast(err)
+      setError(vars.visitId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
       if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
@@ -598,12 +639,18 @@ export function useVisitAction() {
 // ============================================================
 
 export function useRetrieveCases(patientId: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["cezih", "cases", patientId],
     queryFn: () =>
       api.get<CasesListResponse>(`/cezih/cases?patient_id=${encodeURIComponent(patientId)}`),
     enabled: !!patientId,
   })
+  useEffect(() => {
+    if (query.data?.cases) {
+      syncCezihRowErrors(query.data.cases, (c) => c.case_id)
+    }
+  }, [query.data])
+  return query
 }
 
 export function useCreateCase() {
@@ -635,6 +682,9 @@ export function useCreateCase() {
     },
     onSuccess: (resp, _vars, ctx) => {
       if (ctx) {
+        clearError(ctx.tempId)
+        const realId = resp.cezih_case_id || resp.local_case_id
+        if (realId) clearError(realId)
         qc.setQueryData<CasesListResponse>(ctx.queryKey, (old) => {
           if (!old) return old
           return {
@@ -650,8 +700,11 @@ export function useCreateCase() {
       qc.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
     },
     onError: (err, _vars, ctx) => {
-      showSigningErrorToast(err.message)
-      if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
+      showCezihErrorToast(err)
+      if (ctx) {
+        setError(ctx.tempId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
+        qc.setQueryData(ctx.queryKey, ctx.prev)
+      }
     },
   })
 }
@@ -726,8 +779,9 @@ export function useUpdateCaseStatus() {
       }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
-    onError: (err, _vars, ctx) => {
-      showSigningErrorToast(err.message)
+    onError: (err, vars, ctx) => {
+      showCezihErrorToast(err)
+      setError(vars.caseId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
       if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
@@ -767,11 +821,13 @@ export function useUpdateCaseData() {
       })
       return { prev, queryKey }
     },
-    onSuccess: () => {
+    onSuccess: (_resp, vars) => {
+      clearError(vars.caseId)
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
-    onError: (err, _vars, ctx) => {
-      showSigningErrorToast(err.message)
+    onError: (err, vars, ctx) => {
+      showCezihErrorToast(err)
+      setError(vars.caseId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
       if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
     },
   })
@@ -801,6 +857,69 @@ export function useDocumentSearch(params: {
   })
 }
 
+/** Atomic edit-and-replace: signs + calls CEZIH ITI-65 replace first, only
+ *  applies the local record PATCH when CEZIH returns 2xx. Use this instead of
+ *  the PATCH-then-replace pattern for any edit that should be mirrored to
+ *  CEZIH — prevents DB/CEZIH divergence when CEZIH fails. */
+export function useReplaceDocumentWithEdit() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      referenceId,
+      record_id,
+      patient_id,
+      encounter_id,
+      case_id,
+      datum,
+      tip,
+      dijagnoza_mkb,
+      dijagnoza_tekst,
+      sadrzaj,
+      sensitivity,
+      preporucena_terapija,
+    }: {
+      referenceId: string
+      record_id: string
+      patient_id: string
+      encounter_id?: string
+      case_id?: string
+      datum?: string | null
+      tip?: string | null
+      dijagnoza_mkb?: string | null
+      dijagnoza_tekst?: string | null
+      sadrzaj?: string | null
+      sensitivity?: string | null
+      preporucena_terapija?: unknown[] | null
+    }) =>
+      api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}/replace-with-edit`, {
+        record_id,
+        patient_id,
+        encounter_id: encounter_id || "",
+        case_id: case_id || "",
+        datum,
+        tip,
+        dijagnoza_mkb,
+        dijagnoza_tekst,
+        sadrzaj,
+        sensitivity,
+        preporucena_terapija,
+      }),
+    onSuccess: (_resp, vars) => {
+      clearError(vars.referenceId)
+      clearError(vars.record_id)
+      qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
+      qc.invalidateQueries({ queryKey: ["cezih", "documents"], exact: false })
+      qc.invalidateQueries({ queryKey: ["medical-records"] })
+    },
+    onError: (err, vars) => {
+      showCezihErrorToast(err)
+      const parts = cezihErrorParts(err)
+      setError(vars.record_id, err.message, parts.code, parts.diagnostics)
+    },
+  })
+}
+
 export function useReplaceDocument() {
   const qc = useQueryClient()
   return useMutation({
@@ -818,13 +937,15 @@ export function useReplaceDocument() {
       })
       return { prev }
     },
-    onSuccess: () => {
+    onSuccess: (_resp, vars) => {
+      clearError(vars.referenceId)
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
-    onError: (err, _vars, ctx) => {
-      showSigningErrorToast(err.message)
+    onError: (err, vars, ctx) => {
+      showCezihErrorToast(err)
+      setError(vars.referenceId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
       if (ctx?.prev) {
         for (const [key, data] of ctx.prev) {
           qc.setQueryData(key, data)
@@ -851,13 +972,15 @@ export function useCancelDocument() {
       })
       return { prev }
     },
-    onSuccess: () => {
+    onSuccess: (_resp, referenceId) => {
+      clearError(referenceId)
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
-    onError: (err, _vars, ctx) => {
-      showSigningErrorToast(err.message)
+    onError: (err, referenceId, ctx) => {
+      showCezihErrorToast(err)
+      setError(referenceId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
       if (ctx?.prev) {
         for (const [key, data] of ctx.prev) {
           qc.setQueryData(key, data)
@@ -869,7 +992,7 @@ export function useCancelDocument() {
 
 export function useRetrieveDocument() {
   return useMutation({
-    mutationFn: async ({ id, contentUrl, documentOid }: { id: string; contentUrl?: string; documentOid?: string }) => {
+    mutationFn: async ({ id, contentUrl, documentOid }: { id: string; contentUrl?: string; documentOid?: string; recordId?: string }) => {
       let endpoint = `/cezih/e-nalaz/${id}/document`
       if (contentUrl) {
         endpoint += `?url=${encodeURIComponent(contentUrl)}`
@@ -878,6 +1001,13 @@ export function useRetrieveDocument() {
       }
       const response = await api.fetchRaw(endpoint)
       return response.blob()
+    },
+    onError: (err, vars) => {
+      showCezihErrorToast(err)
+      const rowId = vars.recordId || vars.id
+      if (rowId) {
+        setError(rowId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
+      }
     },
   })
 }

@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.cezih import service as real_service
-from app.services.cezih.dispatchers.common import _require_audit_params, _write_audit
+from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
 from app.services.cezih.exceptions import CezihError
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ async def import_patient_from_cezih(
         )
     except CezihError as e:
         logger.error("CEZIH patient import failed: %s", e.message)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
 
     # Extract identifiers
     idents: dict[str, str] = {}
@@ -165,7 +165,7 @@ async def import_patient_by_identifier(
         )
     except CezihError as e:
         logger.error("CEZIH patient import (%s) failed: %s", identifier_type, e.message)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
 
     # Extract each CEZIH identifier from the response.
     idents: dict[str, str] = {}
@@ -368,7 +368,7 @@ async def insurance_check_by_identifier(
         )
     except CezihError as e:
         logger.error("CEZIH ad-hoc insurance check (%s) failed: %s", identifier_type, e.message)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
 
     # Build insurance-check response from richer PDQm data
     status_osiguranja = "Aktivan"
@@ -448,7 +448,7 @@ async def insurance_check(
         result = await real_service.check_insurance(http_client, system_uri, value)
     except CezihError as e:
         logger.error("CEZIH insurance check failed: %s", e.message)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
 
     await _persist_insurance_to_patient_by_id(
         db, patient_id, result.get("status_osiguranja", ""),
@@ -492,7 +492,7 @@ async def foreigner_registration(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Pacijent je već registriran u CEZIH-u. Pretražite ga po putovnici ili EHIC-u i dodajte u kartoteku.",
             ) from e
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     patient_name = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}"
     await _write_audit(
         db, tenant_id, user_id, action="foreigner_register",

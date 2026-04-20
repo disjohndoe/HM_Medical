@@ -13,8 +13,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.cezih import service as real_service
 from app.services.cezih.dispatchers.cases import _lookup_patient_id
-from app.services.cezih.dispatchers.common import _require_audit_params, _write_audit
+from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
+from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
 from app.services.cezih.exceptions import CezihError
+
+
+async def _lookup_local_visit_id(
+    db: AsyncSession | None, tenant_id: UUID | None, cezih_visit_id: str,
+) -> UUID | None:
+    """Resolve the CEZIH-side visit identifier to our local CezihVisit.id so
+    per-row error persistence can mark the right row."""
+    if not db or not tenant_id or not cezih_visit_id:
+        return None
+    try:
+        from app.models.cezih_visit import CezihVisit
+        res = await db.execute(
+            select(CezihVisit.id).where(
+                CezihVisit.tenant_id == tenant_id,
+                CezihVisit.cezih_visit_id == cezih_visit_id,
+            )
+        )
+        row = res.first()
+        return row[0] if row else None
+    except SQLAlchemyError:
+        return None
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +140,10 @@ async def _fetch_fresh_local_visits_by_patient(
                 "period_end": row.period_end.isoformat() if row.period_end else None,
                 "_fresh": fresh,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                "last_error_code": row.last_error_code,
+                "last_error_display": row.last_error_display,
+                "last_error_diagnostics": row.last_error_diagnostics,
+                "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
             })
         return out
     except SQLAlchemyError as exc:
@@ -126,7 +152,11 @@ async def _fetch_fresh_local_visits_by_patient(
 
 
 # Visit fields that only exist locally (CEZIH never returns them)
-_VISIT_LOCAL_ONLY_FIELDS = ("tip_posjete", "tip_posjete_display", "vrsta_posjete", "vrsta_posjete_display", "updated_at")
+_VISIT_LOCAL_ONLY_FIELDS = (
+    "tip_posjete", "tip_posjete_display", "vrsta_posjete", "vrsta_posjete_display",
+    "updated_at",
+    "last_error_code", "last_error_display", "last_error_diagnostics", "last_error_at",
+)
 # Visit fields where CEZIH is authoritative, but we fall back to the mirror
 # when CEZIH's QEDm response leaves the field empty. QEDm read-back regularly
 # strips Encounter.reasonCode, so the user-entered reason is more reliable.
@@ -325,7 +355,9 @@ async def dispatch_create_visit(
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        # create failed → no row exists yet, nothing to persist error on.
+        # Toast + dialog-stays-open is the signal to the user.
+        _raise_cezih_error(e)
     await _write_audit(
         db, tenant_id, user_id, action="visit_create",
         details={"patient_id": str(patient_id), "nacin_prijema": nacin_prijema},
@@ -377,6 +409,8 @@ async def dispatch_update_visit(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
+    local_visit_id = await _lookup_local_visit_id(db, tenant_id, visit_id)
+
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
@@ -409,7 +443,9 @@ async def dispatch_update_visit(
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        await record_cezih_error("visit", local_visit_id, tenant_id, e)
+        _raise_cezih_error(e)
+    await clear_cezih_error("visit", local_visit_id, tenant_id)
     await _write_audit(
         db, tenant_id, user_id, action="visit_update",
         details={"visit_id": visit_id, "patient_id": str(patient_id)},
@@ -458,6 +494,8 @@ async def dispatch_visit_action(
         _sys, identifier_value = real_service.resolve_cezih_identifier(patient)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    local_visit_id = await _lookup_local_visit_id(db, tenant_id, visit_id)
 
     try:
         from app.services.cezih.client import CezihFhirClient
@@ -523,7 +561,9 @@ async def dispatch_visit_action(
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        await record_cezih_error("visit", local_visit_id, tenant_id, e)
+        _raise_cezih_error(e)
+    await clear_cezih_error("visit", local_visit_id, tenant_id)
     await _write_audit(
         db, tenant_id, user_id, action=f"visit_{action}",
         details={"visit_id": visit_id, "action": action},
@@ -575,7 +615,7 @@ async def dispatch_list_visits(
     try:
         result = await real_service.list_visits(http_client, system_uri, value)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(
         db, tenant_id, user_id, action="visit_list",
         details={"patient_id": str(patient_id), "identifier_system": system_uri},

@@ -34,6 +34,15 @@ async function refreshTokens(): Promise<void> {
   return refreshPromise;
 }
 
+export class CezihApiError extends Error {
+  cezih_error?: { code: string; display: string; diagnostics: string };
+  constructor(message: string, cezih_error?: { code: string; display: string; diagnostics: string }) {
+    super(message);
+    this.name = "CezihApiError";
+    this.cezih_error = cezih_error;
+  }
+}
+
 function extractErrorMessage(detail: unknown): string {
   // Map backend validation errors to user-friendly messages
   // Never expose internal error details, schema info, or paths
@@ -55,7 +64,22 @@ function extractErrorMessage(detail: unknown): string {
     }
     return detail
   }
+  if (typeof detail === "object" && detail !== null && "message" in detail) {
+    return (detail as { message: string }).message
+  }
   return "Došlo je do greške. Pokušajte ponovo."
+}
+
+function throwApiError(status: number, errorBody: { detail?: unknown } | null): never {
+  if (!errorBody?.detail) {
+    throw new Error(`API error: ${status}`);
+  }
+  const detail = errorBody.detail;
+  if (typeof detail === "object" && detail !== null && "cezih_error" in detail) {
+    const d = detail as { message: string; cezih_error: { code: string; display: string; diagnostics: string } };
+    throw new CezihApiError(d.message, d.cezih_error);
+  }
+  throw new Error(extractErrorMessage(detail));
 }
 
 function handleAuthFailure(): never {
@@ -123,8 +147,7 @@ async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Pro
 
       if (!retryRes.ok) {
         const errorBody = await retryRes.json().catch(() => null);
-        const message = errorBody?.detail ? extractErrorMessage(errorBody.detail) : `API error: ${retryRes.status} ${retryRes.statusText}`;
-        throw new Error(message);
+        throwApiError(retryRes.status, errorBody);
       }
       if (retryRes.status === 204) return undefined as T;
       return retryRes.json();
@@ -139,8 +162,7 @@ async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Pro
 
   if (!res.ok) {
     const errorBody = await res.json().catch(() => null);
-    const message = errorBody?.detail ? extractErrorMessage(errorBody.detail) : `API error: ${res.status} ${res.statusText}`;
-    throw new Error(message);
+    throwApiError(res.status, errorBody);
   }
 
   if (res.status === 204) return undefined as T;
@@ -176,8 +198,7 @@ async function apiClientRaw(
 
       if (!res.ok) {
         const errorBody = await res.json().catch(() => null);
-        const message = errorBody?.detail ? extractErrorMessage(errorBody.detail) : `API error: ${res.status} ${res.statusText}`;
-        throw new Error(message);
+        throwApiError(res.status, errorBody);
       }
       return res;
     } catch (err) {
@@ -190,8 +211,7 @@ async function apiClientRaw(
 
   if (!res.ok) {
     const errorBody = await res.json().catch(() => null);
-    const message = errorBody?.detail ? extractErrorMessage(errorBody.detail) : `API error: ${res.status} ${res.statusText}`;
-    throw new Error(message);
+    throwApiError(res.status, errorBody);
   }
 
   return res;
@@ -221,8 +241,7 @@ async function apiClientFormData<T>(endpoint: string, formData: FormData): Promi
 
       if (!retryRes.ok) {
         const errorBody = await retryRes.json().catch(() => null);
-        const message = errorBody?.detail ? extractErrorMessage(errorBody.detail) : `API error: ${retryRes.status} ${retryRes.statusText}`;
-        throw new Error(message);
+        throwApiError(retryRes.status, errorBody);
       }
       if (retryRes.status === 204) return undefined as T;
       return retryRes.json();
@@ -236,8 +255,7 @@ async function apiClientFormData<T>(endpoint: string, formData: FormData): Promi
 
   if (!res.ok) {
     const errorBody = await res.json().catch(() => null);
-    const message = errorBody?.detail ? extractErrorMessage(errorBody.detail) : `API error: ${res.status} ${res.statusText}`;
-    throw new Error(message);
+    throwApiError(res.status, errorBody);
   }
 
   if (res.status === 204) return undefined as T;

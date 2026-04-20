@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,3 +40,10 @@ class CezihCase(BaseTenantModel):
     onset_date: Mapped[str] = mapped_column(String(20), nullable=False)
     abatement_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    last_error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_error_display: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_diagnostics: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )

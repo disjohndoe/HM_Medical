@@ -10,8 +10,35 @@ from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.cezih import service as real_service
-from app.services.cezih.dispatchers.common import _require_audit_params, _write_audit
+from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
+from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
 from app.services.cezih.exceptions import CezihError
+
+
+async def _lookup_local_case_id(
+    db: AsyncSession | None, tenant_id: UUID | None, case_id: str,
+) -> UUID | None:
+    """Resolve the CEZIH-side case identifier (or our local_case_id) to the
+    local CezihCase.id so per-row error persistence can mark the right row."""
+    if not db or not tenant_id or not case_id:
+        return None
+    try:
+        from sqlalchemy import or_
+
+        from app.models.cezih_case import CezihCase
+        res = await db.execute(
+            select(CezihCase.id).where(
+                CezihCase.tenant_id == tenant_id,
+                or_(
+                    CezihCase.cezih_case_id == case_id,
+                    CezihCase.local_case_id == case_id,
+                ),
+            )
+        )
+        row = res.first()
+        return row[0] if row else None
+    except SQLAlchemyError:
+        return None
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +139,10 @@ async def _fetch_fresh_local_cases_by_patient(
                 "abatement_date": row.abatement_date,
                 "note": row.note,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                "last_error_code": row.last_error_code,
+                "last_error_display": row.last_error_display,
+                "last_error_diagnostics": row.last_error_diagnostics,
+                "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
             }
             for row in rows
         ]
@@ -235,7 +266,7 @@ async def dispatch_retrieve_cases(
     try:
         result = await real_service.retrieve_cases(http_client, system_uri, value)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(
         db, tenant_id, user_id, action="case_retrieve",
         details={"patient_id": str(patient_id), "identifier_system": system_uri},
@@ -281,7 +312,8 @@ async def dispatch_create_case(
             identifier_system=identifier_system,
         )
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        # create failed → no local CezihCase yet; dialog + toast are the signal.
+        _raise_cezih_error(e)
     await _write_audit(
         db, tenant_id, user_id, action="case_create",
         details={"patient_id": str(patient_id), "icd": icd_code},
@@ -323,6 +355,11 @@ async def dispatch_update_case(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
+    # For create_recurring the parent case is the row where the doctor
+    # initiated retry, so mark errors on it. For other transitions mark the
+    # target case.
+    local_case_id = await _lookup_local_case_id(db, tenant_id, case_id)
+
     try:
         if action == "create_recurring":
             # 2.2 Ponavljajući creates a NEW case inheriting the parent's ICD.
@@ -346,7 +383,9 @@ async def dispatch_update_case(
                 identifier_system=identifier_system,
             )
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        await record_cezih_error("case", local_case_id, tenant_id, e)
+        _raise_cezih_error(e)
+    await clear_cezih_error("case", local_case_id, tenant_id)
     await _write_audit(
         db, tenant_id, user_id, action=f"case_{action}",
         details={"case_id": case_id, "action": action, "patient_id": str(patient_id)},
@@ -414,6 +453,8 @@ async def dispatch_update_case_data(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
+    local_case_id = await _lookup_local_case_id(db, tenant_id, case_id)
+
     try:
         result = await real_service.update_case_data(
             http_client, case_id, identifier_value, practitioner_id, org_code,
@@ -425,8 +466,10 @@ async def dispatch_update_case_data(
             identifier_system=identifier_system,
         )
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        await record_cezih_error("case", local_case_id, tenant_id, e)
+        _raise_cezih_error(e)
 
+    await clear_cezih_error("case", local_case_id, tenant_id)
     await _write_audit(
         db, tenant_id, user_id, action="case_update_data",
         details={"case_id": case_id},
@@ -445,6 +488,7 @@ async def dispatch_update_case_data(
 
 __all__ = [
     "_lookup_patient_id",
+    "_lookup_local_case_id",
     "_persist_local_case_by_patient_id",
     "_fetch_fresh_local_cases_by_patient",
     "_merge_with_local",

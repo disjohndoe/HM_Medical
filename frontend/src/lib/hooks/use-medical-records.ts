@@ -1,7 +1,9 @@
+import { useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { api } from "@/lib/api-client"
+import { syncCezihRowErrors } from "@/lib/hooks/use-cezih-error-state"
 import type {
   MedicalRecord,
   MedicalRecordCreate,
@@ -25,7 +27,7 @@ export function useMedicalRecords(
   params.set("skip", String(skip))
   params.set("limit", String(limit))
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ["medical-records", patientId, tip, dateFrom, dateTo, skip, limit],
     queryFn: () =>
       api.get<PaginatedResponse<MedicalRecord>>(
@@ -33,24 +35,42 @@ export function useMedicalRecords(
       ),
     enabled: !!patientId,
   })
+  useEffect(() => {
+    if (query.data?.items) {
+      syncCezihRowErrors(query.data.items, (r) => r.id)
+    }
+  }, [query.data])
+  return query
 }
 
 export function useCezihUnsentRecords(skip = 0, limit = 20) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["medical-records", "cezih-unsent", skip, limit],
     queryFn: () =>
       api.get<PaginatedResponse<MedicalRecord>>(
         `/medical-records?cezih_sent=false&skip=${skip}&limit=${limit}`
       ),
   })
+  useEffect(() => {
+    if (query.data?.items) {
+      syncCezihRowErrors(query.data.items, (r) => r.id)
+    }
+  }, [query.data])
+  return query
 }
 
 export function useMedicalRecord(id: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["medical-records", id],
     queryFn: () => api.get<MedicalRecord>(`/medical-records/${id}`),
     enabled: !!id,
   })
+  useEffect(() => {
+    if (query.data) {
+      syncCezihRowErrors([query.data], (r) => r.id)
+    }
+  }, [query.data])
+  return query
 }
 
 export function useCreateMedicalRecord() {

@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Plus, Loader2, Building2, ExternalLink, Pencil, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
+import { CezihRowErrorBadge } from "@/lib/hooks/use-cezih-error-state"
 import { useAuth } from "@/lib/auth"
 
 import { Button } from "@/components/ui/button"
@@ -179,10 +180,10 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     }
     const capturedNacin = nacinPrijema
     const capturedTip = tipPosjete
-    setShowCreate(false)
     setReason("")
     createVisit.mutate(payload, {
       onSuccess: (res) => {
+        setShowCreate(false)
         toast.success(`Posjeta kreirana: ${res.visit_id}`)
         if (res.visit_id) {
           setVisitMeta((prev) => ({
@@ -422,6 +423,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                           <Badge variant="secondary" className={VISIT_STATUS_COLORS[v.status] || ""}>
                             {VISIT_STATUS_LABELS[v.status] || v.status}
                           </Badge>
+                          <CezihRowErrorBadge rowId={v.visit_id} />
                         </TableCell>
                         <TableCell className="text-sm">
                           {v.visit_type_display

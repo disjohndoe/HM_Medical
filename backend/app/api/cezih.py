@@ -52,6 +52,7 @@ from app.schemas.cezih import (
     PatientIdentifierSearchResponse,
     PractitionerItem,
     ReplaceDocumentRequest,
+    ReplaceDocumentWithEditRequest,
     UpdateCaseDataRequest,
     UpdateCaseStatusRequest,
     UpdateVisitRequest,
@@ -818,6 +819,37 @@ async def replace_document(
         practitioner_name=practitioner_name,
         encounter_id=data.encounter_id if data else "",
         case_id=data.case_id if data else "",
+    )
+
+
+@router.put("/e-nalaz/{reference_id}/replace-with-edit", response_model=DocumentActionResponse)
+async def replace_document_with_edit(
+    request: Request,
+    reference_id: str,
+    data: ReplaceDocumentWithEditRequest,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Atomic edit + CEZIH replace. Replaces the old two-step flow where the
+    frontend PATCHed /medical-records first and then called CEZIH replace —
+    if CEZIH failed the local record was already edited, so this endpoint
+    gates the local edit on CEZIH 2xx."""
+    await check_cezih_access(db, current_user.tenant_id)
+    org_code, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
+    edits = data.model_dump(exclude={"record_id", "patient_id", "encounter_id", "case_id"}, exclude_none=False)
+    return await cezih.dispatch_replace_document_with_edit(
+        reference_id,
+        record_id=data.record_id,
+        patient_id=data.patient_id,
+        edits=edits,
+        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
+        org_code=org_code,
+        practitioner_id=current_user.practitioner_id,
+        practitioner_name=practitioner_name,
+        encounter_id=data.encounter_id,
+        case_id=data.case_id,
     )
 
 

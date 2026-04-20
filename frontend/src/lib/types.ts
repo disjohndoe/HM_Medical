@@ -340,6 +340,10 @@ export interface MedicalRecord {
   patient_prezime: string | null;
   patient_mbo: string | null;
   patient_has_cezih_identifier?: boolean;
+  cezih_last_error_code: string | null;
+  cezih_last_error_display: string | null;
+  cezih_last_error_diagnostics: string | null;
+  cezih_last_error_at: string | null;
   tenant_id: string;
   created_at: string;
   updated_at: string;
@@ -792,6 +796,10 @@ export interface CaseItem {
   abatement_date: string | null;
   note: string | null;
   updated_at?: string | null;
+  last_error_code?: string | null;
+  last_error_display?: string | null;
+  last_error_diagnostics?: string | null;
+  last_error_at?: string | null;
   // Frontend-only marker: true for cases created (or spawned via 2.2)
   // in the current session. CEZIH's 2.5 Resolve only works reliably
   // on cases it observed as 'Potvrđen' from creation, so we gate the
@@ -853,6 +861,10 @@ export interface VisitItem {
   practitioner_id: string | null;
   practitioner_ids: string[];
   diagnosis_case_ids: string[];
+  last_error_code?: string | null;
+  last_error_display?: string | null;
+  last_error_diagnostics?: string | null;
+  last_error_at?: string | null;
   // Frontend-only: set when inserted optimistically after a create/update/action
   // mutation. CEZIH QEDm is eventually consistent so the real record may take
   // several seconds to appear in GET /cezih/visits. Lost on natural refetch.

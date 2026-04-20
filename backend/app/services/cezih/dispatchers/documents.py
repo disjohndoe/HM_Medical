@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.constants import CEZIH_ELIGIBLE_TYPES
 from app.services.cezih import service as real_service
 from app.services.cezih.builders.common import _now_iso
-from app.services.cezih.dispatchers.common import _require_audit_params, _write_audit
+from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
+from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
 from app.services.cezih.exceptions import CezihError, CezihFhirError, CezihSigningError
 
 logger = logging.getLogger(__name__)
@@ -119,8 +120,10 @@ async def send_enalaz(
         )
     except CezihError as e:
         logger.error("CEZIH e-Nalaz send failed: %s", e.message)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        await record_cezih_error("medical_record", record_id, tenant_id, e)
+        _raise_cezih_error(e)
 
+    await clear_cezih_error("medical_record", record_id, tenant_id)
     ref = result["reference_id"]
     doc_oid = result.get("document_oid", "")
     now = datetime.now(UTC)
@@ -196,7 +199,7 @@ async def send_erecept(
         result = await real_service.send_erecept(http_client, patient_data, lijekovi)
     except CezihError as e:
         logger.error("CEZIH e-Recept send failed: %s", e.message)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
 
     recept_id = result["recept_id"]
 
@@ -227,7 +230,7 @@ async def cancel_erecept(
     try:
         result = await real_service.cancel_erecept(http_client, recept_id)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(
         db, tenant_id, user_id,
         action="e_recept_cancel",
@@ -254,7 +257,7 @@ async def sign_document(
         )
     except CezihSigningError as e:
         logger.error("CEZIH signing failed: %s", e.message)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
 
     return result
 
@@ -294,7 +297,7 @@ async def dispatch_search_documents(
             date_from=date_from, date_to=date_to, status_filter=status_filter,
         )
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(
         db, tenant_id, user_id, action="document_search",
         details={
@@ -379,8 +382,10 @@ async def dispatch_replace_document(
             practitioner_name=practitioner_name,
         )
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        await record_cezih_error("medical_record", record_id, tenant_id, e)
+        _raise_cezih_error(e)
 
+    await clear_cezih_error("medical_record", record_id, tenant_id)
     # Update the DB record's reference_id and OID to the new document created by replace
     new_ref = result.get("new_reference_id")
     new_oid = result.get("new_document_oid", "")
@@ -398,6 +403,133 @@ async def dispatch_replace_document(
     )
     if db:
         await db.commit()
+    return result
+
+
+async def dispatch_replace_document_with_edit(
+    original_reference_id: str,
+    record_id: UUID,
+    patient_id: UUID,
+    edits: dict,
+    *,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
+    http_client=None,
+    org_code: str = "",
+    practitioner_id: str | None = None,
+    practitioner_name: str = "",
+    encounter_id: str = "",
+    case_id: str = "",
+) -> dict:
+    """Atomic edit-and-replace. Signs + calls CEZIH ITI-65 replace using the
+    PROPOSED content, and only on 2xx applies the edits to the local
+    medical_record + swaps cezih_reference_id/oid. On failure the record is
+    untouched so local DB does not diverge from CEZIH — exactly the bug the
+    old PATCH-then-PUT flow was causing."""
+    from app.models.medical_record import MedicalRecord
+    from app.models.patient import Patient
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
+
+    record = await _get_medical_record(db, tenant_id, patient_id, record_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medicinski zapis nije pronađen")
+
+    if record.cezih_reference_id != original_reference_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Referenca e-Nalaza ne odgovara trenutnoj verziji zapisa. Osvježite prikaz i pokušajte ponovno.",
+        )
+
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+    try:
+        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    patient_data = {
+        "mbo": id_val,
+        "identifier_system": id_sys,
+        "identifier_value": id_val,
+        "ime": patient.ime,
+        "prezime": patient.prezime,
+    }
+
+    # Merge proposed edits over current record state. Only non-None keys
+    # override — so a partial edit still produces a complete FHIR bundle.
+    def _pick(key: str, fallback):
+        val = edits.get(key)
+        return val if val is not None else fallback
+
+    new_tip = _pick("tip", record.tip)
+    new_dijagnoza_mkb = _pick("dijagnoza_mkb", record.dijagnoza_mkb)
+    new_dijagnoza_tekst = _pick("dijagnoza_tekst", record.dijagnoza_tekst)
+    new_sadrzaj = _pick("sadrzaj", record.sadrzaj)
+    new_preporucena = _pick("preporucena_terapija", record.preporucena_terapija)
+
+    record_data = {
+        "tip": new_tip,
+        "dijagnoza_mkb": new_dijagnoza_mkb,
+        "dijagnoza_tekst": new_dijagnoza_tekst,
+        "sadrzaj": new_sadrzaj,
+        "preporucena_terapija": new_preporucena,
+        "created_at": record.created_at.isoformat() if record.created_at else _now_iso(),
+    }
+
+    if not practitioner_id and record.doktor_id:
+        practitioner_id = str(record.doktor_id)
+    if not encounter_id and record.cezih_encounter_id:
+        encounter_id = record.cezih_encounter_id
+    if not case_id and record.cezih_case_id:
+        case_id = record.cezih_case_id
+
+    try:
+        result = await real_service.replace_document(
+            http_client, original_reference_id, patient_data, record_data,
+            practitioner_id=practitioner_id,
+            org_code=org_code,
+            encounter_id=encounter_id, case_id=case_id,
+            practitioner_name=practitioner_name,
+        )
+    except CezihError as e:
+        await record_cezih_error("medical_record", record_id, tenant_id, e)
+        _raise_cezih_error(e)
+
+    # CEZIH 2xx — apply the edits + swap reference. These happen in the
+    # request's own transaction, so if commit fails the next read still shows
+    # the pre-edit state AND CEZIH has the new document (acceptable
+    # divergence, corrected by user retry — versus the worse old behavior
+    # where local edits stuck but CEZIH was stale).
+    new_ref = result.get("new_reference_id")
+    new_oid = result.get("new_document_oid", "")
+
+    for attr in ("tip", "dijagnoza_mkb", "dijagnoza_tekst", "sadrzaj", "preporucena_terapija"):
+        val = edits.get(attr)
+        if val is not None:
+            setattr(record, attr, val)
+    if edits.get("datum") is not None:
+        record.datum = edits["datum"]
+    if edits.get("sensitivity") is not None:
+        record.sensitivity = edits["sensitivity"]
+    if new_ref:
+        record.cezih_reference_id = new_ref
+    if new_oid:
+        record.cezih_document_oid = new_oid
+    await db.flush()
+
+    await clear_cezih_error("medical_record", record_id, tenant_id)
+
+    await _write_audit(
+        db, tenant_id, user_id, action="e_nalaz_replace_with_edit",
+        details={
+            "reference_id": original_reference_id,
+            "new_reference_id": new_ref,
+            "edited_fields": sorted(k for k, v in edits.items() if v is not None),
+        },
+    )
+    await db.commit()
     return result
 
 
@@ -422,6 +554,7 @@ async def dispatch_cancel_document(
     record_data: dict = {}
     encounter_id = ""
     case_id = ""
+    record_id: UUID | None = None
     if db and tenant_id:
         query_result = await db.execute(
             sa_select(MedicalRecord).where(
@@ -431,6 +564,7 @@ async def dispatch_cancel_document(
         )
         record = query_result.scalar_one_or_none()
         if record:
+            record_id = record.id
             if record.patient_id:
                 patient = await db.get(Patient, record.patient_id)
                 if patient:
@@ -465,8 +599,10 @@ async def dispatch_cancel_document(
             practitioner_name=practitioner_name,
         )
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        await record_cezih_error("medical_record", record_id, tenant_id, e)
+        _raise_cezih_error(e)
 
+    await clear_cezih_error("medical_record", record_id, tenant_id)
     # Mark record as storniran in DB
     if db and tenant_id:
         rec_result = await db.execute(
@@ -499,7 +635,21 @@ async def dispatch_retrieve_document(
     http_client=None,
 ) -> bytes:
     """Retrieve a document from CEZIH (ITI-68)."""
+    from app.models.medical_record import MedicalRecord
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
+
+    # Resolve reference_id to local MedicalRecord.id so we can mark row errors
+    record_id: UUID | None = None
+    lookup = await db.execute(
+        sa_select(MedicalRecord.id).where(
+            MedicalRecord.tenant_id == tenant_id,
+            MedicalRecord.cezih_reference_id == reference_id,
+        )
+    )
+    row = lookup.first()
+    if row:
+        record_id = row[0]
+
     try:
         result = await real_service.retrieve_document(http_client, document_url or reference_id)
     except CezihFhirError as e:
@@ -508,10 +658,13 @@ async def dispatch_retrieve_document(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Dokument nije pronađen na CEZIH-u.",
             ) from e
-        http_code = e.status_code if 400 <= e.status_code < 600 else 502
-        raise HTTPException(status_code=http_code, detail=e.message) from e
+        await record_cezih_error("medical_record", record_id, tenant_id, e)
+        _raise_cezih_error(e)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        await record_cezih_error("medical_record", record_id, tenant_id, e)
+        _raise_cezih_error(e)
+
+    await clear_cezih_error("medical_record", record_id, tenant_id)
     await _write_audit(
         db, tenant_id, user_id, action="document_retrieve",
         details={"reference_id": reference_id},
@@ -528,6 +681,7 @@ __all__ = [
     "sign_document",
     "dispatch_search_documents",
     "dispatch_replace_document",
+    "dispatch_replace_document_with_edit",
     "dispatch_cancel_document",
     "dispatch_retrieve_document",
 ]

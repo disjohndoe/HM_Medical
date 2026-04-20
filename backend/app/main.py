@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -14,6 +15,7 @@ from app.api.router import api_router
 from app.config import settings
 from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.request_logger import RequestLoggerMiddleware
+from app.services.cezih.exceptions import CezihError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,6 +64,26 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, lambda r, e: _rate_limit_exceeded_handler(r, e))  # type: ignore[arg-type]
+
+
+@app.exception_handler(CezihError)
+async def cezih_error_handler(request: Request, exc: CezihError) -> JSONResponse:
+    """Safety net for any CezihError that escapes the dispatcher's
+    _raise_cezih_error. Produces the same structured body the frontend
+    CezihApiError parser expects (detail.message + detail.cezih_error)."""
+    logging.getLogger("app.cezih").warning(
+        "CEZIH error on %s %s: %s (%s)",
+        request.method, request.url.path, exc.__class__.__name__, exc.message,
+    )
+    return JSONResponse(
+        status_code=exc.http_status_code,
+        content={
+            "detail": {
+                "message": exc.message,
+                "cezih_error": exc.to_operation_outcome(),
+            },
+        },
+    )
 
 app.add_middleware(RequestLoggerMiddleware)
 app.add_middleware(ErrorHandlerMiddleware)

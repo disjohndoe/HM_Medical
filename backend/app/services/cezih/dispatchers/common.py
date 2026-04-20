@@ -4,10 +4,30 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.cezih.exceptions import CezihError
+
 logger = logging.getLogger(__name__)
+
+
+def _raise_cezih_error(e: CezihError) -> None:
+    """Convert any CezihError subclass to HTTPException with a structured detail
+    body the frontend's CezihApiError parser can consume:
+
+        {"detail": "<message>", "cezih_error": {"code", "display", "diagnostics"}}
+
+    This replaces the older FHIR-only path — connection, timeout, auth and
+    signing errors now surface the same shape so the UI badge/toast works
+    uniformly for every failure mode."""
+    raise HTTPException(
+        status_code=e.http_status_code,
+        detail={
+            "message": e.message,
+            "cezih_error": e.to_operation_outcome(),
+        },
+    ) from e
 
 
 async def _write_audit(
@@ -62,4 +82,5 @@ def _require_audit_params(
 __all__ = [
     "_write_audit",
     "_require_audit_params",
+    "_raise_cezih_error",
 ]

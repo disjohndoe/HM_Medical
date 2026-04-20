@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.cezih import service as real_service
-from app.services.cezih.dispatchers.common import _require_audit_params, _write_audit
+from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
 from app.services.cezih.exceptions import CezihError
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ async def oid_generate(
     try:
         result = await real_service.generate_oid(http_client, quantity)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(db, tenant_id, user_id, action="oid_generate", details={"quantity": quantity})
     return result
 
@@ -97,7 +97,7 @@ async def code_system_query(
     try:
         result = await real_service.query_code_system(http_client, system_name, query, count)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(
         db, tenant_id, user_id, action="code_system_query",
         details={"system": system_name, "query": query},
@@ -119,7 +119,7 @@ async def value_set_expand(
     try:
         result = await real_service.expand_value_set(http_client, url, filter_text)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(db, tenant_id, user_id, action="value_set_expand", details={"url": url})
     return result
 
@@ -137,7 +137,7 @@ async def organization_search(
     try:
         result = await real_service.find_organizations(http_client, name)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(db, tenant_id, user_id, action="organization_search", details={"name": name})
     return result
 
@@ -155,7 +155,7 @@ async def practitioner_search(
     try:
         result = await real_service.find_practitioners(http_client, name)
     except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from e
+        _raise_cezih_error(e)
     await _write_audit(db, tenant_id, user_id, action="practitioner_search", details={"name": name})
     return result
 

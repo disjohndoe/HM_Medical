@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe } from "lucide-react"
 import { toast } from "sonner"
+import { CezihRowErrorBadge } from "@/lib/hooks/use-cezih-error-state"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,7 +25,7 @@ import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { RecordForm } from "@/components/medical-records/record-form"
 import { CaseManagement } from "@/components/cezih/case-management"
 import { VisitManagement } from "@/components/cezih/visit-management"
-import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
+import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocumentWithEdit } from "@/lib/hooks/use-cezih"
 import { useMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { OSIGURANJE_STATUS, COUNTRY_HR } from "@/lib/constants"
@@ -59,7 +60,7 @@ export function PatientCezihTab({
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
   const insuranceCheck = useInsuranceCheck()
   const cancelDocument = useCancelDocument()
-  const replaceDocument = useReplaceDocument()
+  const replaceWithEdit = useReplaceDocumentWithEdit()
   const { canUseHzzo } = usePermissions()
   const { tipLabelMap } = useRecordTypeMaps()
   const [internalSubTab, setInternalSubTab] = useState("posjete")
@@ -361,6 +362,7 @@ export function PatientCezihTab({
                           >
                             {item.cezih_storno ? "Storniran" : "Poslan"}
                           </Badge>
+                          <CezihRowErrorBadge rowId={item.reference_id || item.record_id} />
                         </TableCell>
                         <TableCell className="text-right">
                           {!item.cezih_storno && item.reference_id && (
@@ -409,15 +411,26 @@ export function PatientCezihTab({
         patientId={patientId}
         record={editRecord ?? null}
         submitLabel="Spremi i zamijeni na CEZIH"
-        onSaved={(updated) => {
+        submitOverride={async (payload) => {
           const referenceId = editTarget?.referenceId
-          if (!referenceId) return
-          replaceDocument.mutate(
-            { referenceId, record_id: updated.id },
-            {
-              onSuccess: () => toast.success("e-Nalaz zamijenjen na CEZIH"),
-            },
-          )
+          const recordId = editTarget?.recordId
+          if (!referenceId || !recordId) return
+          await replaceWithEdit.mutateAsync({
+            referenceId,
+            record_id: recordId,
+            patient_id: patientId,
+            encounter_id: editRecord?.cezih_encounter_id ?? "",
+            case_id: editRecord?.cezih_case_id ?? "",
+            datum: payload.datum ?? null,
+            tip: payload.tip ?? null,
+            dijagnoza_mkb: payload.dijagnoza_mkb ?? null,
+            dijagnoza_tekst: payload.dijagnoza_tekst ?? null,
+            sadrzaj: payload.sadrzaj ?? null,
+            sensitivity: payload.sensitivity ?? null,
+            preporucena_terapija: payload.preporucena_terapija ?? null,
+          })
+          setEditTarget(null)
+          toast.success("e-Nalaz zamijenjen na CEZIH")
         }}
       />
 

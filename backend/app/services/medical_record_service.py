@@ -80,6 +80,10 @@ def _record_row_to_dict(row) -> dict:
         "patient_prezime": row.patient_prezime,
         "patient_mbo": row.patient_mbo,
         "patient_has_cezih_identifier": patient_has_cezih,
+        "cezih_last_error_code": rec.cezih_last_error_code,
+        "cezih_last_error_display": rec.cezih_last_error_display,
+        "cezih_last_error_diagnostics": rec.cezih_last_error_diagnostics,
+        "cezih_last_error_at": rec.cezih_last_error_at,
         "created_at": rec.created_at,
         "updated_at": rec.updated_at,
     }

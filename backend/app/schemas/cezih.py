@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -359,6 +359,10 @@ class VisitItem(BaseModel):
     practitioner_id: str | None = None
     practitioner_ids: list[str] = []
     diagnosis_case_ids: list[str] = []
+    last_error_code: str | None = None
+    last_error_display: str | None = None
+    last_error_diagnostics: str | None = None
+    last_error_at: datetime | None = None
 
 
 class VisitsListResponse(BaseModel):
@@ -382,6 +386,10 @@ class CaseItem(BaseModel):
     abatement_date: str | None = None
     note: str | None = None
     updated_at: datetime | None = None
+    last_error_code: str | None = None
+    last_error_display: str | None = None
+    last_error_diagnostics: str | None = None
+    last_error_at: datetime | None = None
 
 
 class CasesListResponse(BaseModel):
@@ -436,6 +444,27 @@ class ReplaceDocumentRequest(BaseModel):
     record_id: UUID | None = None
     encounter_id: str = ""
     case_id: str = ""
+
+
+class ReplaceDocumentWithEditRequest(BaseModel):
+    """Body for the atomic edit-and-replace flow.
+
+    The frontend sends the proposed record edits alongside the replace request.
+    Backend signs + calls CEZIH first, and only on 2xx applies the edits +
+    swaps cezih_reference_id. On failure the medical_record is untouched so
+    local DB does not diverge from CEZIH."""
+    record_id: UUID
+    patient_id: UUID
+    encounter_id: str = ""
+    case_id: str = ""
+    # New content to apply on CEZIH success:
+    datum: date | None = None
+    tip: str | None = None
+    dijagnoza_mkb: str | None = None
+    dijagnoza_tekst: str | None = None
+    sadrzaj: str | None = None
+    sensitivity: str | None = None
+    preporucena_terapija: list[dict] | None = None
 
 
 class DocumentActionResponse(BaseModel):

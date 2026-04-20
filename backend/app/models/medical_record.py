@@ -37,3 +37,10 @@ class MedicalRecord(BaseTenantModel):
     cezih_signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sensitivity: Mapped[str] = mapped_column(String(20), nullable=False, server_default="standard")
     preporucena_terapija: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    cezih_last_error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    cezih_last_error_display: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cezih_last_error_diagnostics: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cezih_last_error_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
