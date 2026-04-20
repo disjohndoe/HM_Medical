@@ -9,6 +9,7 @@ import {
   FileSearch,
   FileText,
   FolderDown,
+  Globe,
   Loader2,
   Pill,
   Shield,
@@ -36,7 +37,8 @@ import {
   useInsuranceCheck,
 } from "@/lib/hooks/use-cezih"
 import { useDocuments, useImportCezihDocument } from "@/lib/hooks/use-documents"
-import { OSIGURANJE_STATUS, ICD_CHAPTERS } from "@/lib/constants"
+import { OSIGURANJE_STATUS, ICD_CHAPTERS, COUNTRY_HR } from "@/lib/constants"
+import { isForeignPatient, type Patient } from "@/lib/types"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 
@@ -91,11 +93,13 @@ function matchesIcdFilter(code: string, prefixStr: string): boolean {
 
 interface EkartonViewProps {
   patientId: string
+  patient: Patient
   hasCezihIdentifier: boolean
   alergije: string | null
 }
 
-export function EkartonView({ patientId, hasCezihIdentifier, alergije }: EkartonViewProps) {
+export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }: EkartonViewProps) {
+  const isForeign = isForeignPatient(patient)
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
   const casesQuery = useRetrieveCases(hasCezihIdentifier ? patientId : "")
   const visitsQuery = useListVisits(hasCezihIdentifier ? patientId : "")
@@ -122,10 +126,12 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
     localStorage.setItem("ekarton-icd-filter", v)
   }
 
-  // Auto-check insurance on mount only if no fresh cached data (< 30 min)
+  // Auto-check insurance on mount only if no fresh cached data (< 30 min).
+  // Skipped entirely for foreign patients — they don't have HZZO coverage,
+  // and CEZIH's PDQm for jedinstveni-id is flaky (HAPI-1361 / NoHttpResponseException).
   const didAutoCheck = useRef(false)
   useEffect(() => {
-    if (didAutoCheck.current || !hasCezihIdentifier) return
+    if (didAutoCheck.current || !hasCezihIdentifier || isForeign) return
     const lastChecked = summary?.insurance?.last_checked
     if (lastChecked) {
       const ageMinutes = (Date.now() - new Date(lastChecked).getTime()) / 60000
@@ -138,10 +144,10 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
     if (!summary) return
     didAutoCheck.current = true
     insuranceMutation.mutate(patientId)
-  }, [hasCezihIdentifier, patientId, insuranceMutation, summary?.insurance?.last_checked, summary])
+  }, [hasCezihIdentifier, isForeign, patientId, insuranceMutation, summary?.insurance?.last_checked, summary])
 
   const handleCheckInsurance = () => {
-    if (!hasCezihIdentifier) return
+    if (!hasCezihIdentifier || isForeign) return
     insuranceMutation.mutate(patientId)
   }
 
@@ -204,68 +210,97 @@ export function EkartonView({ patientId, hasCezihIdentifier, alergije }: Ekarton
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* 1. Osiguranje */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Shield className="h-4 w-4" />
-            Osiguranje
+        {/* 1. Osiguranje (Croatian) / Strani državljanin (foreign) */}
+        {isForeign ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Globe className="h-4 w-4" />
+              Strani državljanin
+            </div>
+            <div className="flex items-center gap-4 flex-wrap text-sm">
+              {patient.broj_putovnice && (
+                <span>
+                  <span className="text-muted-foreground">Putovnica: </span>
+                  <span className="font-mono">{patient.broj_putovnice}</span>
+                </span>
+              )}
+              {patient.ehic_broj && (
+                <span>
+                  <span className="text-muted-foreground">EHIC: </span>
+                  <span className="font-mono">{patient.ehic_broj}</span>
+                </span>
+              )}
+              {patient.drzavljanstvo && (
+                <span>
+                  <span className="text-muted-foreground">Država: </span>
+                  <span>{COUNTRY_HR[patient.drzavljanstvo] || patient.drzavljanstvo}</span>
+                </span>
+              )}
+            </div>
           </div>
-          {insPending ? (
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Provjera osiguranja...</span>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Shield className="h-4 w-4" />
+              Osiguranje
             </div>
-          ) : insError ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge className="bg-red-100 text-red-800">Greška</Badge>
-              <span className="text-sm text-muted-foreground">{insError.message}</span>
-              <Button size="sm" variant="outline" onClick={handleCheckInsurance} disabled={!hasCezihIdentifier}>
-                Pokušaj ponovo
-              </Button>
-            </div>
-          ) : insData?.status_osiguranja ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge className={OSIGURANJE_STATUS[insData.status_osiguranja]?.color || "bg-gray-100 text-gray-800"}>
-                {OSIGURANJE_STATUS[insData.status_osiguranja]?.label || insData.status_osiguranja}
-              </Badge>
-              {insData.osiguravatelj && (
-                <span className="text-sm">{insData.osiguravatelj}</span>
-              )}
-              {insData.oib && (
-                <span className="text-sm font-mono">OIB: {insData.oib}</span>
-              )}
-              <span className="text-xs text-muted-foreground">· Upravo provjereno</span>
-              <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={handleCheckInsurance}>
-                Osvježi
-              </Button>
-            </div>
-          ) : insurance?.status_osiguranja ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge className={statusConfig?.color || "bg-gray-100 text-gray-800"}>
-                {statusConfig?.label || insurance.status_osiguranja}
-              </Badge>
-              {insurance.osiguravatelj && (
-                <span className="text-sm">{insurance.osiguravatelj}</span>
-              )}
-              {insurance.broj_osiguranja && (
-                <span className="text-sm font-mono">{insurance.broj_osiguranja}</span>
-              )}
-              <span className="text-xs text-muted-foreground">
-                {insurance.last_checked && `· Provjereno ${formatDateTimeHR(insurance.last_checked)}`}
-              </span>
-              <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={handleCheckInsurance}>
-                Osvježi
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Nije provjereno</span>
-              <Button size="sm" variant="outline" onClick={handleCheckInsurance} disabled={insPending || !hasCezihIdentifier}>
-                Provjeri
-              </Button>
-            </div>
-          )}
-        </div>
+            {insPending ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Provjera osiguranja...</span>
+              </div>
+            ) : insError ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className="bg-red-100 text-red-800">Greška</Badge>
+                <span className="text-sm text-muted-foreground">{insError.message}</span>
+                <Button size="sm" variant="outline" onClick={handleCheckInsurance} disabled={!hasCezihIdentifier}>
+                  Pokušaj ponovo
+                </Button>
+              </div>
+            ) : insData?.status_osiguranja ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className={OSIGURANJE_STATUS[insData.status_osiguranja]?.color || "bg-gray-100 text-gray-800"}>
+                  {OSIGURANJE_STATUS[insData.status_osiguranja]?.label || insData.status_osiguranja}
+                </Badge>
+                {insData.osiguravatelj && (
+                  <span className="text-sm">{insData.osiguravatelj}</span>
+                )}
+                {insData.oib && (
+                  <span className="text-sm font-mono">OIB: {insData.oib}</span>
+                )}
+                <span className="text-xs text-muted-foreground">· Upravo provjereno</span>
+                <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={handleCheckInsurance}>
+                  Osvježi
+                </Button>
+              </div>
+            ) : insurance?.status_osiguranja ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className={statusConfig?.color || "bg-gray-100 text-gray-800"}>
+                  {statusConfig?.label || insurance.status_osiguranja}
+                </Badge>
+                {insurance.osiguravatelj && (
+                  <span className="text-sm">{insurance.osiguravatelj}</span>
+                )}
+                {insurance.broj_osiguranja && (
+                  <span className="text-sm font-mono">{insurance.broj_osiguranja}</span>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  {insurance.last_checked && `· Provjereno ${formatDateTimeHR(insurance.last_checked)}`}
+                </span>
+                <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={handleCheckInsurance}>
+                  Osvježi
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Nije provjereno</span>
+                <Button size="sm" variant="outline" onClick={handleCheckInsurance} disabled={insPending || !hasCezihIdentifier}>
+                  Provjeri
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         <Separator />
 

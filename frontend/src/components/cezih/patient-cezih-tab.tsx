@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send } from "lucide-react"
+import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -27,12 +27,14 @@ import { VisitManagement } from "@/components/cezih/visit-management"
 import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocument } from "@/lib/hooks/use-cezih"
 import { useMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { OSIGURANJE_STATUS } from "@/lib/constants"
+import { OSIGURANJE_STATUS, COUNTRY_HR } from "@/lib/constants"
+import { isForeignPatient, type Patient } from "@/lib/types"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateTimeHR } from "@/lib/utils"
 
 interface PatientCezihTabProps {
   patientId: string
+  patient: Patient
   hasCezihIdentifier: boolean
   subTab?: string
   onSubTabChange?: (v: string) => void
@@ -44,6 +46,7 @@ interface PatientCezihTabProps {
 
 export function PatientCezihTab({
   patientId,
+  patient,
   hasCezihIdentifier,
   subTab,
   onSubTabChange,
@@ -52,6 +55,7 @@ export function PatientCezihTab({
   caseCreateOpen,
   onCaseCreateOpenChange,
 }: PatientCezihTabProps) {
+  const isForeign = isForeignPatient(patient)
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
   const insuranceCheck = useInsuranceCheck()
   const cancelDocument = useCancelDocument()
@@ -98,6 +102,7 @@ export function PatientCezihTab({
   })
 
   function handleCheckInsurance() {
+    if (isForeign) return
     if (!hasCezihIdentifier) {
       toast.error("Pacijent nema CEZIH identifikator")
       return
@@ -128,46 +133,79 @@ export function PatientCezihTab({
     <div className="space-y-4">
       {/* Top row: Insurance + Quick actions */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <div className="flex items-center gap-2">
-              <Shield className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-sm font-medium">Osiguranje</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {insurance?.status_osiguranja ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Badge className={statusConfig?.color || ""}>
-                    {statusConfig?.label || insurance.status_osiguranja}
-                  </Badge>
-                  {insurance.osiguravatelj && (
-                    <span className="text-sm text-muted-foreground">{insurance.osiguravatelj}</span>
-                  )}
-                </div>
-                {insurance.last_checked && (
-                  <p className="text-xs text-muted-foreground">
-                    Provjereno: {formatDateTimeHR(insurance.last_checked)}
-                  </p>
+        {isForeign ? (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Strani državljanin</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 text-sm">
+                {patient.broj_putovnice && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Putovnica:</span>
+                    <span className="font-mono">{patient.broj_putovnice}</span>
+                  </div>
+                )}
+                {patient.ehic_broj && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">EHIC:</span>
+                    <span className="font-mono">{patient.ehic_broj}</span>
+                  </div>
+                )}
+                {patient.drzavljanstvo && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Država:</span>
+                    <span>{COUNTRY_HR[patient.drzavljanstvo] || patient.drzavljanstvo}</span>
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">Osiguranje nije provjereno</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleCheckInsurance}
-                  disabled={insuranceCheck.isPending || !hasCezihIdentifier}
-                >
-                  {insuranceCheck.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
-                  Provjeri osiguranje
-                </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Osiguranje</CardTitle>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              {insurance?.status_osiguranja ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className={statusConfig?.color || ""}>
+                      {statusConfig?.label || insurance.status_osiguranja}
+                    </Badge>
+                    {insurance.osiguravatelj && (
+                      <span className="text-sm text-muted-foreground">{insurance.osiguravatelj}</span>
+                    )}
+                  </div>
+                  {insurance.last_checked && (
+                    <p className="text-xs text-muted-foreground">
+                      Provjereno: {formatDateTimeHR(insurance.last_checked)}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Osiguranje nije provjereno</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCheckInsurance}
+                    disabled={insuranceCheck.isPending || !hasCezihIdentifier}
+                  >
+                    {insuranceCheck.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+                    Provjeri osiguranje
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="pb-2">
@@ -183,15 +221,17 @@ export function PatientCezihTab({
                 Novi e-Recept
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleCheckInsurance}
-              disabled={insuranceCheck.isPending || !hasCezihIdentifier}
-            >
-              <Shield className="mr-2 h-3 w-3" />
-              Provjeri osiguranje
-            </Button>
+            {!isForeign && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCheckInsurance}
+                disabled={insuranceCheck.isPending || !hasCezihIdentifier}
+              >
+                <Shield className="mr-2 h-3 w-3" />
+                Provjeri osiguranje
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -207,6 +207,7 @@ export default function PacijentDetailPage() {
           {ekartonOpen && (
             <EkartonView
               patientId={id}
+              patient={patient}
               hasCezihIdentifier={hasCezihIdentifier(patient)}
               alergije={patient.alergije}
             />
@@ -400,6 +401,7 @@ export default function PacijentDetailPage() {
           <TabsContent value="cezih">
             <PatientCezihTab
               patientId={id}
+              patient={patient}
               hasCezihIdentifier={hasCezihIdentifier(patient)}
               subTab={cezihSubTab}
               onSubTabChange={setCezihSubTab}

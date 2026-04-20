@@ -120,6 +120,10 @@ export function hasCezihIdentifier(p: Pick<Patient, "mbo" | "cezih_patient_id" |
   return Boolean(p.mbo || p.cezih_patient_id || p.ehic_broj || p.broj_putovnice);
 }
 
+export function isForeignPatient(p: Pick<Patient, "mbo" | "broj_putovnice" | "ehic_broj">): boolean {
+  return !p.mbo && Boolean(p.broj_putovnice || p.ehic_broj);
+}
+
 export interface PatientCreate {
   ime: string;
   prezime: string;
