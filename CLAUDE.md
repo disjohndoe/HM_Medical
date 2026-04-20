@@ -1,4 +1,92 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # HM Digital — Medical MVP (Polyclinic Patient Management + CEZIH)
+
+## Build & Dev Commands
+
+### Backend (FastAPI — `backend/`)
+```bash
+cd backend
+# Dev server (via Docker):
+docker compose -f ../docker-compose.yml -f ../docker-compose.dev.yml up --build backend
+# Run tests:
+pytest                                          # all tests
+pytest tests/test_auth.py -k "test_login"       # single test by name
+pytest tests/test_patients.py::test_create      # single test by path
+# Lint:
+ruff check .                                    # check
+ruff check --fix .                              # auto-fix
+# Database migrations:
+alembic revision --autogenerate -m "description"  # create migration
+alembic upgrade head                              # apply all
+alembic downgrade -1                              # rollback one
+```
+
+### Frontend (Next.js 16 — `frontend/`)
+```bash
+cd frontend
+pnpm install                  # install deps
+pnpm dev                      # dev server (localhost:3000)
+pnpm build                    # production build
+pnpm start                    # serve production build
+pnpm lint                     # eslint
+```
+
+### Local Agent (Tauri 2.x — `local-agent/`)
+```bash
+cd local-agent
+pnpm install                  # install JS deps
+pnpm tauri dev                # dev mode (connects to prod backend)
+pnpm tauri build              # production build (Windows NSIS)
+```
+
+### Docker (full stack)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build   # dev
+docker compose up --build -d                                                 # prod-like
+```
+
+## Architecture
+
+### Backend (`backend/app/`)
+- **`api/`** — 18 FastAPI routers. `router.py` aggregates all into `api_router` mounted at `/api`. `agent_ws.py` is the WebSocket endpoint for the local agent.
+- **`models/`** — SQLAlchemy async ORM. `base.py` defines `BaseTenantModel` (tenant_id FK + timestamps). Most models inherit it for multi-tenant isolation.
+- **`services/`** — Business logic. `cezih/` subdirectory has FHIR builders, dispatchers, and API client for CEZIH integration.
+- **`schemas/`** — Pydantic v2 request/response models.
+- **`core/`** — `plan_enforcement.py` (subscription tier checks), `plan_limits.py` (tier definitions).
+- **`middleware/`** — `error_handler.py` (CezihError → HTTP), `request_logger.py`.
+- **`dependencies.py`** — `get_current_user()` (cookie + bearer token auth), `require_roles()` (role-based access).
+- **`database.py`** — async SQLAlchemy engine, session with auto-commit/rollback.
+- **`config.py`** — Pydantic Settings from env vars.
+
+**Auth flow:** JWT access_token in httpOnly cookie + refresh_token. Roles: `admin`, `doktor`, `sestra`. Session revocation via refresh token invalidation.
+
+**Multi-tenancy:** Every tenant-scoped model has `tenant_id`. `get_current_user()` verifies token tenant matches user tenant. Queries filter by tenant.
+
+### Frontend (`frontend/src/`)
+- **`app/`** — Next.js 16 App Router. `(auth)/` for login/register, `(dashboard)/` for all authenticated routes.
+- **`components/`** — Organized by domain (appointments, cezih, patients, etc.). `ui/` is shadcn/ui primitives.
+- **`lib/hooks/`** — One hook file per domain (`use-{domain}.ts`), all use @tanstack/react-query v5.
+- **`lib/api-client.ts`** — Fetch wrapper with auto-refresh, cookie auth, `CezihApiError` handling. **Always use this, never raw fetch.**
+- **`lib/constants.ts`** — Croatian label maps, status maps, nav items. **Use these, never hardcode Croatian strings.**
+- **`lib/types.ts`** — TypeScript interfaces for all API entities.
+- **`lib/auth.tsx`** — AuthProvider context, `useAuth` hook.
+
+**State management:** React Query for server state. Local component state for UI. No global state store.
+
+**⚠️ Next.js 16 breaking changes:** APIs differ from training data. Check `node_modules/next/dist/docs/` before writing code.
+
+### Local Agent (`local-agent/src-tauri/`)
+- Rust source: `main.rs`, `lib.rs`, `smartcard.rs` (AKD card reader via PC/SC), `signing.rs`, `vpn.rs`, `websocket.rs`.
+- Connects to backend via WebSocket. Handles smart card signing + VPN for CEZIH.
+- Dev mode (`pnpm tauri dev`) connects to `wss://app.hmdigital.hr` — no release cycle needed.
+
+### Database (PostgreSQL 16)
+- Alembic migrations in `backend/alembic/versions/` (43 migrations).
+- Multi-tenant: tenant_id on most tables.
+- Key models: User, Tenant, Patient, Appointment, MedicalRecord, Biljeska, Prescription, Procedure, Document, Predracun, ICD10, DrugList, RecordType, CezihCase, CezihVisit, RefreshToken, AuditLog.
 
 ## What This Is
 
