@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe } from "lucide-react"
 import { toast } from "sonner"
-import { CezihRowErrorBadge } from "@/lib/hooks/use-cezih-error-state"
+import { CezihRowErrorBadge, useCezihRowError } from "@/lib/hooks/use-cezih-error-state"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -402,6 +402,10 @@ export function PatientCezihTab({
                             )}
                             {!item.cezih_storno && item.reference_id && (
                               <>
+                                <RetryStornoButton
+                                  rowId={item.reference_id}
+                                  onClick={() => setNalazStornoTarget(item.reference_id)}
+                                />
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -496,16 +500,40 @@ export function PatientCezihTab({
         variant="destructive"
         onConfirm={() => {
           if (!nalazStornoTarget) return
-          cancelDocument.mutate(nalazStornoTarget, {
-            onSuccess: () => {
-              toast.success("e-Nalaz storniran")
-              setNalazStornoTarget(null)
-            },
+          // Close dialog immediately — outcome surfaces via toast / row badge.
+          // Keeping it open while signing+CEZIH runs (~14s) blocks the table
+          // and leaves no graceful exit on error.
+          const target = nalazStornoTarget
+          setNalazStornoTarget(null)
+          cancelDocument.mutate(target, {
+            onSuccess: () => toast.success("e-Nalaz storniran"),
           })
         }}
         loading={cancelDocument.isPending}
       />
 
     </div>
+  )
+}
+
+/** Inline "Pošalji ponovno" button — visible only when the row carries a
+ *  CEZIH error from a previous storno attempt. Triggers the same storno
+ *  confirm dialog as the trash icon, but with copy that matches the
+ *  badge's "pokušajte poslati nalaz ponovno" hint so the doctor doesn't
+ *  have to map "send again" → "click trash icon" in their head. */
+function RetryStornoButton({ rowId, onClick }: { rowId: string; onClick: () => void }) {
+  const err = useCezihRowError(rowId)
+  if (!err) return null
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-8 border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+      onClick={onClick}
+      title="Pošalji storno ponovno"
+    >
+      <Send className="mr-1 h-3.5 w-3.5" />
+      Pošalji ponovno
+    </Button>
   )
 }
