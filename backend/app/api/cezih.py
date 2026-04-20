@@ -8,7 +8,7 @@ from fastapi import status as http_status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import CEZIH_MANDATORY_TYPES
+from app.constants import CEZIH_ELIGIBLE_TYPES, CEZIH_MANDATORY_TYPES
 from app.core.plan_enforcement import check_cezih_access, check_hzzo_access
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
@@ -301,20 +301,23 @@ async def get_patient_cezih_summary(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # e-Nalaz history: medical records sent to CEZIH for this patient
+    # e-Nalaz table: all CEZIH-eligible medical records for this patient
+    # (sent + unsent). Status is derived on the frontend from cezih_sent_at / cezih_storno.
     records_result = await db.execute(
         select(MedicalRecord).where(
             MedicalRecord.tenant_id == current_user.tenant_id,
             MedicalRecord.patient_id == patient_id,
-            MedicalRecord.cezih_sent == True,  # noqa: E712
-        ).order_by(MedicalRecord.cezih_sent_at.desc())
+            MedicalRecord.tip.in_(CEZIH_ELIGIBLE_TYPES),
+        ).order_by(
+            func.coalesce(MedicalRecord.cezih_sent_at, MedicalRecord.created_at).desc()
+        )
     )
     records = records_result.scalars().all()
 
     e_nalaz_history = [
         PatientCezihENalaz(
             record_id=str(r.id),
-            datum=r.cezih_sent_at or r.created_at,
+            datum=r.created_at,
             tip=r.tip,
             reference_id=r.cezih_reference_id,
             document_oid=r.cezih_document_oid,

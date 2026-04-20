@@ -25,6 +25,7 @@ import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { RecordForm } from "@/components/medical-records/record-form"
 import { CaseManagement } from "@/components/cezih/case-management"
 import { VisitManagement } from "@/components/cezih/visit-management"
+import { SendNalazDialog } from "@/components/cezih/send-nalaz-dialog"
 import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocumentWithEdit } from "@/lib/hooks/use-cezih"
 import { useMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -72,6 +73,7 @@ export function PatientCezihTab({
   const [eReceptOpen, setEReceptOpen] = useState(false)
   const [nalazStornoTarget, setNalazStornoTarget] = useState<string | null>(null)
   const [editTarget, setEditTarget] = useState<{ recordId: string; referenceId: string } | null>(null)
+  const [sendTargetRecordId, setSendTargetRecordId] = useState<string | null>(null)
   const { data: editRecord } = useMedicalRecord(editTarget?.recordId ?? "")
 
   const enalazRows = (summary?.e_nalaz_history ?? []).map((item) => {
@@ -302,7 +304,7 @@ export function PatientCezihTab({
             <CardContent>
               {!summary?.e_nalaz_history.length ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Nema poslanih e-Nalaza za ovog pacijenta
+                  Nema e-Nalaza za ovog pacijenta
                 </p>
               ) : (
                 <Table>
@@ -352,41 +354,62 @@ export function PatientCezihTab({
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={
-                              item.cezih_storno
-                                ? "bg-red-100 text-red-800 border-red-200"
-                                : "bg-green-100 text-green-800 border-green-200"
-                            }
-                          >
-                            {item.cezih_storno ? "Storniran" : "Poslan"}
-                          </Badge>
+                          {(() => {
+                            const isSent = !!item.cezih_sent_at
+                            const label = item.cezih_storno
+                              ? "Storniran"
+                              : isSent
+                                ? "Poslan"
+                                : "Neposlan"
+                            const cls = item.cezih_storno
+                              ? "bg-red-100 text-red-800 border-red-200"
+                              : isSent
+                                ? "bg-green-100 text-green-800 border-green-200"
+                                : "bg-amber-100 text-amber-800 border-amber-200"
+                            return (
+                              <Badge variant="outline" className={cls}>
+                                {label}
+                              </Badge>
+                            )
+                          })()}
                           <CezihRowErrorBadge rowId={item.reference_id || item.record_id} />
                         </TableCell>
                         <TableCell className="text-right">
-                          {!item.cezih_storno && item.reference_id && (
-                            <div className="flex justify-end gap-1">
+                          <div className="flex justify-end gap-1">
+                            {!item.cezih_sent_at && !item.cezih_storno && (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="h-8 w-8 p-0"
-                                onClick={() => setEditTarget({ recordId: item.record_id, referenceId: item.reference_id! })}
-                                title="Uredi i zamijeni e-Nalaz"
+                                onClick={() => setSendTargetRecordId(item.record_id)}
+                                title="Pošalji e-Nalaz na CEZIH"
                               >
-                                <Pencil className="h-3.5 w-3.5" />
+                                <Send className="h-3.5 w-3.5" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                onClick={() => setNalazStornoTarget(item.reference_id)}
-                                title="Storno e-Nalaza"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          )}
+                            )}
+                            {!item.cezih_storno && item.reference_id && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => setEditTarget({ recordId: item.record_id, referenceId: item.reference_id! })}
+                                  title="Uredi i zamijeni e-Nalaz"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                  onClick={() => setNalazStornoTarget(item.reference_id)}
+                                  title="Storno e-Nalaza"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -432,6 +455,14 @@ export function PatientCezihTab({
           setEditTarget(null)
           toast.success("e-Nalaz zamijenjen na CEZIH")
         }}
+      />
+
+      <SendNalazDialog
+        open={!!sendTargetRecordId}
+        onOpenChange={(open) => !open && setSendTargetRecordId(null)}
+        patientId={patientId}
+        hasCezihIdentifier={hasCezihIdentifier}
+        onlyRecordId={sendTargetRecordId ?? undefined}
       />
 
       {/* Storno e-Nalaz confirmation dialog */}
