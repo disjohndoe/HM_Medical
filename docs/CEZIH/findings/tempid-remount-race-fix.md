@@ -44,6 +44,6 @@ Shipped 2026-04-20 in `visit-management.tsx` + `case-management.tsx`:
 4. Inline `<Loader2 /> Sprema se...` indicator in the Akcije column so the doctor knows the row is mid-save.
 5. `startEdit`, `handleEdit`/`handleEditSave`, `handleAction` all guard against optimistic ids with a Croatian toast — belt-and-braces for fast-click races.
 
-Verify before next certification attempt: TC12 → TC13 back-to-back on prod, no reload, PATCH targets real cuid.
+Verified on prod 2026-04-20 (commit `bfa094d`, GORAN PACPRIVATNICI19, smart card): Nova posjeta → Kreiraj → "Sprema se..." row → signing completes → pencil+Akcija appear with real cuid → immediate edit → `PATCH /api/cezih/visits/cmo6u72nh01x4hb858mpwew56 → 200` → toast "Posjeta ažurirana". No reload.
 
 See also: `docs/bugs.md` entry `2026-04-20-tempid-optimistic-row`.

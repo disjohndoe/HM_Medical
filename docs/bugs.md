@@ -53,7 +53,13 @@ No backend changes. Behavior on real-id rows is unchanged.
 ### Verified
 
 - Typecheck clean locally (`pnpm exec tsc --noEmit`).
-- Prod E2E: TBD — run TC12 create → immediately TC13 edit without reload; confirm pencil is disabled until row reconciles, then click succeeds and PATCH hits the real cuid.
+- Prod E2E 2026-04-20 on `app.hmdigital.hr` (GORAN PACPRIVATNICI19, smart card):
+  - Nova posjeta → Kreiraj → optimistic row shows "Sprema se..." with no pencil/Akcija. ✓
+  - Signing completes → toast `Posjeta kreirana: cmo6u72nh01x4hb858mpwew56` → row gains pencil + Akcija. ✓
+  - Immediate pencil click → dialog title shows real cuid, not `temp-`. ✓
+  - Submit `Spremi izmjene` → toast `Posjeta ažurirana`, Izmjena column populated. ✓
+  - Network: `PATCH /api/cezih/visits/cmo6u72nh01x4hb858mpwew56?patient_id=... → 200` (was 502 with tempId before fix). ✓
+  - No reload between create and edit.
 
 ### Related
 
