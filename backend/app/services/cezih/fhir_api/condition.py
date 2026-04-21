@@ -41,6 +41,20 @@ def _log_bundle_identity(tag: str, bundle: dict) -> None:
         logger.warning("Case POST bundle (%s): failed to log (%s)", tag, e)
 
 
+def _log_response_body(tag: str, response: dict) -> None:
+    """Log the full CEZIH $process-message response body for diagnostics.
+
+    Needed for 2.2 Ponavljajući parser gap: CEZIH returns HTTP 200 with
+    a new global case identifier but parse_message_response currently returns
+    empty. We need the exact response shape to fix the parser.
+    """
+    try:
+        raw = json.dumps(response, ensure_ascii=False)
+        logger.info("Case response (%s): size=%d chars, body=%s", tag, len(raw), raw[:30000])
+    except Exception as e:  # pragma: no cover — best-effort diagnostic
+        logger.warning("Case response (%s): failed to log (%s)", tag, e)
+
+
 async def _ensure_case_session(fhir_client: CezihFhirClient) -> None:
     """Pre-flight GET before POST to health-issue-services.
 
@@ -216,6 +230,7 @@ async def create_recurring_case(
     await _ensure_case_session(fhir_client)
     _log_bundle_identity("create_recurring_case/2.2", bundle)
     response = await fhir_client.process_message("health-issue-services/api/v1", bundle)
+    _log_response_body("create_recurring_case/2.2", response)
     result = parse_message_response(response)
     if not result["success"]:
         raise CezihError(result.get("error_message") or "Failed to create recurring case")
