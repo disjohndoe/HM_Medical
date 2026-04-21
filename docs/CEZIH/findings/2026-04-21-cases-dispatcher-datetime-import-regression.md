@@ -50,10 +50,17 @@ Signing path trace from production logs (`2026-04-21 04:46–04:47`):
 ## Action Items
 
 - [x] Add `from datetime import UTC, datetime` to `backend/app/services/cezih/dispatchers/cases.py`
-- [x] Commit fix + deploy
-- [ ] Retry TC17c Zatvori (Resolve / 2.5) — verify status transitions to Zatvoren + Završetak filled on top J06.9 row
-- [ ] Exercise TC17b-recur (2.2 Ponavljajući) on a Zatvoren case to cover the other fix site
+- [x] Commit fix + deploy (commit `98184c6`)
+- [x] Retry TC17c Zatvori (Resolve) — **VERIFIED 2026-04-21 06:58** on Aktivan+Potvrđen J11 case (20.04.2026 15:24 → Zatvoren, Završetak 21.04.2026). Toast "Zatvori — uspješno". PUT 200. No more 500/NameError.
+- [x] Ponovno otvori (Reopen, 2.9) — **VERIFIED 2026-04-21 07:0x** on the same J11 case (Zatvoren → Aktivan). PUT 200. Confirms local-mirror update path (L419 clear_abatement branch) is intact.
+- [ ] Exercise TC17b-recur (2.2 Ponavljajući) via Novi slučaj dialog to cover the other datetime fix site (L375)
 
-## Note — action/event-code mapping discrepancy (observational, not this bug)
+## Note — event-code mapping is CORRECT (not a bug)
 
-The signed bundle for `action="resolve"` carried `MessageHeader.eventCoding.code="2.4"`, but per CLAUDE.md the event codes are 2.3 Remission / 2.4 Relapse / 2.5 Resolve. The `findings/case-lifecycle-profile-matrix.md` entry notes the old code had these swapped. Worth double-checking the current builder still sends the correct code for Resolve, once 2.5 is re-tested. Tracking under case-lifecycle-profile-matrix.md rather than here.
+The signed bundle for `action="resolve"` carries `MessageHeader.eventCoding.code="2.4"`. Global CLAUDE.md lists 2.4=Relapse/2.5=Resolve, but that's outdated — per live testing in `findings/case-lifecycle-profile-matrix.md` and the code comments at `builders/condition.py:233-236`, the CORRECT (verified) mapping is **2.4=Resolve, 2.5=Relapse** (Simplifier cezih.hr.condition-management/0.2.1). This was pinned down in commit `b314a4e` (2026-04-16).
+
+## Note — state-machine rejection on Relaps → Resolve (separate from this bug)
+
+First retry attempt hit the **top row (Relaps state)**. CEZIH returned 400 with `ERR_HEALTH_ISSUE_2004: "Not allowed to perform requested transition with current roles."` This is CEZIH's state machine rejecting a direct Relaps → Resolve transition — the code is not about user roles (see profile matrix, line 66-68). The fix is to pick a case in `aktivan+potvrđen` state to exercise 2.4 Resolve; the second retry on J11 (aktivan+potvrđen) succeeded.
+
+**Observed FE state-machine gap** (`frontend/src/components/cezih/case-management.tsx:248-249`): `relapse → [remission, resolve]`, but CEZIH disallows direct Relaps → Resolve. The profile matrix documents Zatvori as valid only on `aktivan`. FE should drop `resolve` from the `relapse` gate (or require an intermediate Remisija). Tracked as a separate UX cleanup — not a cert blocker since 2.4 is not in the 22 TCs.

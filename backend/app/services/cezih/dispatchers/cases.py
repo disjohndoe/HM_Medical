@@ -364,16 +364,28 @@ async def dispatch_update_case(
     try:
         if action == "create_recurring":
             # 2.2 Ponavljajući creates a NEW case inheriting the parent's ICD.
-            existing = await real_service.retrieve_cases(http_client, identifier_system, identifier_value)
-            parent = next((c for c in existing if c.get("case_id") == case_id), None)
-            if parent is None:
+            # Parent data comes from our local DB mirror — CEZIH QEDm retrieve
+            # is flaky on the test env and a local row is always authoritative
+            # for fields we need (ICD + verification).
+            from app.models.cezih_case import CezihCase
+            from sqlalchemy import or_
+            parent_row = (await db.execute(
+                select(CezihCase).where(
+                    CezihCase.tenant_id == tenant_id,
+                    or_(
+                        CezihCase.cezih_case_id == case_id,
+                        CezihCase.local_case_id == case_id,
+                    ),
+                )
+            )).scalar_one_or_none()
+            if parent_row is None:
                 raise CezihError(f"Roditeljski slučaj {case_id} nije pronađen za pacijenta.")
             result = await real_service.create_recurring_case(
                 http_client, identifier_value, practitioner_id, org_code,
-                icd_code=parent.get("icd_code") or "",
-                icd_display=parent.get("icd_display") or "",
+                icd_code=parent_row.icd_code or "",
+                icd_display=parent_row.icd_display or "",
                 onset_date=datetime.now(UTC).strftime("%Y-%m-%d"),
-                verification_status=parent.get("verification_status") or "confirmed",
+                verification_status=parent_row.verification_status or "confirmed",
                 source_oid=source_oid,
                 identifier_system=identifier_system,
             )

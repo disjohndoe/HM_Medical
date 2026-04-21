@@ -96,6 +96,7 @@ const CASE_ACTIONS = [
   { value: "relapse", label: "Relaps" },
   { value: "resolve", label: "Zatvori" },
   { value: "reopen", label: "Ponovno otvori" },
+  { value: "create_recurring", label: "Ponovi slučaj" },
 ]
 
 interface CaseManagementProps {
@@ -248,7 +249,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
       case "relapse":
         return filter(["remission", "resolve"])
       case "resolved":
-        return filter(["reopen"])
+        return filter(["reopen", "create_recurring"])
       case "inactive":
         return []
       default:
