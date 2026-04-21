@@ -16,6 +16,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { PageHeader } from "@/components/shared/page-header"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
@@ -23,46 +31,71 @@ import { TablePagination } from "@/components/shared/table-pagination"
 import { PatientSearch } from "@/components/patients/patient-search"
 import { PatientTable } from "@/components/patients/patient-table"
 import { useDeletePatient, usePatients } from "@/lib/hooks/use-patients"
-import { useImportPatientFromCezih } from "@/lib/hooks/use-cezih"
+import { useImportPatientByIdentifier, type AdhocIdentifierType } from "@/lib/hooks/use-cezih"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import type { Patient } from "@/lib/types"
 
 const PAGE_SIZE = 20
+
+const MBO_REGEX = /^\d{9}$/
+const PASSPORT_REGEX = /^[A-Za-z0-9]{5,50}$/
+const EHIC_REGEX = /^[0-9A-Za-z]{20}$/
 
 export default function PacijentiPage() {
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(0)
   const [deleteTarget, setDeleteTarget] = useState<Patient | null>(null)
   const [importOpen, setImportOpen] = useState(false)
-  const [importMbo, setImportMbo] = useState("")
+  const [importType, setImportType] = useState<AdhocIdentifierType>("mbo")
+  const [importValue, setImportValue] = useState("")
   const router = useRouter()
 
   const { data, isLoading, error } = usePatients(search, page * PAGE_SIZE, PAGE_SIZE)
   const deletePatient = useDeletePatient()
-  const importPatient = useImportPatientFromCezih()
+  const importPatient = useImportPatientByIdentifier()
   const { canDeletePatient, canPerformCezihOps } = usePermissions()
 
   function handleDelete(patient: Patient) {
     setDeleteTarget(patient)
   }
 
+  function resetImportDialog() {
+    setImportOpen(false)
+    setImportType("mbo")
+    setImportValue("")
+  }
+
   function handleImportFromCezih() {
-    const mbo = importMbo.trim()
-    if (!/^\d{9}$/.test(mbo)) {
+    const value = importValue.trim()
+    if (importType === "mbo" && !MBO_REGEX.test(value)) {
       toast.error("MBO mora imati točno 9 znamenki")
       return
     }
-    importPatient.mutate(mbo, {
-      onSuccess: (result) => {
-        toast.success(`Pacijent ${result.ime} ${result.prezime} uspješno kreiran iz CEZIH-a`)
-        setImportOpen(false)
-        setImportMbo("")
-        router.push(`/pacijenti/${result.id}`)
+    if (importType === "putovnica" && !PASSPORT_REGEX.test(value)) {
+      toast.error("Broj putovnice: 5-50 alfanumeričkih znakova")
+      return
+    }
+    if (importType === "ehic" && !EHIC_REGEX.test(value)) {
+      toast.error("EHIC broj mora imati točno 20 alfanumeričkih znakova (0-9, A-Z)")
+      return
+    }
+    importPatient.mutate(
+      { identifier_type: importType, identifier_value: value },
+      {
+        onSuccess: (result) => {
+          toast.success(
+            result.already_exists
+              ? `Pacijent ${result.ime} ${result.prezime} već postoji u kartoteci`
+              : `Pacijent ${result.ime} ${result.prezime} uspješno kreiran iz CEZIH-a`,
+          )
+          resetImportDialog()
+          router.push(`/pacijenti/${result.id}`)
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : "Greška pri uvozu pacijenta")
+        },
       },
-      onError: (err) => {
-        toast.error(err instanceof Error ? err.message : "Greška pri uvozu pacijenta")
-      },
-    })
+    )
   }
 
   async function confirmDelete() {
@@ -140,25 +173,66 @@ export default function PacijentiPage() {
         loading={deletePatient.isPending}
       />
 
-      <Dialog open={importOpen} onOpenChange={(open) => { if (!open) { setImportOpen(false); setImportMbo("") } }}>
+      <Dialog open={importOpen} onOpenChange={(open) => { if (!open) resetImportDialog() }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Uvoz pacijenta iz CEZIH-a</DialogTitle>
             <DialogDescription>
-              Unesite MBO pacijenta za automatsko preuzimanje podataka iz CEZIH registra.
+              Odaberite tip identifikatora i unesite broj za automatsko preuzimanje podataka iz CEZIH registra.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Input
-              placeholder="MBO (9 znamenki)"
-              value={importMbo}
-              onChange={(e) => setImportMbo(e.target.value)}
-              maxLength={9}
-              onKeyDown={(e) => { if (e.key === "Enter") handleImportFromCezih() }}
-            />
+          <div className="space-y-3 py-4">
+            <div className="space-y-1.5">
+              <Label>Tip identifikatora</Label>
+              <Select
+                value={importType}
+                onValueChange={(v) => {
+                  if (!v) return
+                  setImportType(v as AdhocIdentifierType)
+                  setImportValue("")
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mbo">MBO</SelectItem>
+                  <SelectItem value="putovnica">Putovnica</SelectItem>
+                  <SelectItem value="ehic">EHIC kartica</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>
+                {importType === "mbo"
+                  ? "MBO"
+                  : importType === "putovnica"
+                    ? "Broj putovnice"
+                    : "EHIC broj"}
+              </Label>
+              <Input
+                placeholder={
+                  importType === "mbo"
+                    ? "MBO (9 znamenki)"
+                    : importType === "putovnica"
+                      ? "AB1234567"
+                      : "20 znakova, npr. HR123..."
+                }
+                value={importValue}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  setImportValue(importType === "mbo" ? raw : raw.toUpperCase())
+                }}
+                maxLength={
+                  importType === "mbo" ? 9 : importType === "ehic" ? 20 : 50
+                }
+                inputMode={importType === "mbo" ? "numeric" : undefined}
+                onKeyDown={(e) => { if (e.key === "Enter") handleImportFromCezih() }}
+              />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setImportOpen(false); setImportMbo("") }}>
+            <Button variant="outline" onClick={resetImportDialog}>
               Odustani
             </Button>
             <Button
