@@ -11,6 +11,7 @@ from app.services.cezih.exceptions import CezihError
 from app.services.cezih.message_builder import (
     CASE_ACTION_MAP,
     CASE_EVENT_PROFILE,
+    ID_CASE_GLOBAL,
     ID_MBO,
     add_signature,
     build_condition_create,
@@ -193,8 +194,14 @@ async def create_recurring_case(
         verification_status=verification_status, note_text=note_text,
     )
     local_case_id = condition["identifier"][0]["value"]
-    # 2.2 profile: identifier max=0 (FORBIDDEN) — server assigns global ID
-    condition.pop("identifier", None)
+    # 2.2 profile (hr-create-health-issue-recurrence-message): only
+    # identifier:globalni-identifikator is max=0. lokalni-identifikator
+    # inherits from hr-condition base with max=*, so we keep our local
+    # ID (system = ID_CASE_LOCAL). Strip any global-slice entry defensively.
+    condition["identifier"] = [
+        i for i in condition.get("identifier", [])
+        if i.get("system") != ID_CASE_GLOBAL
+    ]
     # H1 (2026-04-21): asserter dropped for 2.2 to match 2.6 state-machine fix.
     # Working lifecycle ops (2.4/2.9) never emit asserter; 2.6 fixed by dropping
     # it (commit 5cb984c). Mirror here — state machine is stricter than profile,
