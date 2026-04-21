@@ -6,6 +6,10 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from app.services.cezih.builders.condition import (
+    PROFILE_HI_CREATE_BUNDLE,
+    PROFILE_HI_MESSAGE_HEADER,
+)
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
 from app.services.cezih.message_builder import (
@@ -169,6 +173,10 @@ async def create_case(
         "2.1", condition,
         sender_org_code=org_code, author_practitioner_id=practitioner_id,
         source_oid=source_oid,
+        profile_urls={
+            "bundle": PROFILE_HI_CREATE_BUNDLE,
+            "header": PROFILE_HI_MESSAGE_HEADER,
+        },
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
     await _ensure_case_session(fhir_client)

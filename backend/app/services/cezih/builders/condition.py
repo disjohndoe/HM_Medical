@@ -25,6 +25,9 @@ from app.services.cezih.builders.common import (
 
 logger = logging.getLogger(__name__)
 
+PROFILE_HI_CREATE_BUNDLE = "http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-create-health-issue-message"
+PROFILE_HI_MESSAGE_HEADER = "http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-hi-management-message-header"
+
 
 def build_condition_create(
     *,
