@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseTenantModel
@@ -44,6 +44,10 @@ class CezihVisit(BaseTenantModel):
         DateTime(timezone=True), nullable=True,
     )
     diagnosis_case_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    service_provider_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    practitioner_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    diagnosis_case_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
 
     last_error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     last_error_display: Mapped[str | None] = mapped_column(Text, nullable=True)

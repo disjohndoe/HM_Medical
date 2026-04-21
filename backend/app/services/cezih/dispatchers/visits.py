@@ -40,8 +40,45 @@ async def _lookup_local_visit_id(
 
 logger = logging.getLogger(__name__)
 
-# How long to keep local rows as "fresh" in the merge window.
-_LOCAL_MIRROR_WINDOW_MINUTES = 10
+
+# Tip posjete codes -> display label (mirrors TIP_POSJETE_MAP in message_builder)
+_TIP_POSJETE_LABELS = {
+    "1": "Posjeta LOM",
+    "2": "Posjeta SKZZ",
+    "3": "Hospitalizacija",
+}
+_VRSTA_POSJETE_LABELS = {
+    "1": "Pacijent prisutan",
+    "2": "Pacijent udaljeno prisutan",
+    "3": "Pacijent nije prisutan",
+}
+_ADMISSION_TYPE_LABELS = {
+    "1": "Hitni prijem",
+    "2": "Uputnica PZZ",
+    "3": "Premještaj iz druge ustanove",
+    "4": "Nastavno liječenje",
+    "5": "Premještaj unutar ustanove",
+    "6": "Ostalo",
+    "7": "Poziv na raniji termin",
+    "8": "Telemedicina",
+    "9": "Interna uputnica",
+    "10": "Program+",
+}
+
+# CEZIH-authoritative fields — always overwrite the local row on upsert.
+# QEDm controls the lifecycle of these (status transitions, close time, which
+# practitioners and cases are linked, which org owns the encounter).
+_CEZIH_AUTHORITATIVE_FIELDS = (
+    "status", "period_end", "service_provider_code",
+    "practitioner_ids", "diagnosis_case_ids",
+)
+# Locally-authoritative fields — CEZIH QEDm strips or munges these on read-back,
+# so the user-entered value is more reliable. Only backfill if the local row is
+# NULL/empty AND CEZIH happens to return a value (covers legacy rows written
+# before these fields were populated on create).
+_LOCALLY_AUTHORITATIVE_FIELDS = (
+    "tip_posjete", "vrsta_posjete", "reason", "admission_type", "period_start",
+)
 
 
 async def _persist_local_visit_by_patient_id(
@@ -55,6 +92,7 @@ async def _persist_local_visit_by_patient_id(
     tip_posjete: str | None = None,
     vrsta_posjete: str | None = None,
     reason: str | None = None,
+    service_provider_code: str | None = None,
 ) -> None:
     """Persist a local CezihVisit mirror row after successful CEZIH create."""
     if not db or not tenant_id:
@@ -72,65 +110,135 @@ async def _persist_local_visit_by_patient_id(
             vrsta_posjete=vrsta_posjete,
             reason=reason,
             period_start=datetime.now(UTC),
+            service_provider_code=service_provider_code,
         ))
         await db.flush()
     except (IntegrityError, OperationalError) as exc:
         logger.warning("Failed to persist local CezihVisit mirror: %s", exc)
 
 
-# Tip posjete codes -> display label (mirrors TIP_POSJETE_MAP in message_builder)
-_TIP_POSJETE_LABELS = {
-    "1": "Posjeta LOM",
-    "2": "Posjeta SKZZ",
-    "3": "Hospitalizacija",
-}
-_VRSTA_POSJETE_LABELS = {
-    "1": "Pacijent prisutan",
-    "2": "Pacijent udaljeno prisutan",
-    "3": "Pacijent nije prisutan",
-}
+def _parse_dt(value) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    if isinstance(value, str) and value:
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+        except ValueError:
+            return None
+    return None
 
 
-async def _fetch_fresh_local_visits_by_patient(
-    db: AsyncSession | None, tenant_id: UUID | None, patient_id: UUID,
+async def _upsert_cezih_visit_from_response(
+    db: AsyncSession,
+    tenant_id: UUID,
+    patient_id: UUID,
+    patient_mbo: str,
+    remote: dict,
+) -> None:
+    """Insert or update a cezih_visits row from a CEZIH Encounter response.
+
+    CEZIH-authoritative fields (status, period_end, service_provider_code,
+    practitioner_ids, diagnosis_case_ids) are always overwritten. Locally-
+    authoritative fields (tip_posjete, vrsta_posjete, reason, admission_type,
+    period_start) are only filled when the local value is NULL/empty so the
+    user's entries are preserved across QEDm round-trips.
+    """
+    cezih_visit_id = (remote.get("visit_id") or "").strip()
+    if not cezih_visit_id:
+        return
+    try:
+        from app.models.cezih_visit import CezihVisit
+        result = await db.execute(
+            select(CezihVisit).where(
+                CezihVisit.tenant_id == tenant_id,
+                CezihVisit.cezih_visit_id == cezih_visit_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        remote_status = remote.get("status") or ""
+        remote_period_end = _parse_dt(remote.get("period_end"))
+        remote_sp_code = (remote.get("service_provider_code") or None)
+        remote_practitioner_ids = remote.get("practitioner_ids") or []
+        remote_diagnosis_case_ids = remote.get("diagnosis_case_ids") or []
+        if row is None:
+            row = CezihVisit(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                patient_mbo=patient_mbo,
+                cezih_visit_id=cezih_visit_id,
+                status=remote_status or "in-progress",
+                admission_type=remote.get("visit_type") or None,
+                tip_posjete=remote.get("tip_posjete") or None,
+                vrsta_posjete=remote.get("vrsta_posjete") or None,
+                reason=remote.get("reason") or None,
+                period_start=_parse_dt(remote.get("period_start")),
+                period_end=remote_period_end,
+                service_provider_code=remote_sp_code,
+                practitioner_ids=list(remote_practitioner_ids) or None,
+                diagnosis_case_ids=list(remote_diagnosis_case_ids) or None,
+            )
+            db.add(row)
+        else:
+            if remote_status:
+                row.status = remote_status
+            row.period_end = remote_period_end
+            if remote_sp_code:
+                row.service_provider_code = remote_sp_code
+            if remote_practitioner_ids:
+                row.practitioner_ids = list(remote_practitioner_ids)
+            if remote_diagnosis_case_ids:
+                row.diagnosis_case_ids = list(remote_diagnosis_case_ids)
+            if not row.tip_posjete and remote.get("tip_posjete"):
+                row.tip_posjete = remote["tip_posjete"]
+            if not row.vrsta_posjete and remote.get("vrsta_posjete"):
+                row.vrsta_posjete = remote["vrsta_posjete"]
+            if not row.reason and remote.get("reason"):
+                row.reason = remote["reason"]
+            if not row.admission_type and remote.get("visit_type"):
+                row.admission_type = remote["visit_type"]
+            if not row.period_start:
+                parsed_start = _parse_dt(remote.get("period_start"))
+                if parsed_start:
+                    row.period_start = parsed_start
+    except (IntegrityError, OperationalError) as exc:
+        logger.warning("Failed to upsert CezihVisit from response: %s", exc)
+
+
+async def _list_local_visits_as_dicts(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    patient_id: UUID,
 ) -> list[dict]:
-    """Fetch local CezihVisit mirror rows.
+    """Return every cezih_visits row for a patient, shaped as VisitItem dicts.
 
-    Returns ALL rows (no time window) — tip_posjete persists indefinitely
-    because CEZIH QEDm strips Encounter.type on read, making our mirror the
-    only source of truth for that field. Each row carries `_fresh` = True
-    when created within _LOCAL_MIRROR_WINDOW_MINUTES so the merger knows
-    whether to override CEZIH-authoritative fields (status, period_end).
+    No time window: the local mirror is the source of truth for the UI.
+    Sort order mirrors what the CEZIH+merge path produced (most recent first).
     """
     if not db or not tenant_id:
         return []
     try:
-        from datetime import timedelta
-
         from app.models.cezih_visit import CezihVisit
-
-        cutoff = datetime.now(UTC) - timedelta(minutes=_LOCAL_MIRROR_WINDOW_MINUTES)
         result = await db.execute(
             select(CezihVisit).where(
                 CezihVisit.tenant_id == tenant_id,
                 CezihVisit.patient_id == patient_id,
-            ).order_by(CezihVisit.created_at.desc())
+            ).order_by(CezihVisit.period_start.desc().nullslast(), CezihVisit.created_at.desc())
         )
         rows = result.scalars().all()
-        out = []
+        out: list[dict] = []
         for row in rows:
-            created_at = row.created_at
-            if created_at and created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=UTC)
-            fresh = created_at is not None and created_at >= cutoff
             tip = row.tip_posjete or ""
             vrsta = row.vrsta_posjete or ""
+            admission = row.admission_type or ""
             out.append({
                 "visit_id": row.cezih_visit_id or "",
                 "patient_mbo": row.patient_mbo,
                 "status": row.status,
-                "visit_type": row.admission_type or "",
-                "visit_type_display": None,
+                "visit_type": admission,
+                "visit_type_display": _ADMISSION_TYPE_LABELS.get(admission) if admission else None,
                 "vrsta_posjete": vrsta,
                 "vrsta_posjete_display": _VRSTA_POSJETE_LABELS.get(vrsta) if vrsta else None,
                 "tip_posjete": tip,
@@ -138,7 +246,10 @@ async def _fetch_fresh_local_visits_by_patient(
                 "reason": row.reason,
                 "period_start": row.period_start.isoformat() if row.period_start else None,
                 "period_end": row.period_end.isoformat() if row.period_end else None,
-                "_fresh": fresh,
+                "service_provider_code": row.service_provider_code,
+                "practitioner_id": (row.practitioner_ids or [None])[0] if row.practitioner_ids else None,
+                "practitioner_ids": list(row.practitioner_ids) if row.practitioner_ids else [],
+                "diagnosis_case_ids": list(row.diagnosis_case_ids) if row.diagnosis_case_ids else [],
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
                 "last_error_code": row.last_error_code,
                 "last_error_display": row.last_error_display,
@@ -149,63 +260,6 @@ async def _fetch_fresh_local_visits_by_patient(
     except SQLAlchemyError as exc:
         logger.warning("Failed to read local CezihVisit mirror: %s", exc)
         return []
-
-
-# Visit fields that only exist locally (CEZIH never returns them)
-_VISIT_LOCAL_ONLY_FIELDS = (
-    "tip_posjete", "tip_posjete_display", "vrsta_posjete", "vrsta_posjete_display",
-    "updated_at",
-    "last_error_code", "last_error_display", "last_error_diagnostics", "last_error_at",
-)
-# Visit fields where CEZIH is authoritative, but we fall back to the mirror
-# when CEZIH's QEDm response leaves the field empty. QEDm read-back regularly
-# strips Encounter.reasonCode, so the user-entered reason is more reliable.
-_VISIT_LOCAL_FALLBACK_FIELDS = ("reason",)
-# Visit fields where CEZIH is authoritative, but our mirror overrides during
-# the freshness window to mask QEDm read-side lag
-_VISIT_FRESH_OVERRIDE_FIELDS = ("status", "period_end")
-
-
-def _merge_visits_with_local(
-    remote: list[dict], local: list[dict],
-) -> list[dict]:
-    """Merge local visit mirror into remote list with field-specific rules.
-
-    Persistent fields (tip_posjete, updated_at) are overlaid from local for
-    ALL matching rows — CEZIH never returns them. State fields (status,
-    period_end) are overlaid only when the local row is fresh (<10 min old),
-    to avoid masking changes made by other systems on older visits.
-    Local-only rows are included only when fresh.
-    """
-    local_by_id = {row["visit_id"]: row for row in local if row.get("visit_id")}
-    merged: list[dict] = []
-    seen_local = set()
-    for row in remote:
-        rid = row.get("visit_id")
-        lrow = local_by_id.get(rid) if rid else None
-        if lrow is None:
-            merged.append(row)
-            continue
-        seen_local.add(rid)
-        combined = dict(row)
-        for field in _VISIT_LOCAL_ONLY_FIELDS:
-            if lrow.get(field) is not None:
-                combined[field] = lrow[field]
-        for field in _VISIT_LOCAL_FALLBACK_FIELDS:
-            if not combined.get(field) and lrow.get(field):
-                combined[field] = lrow[field]
-        if lrow.get("_fresh"):
-            for field in _VISIT_FRESH_OVERRIDE_FIELDS:
-                if field in lrow:
-                    combined[field] = lrow[field]
-        merged.append(combined)
-    # Local-only rows that CEZIH hasn't caught up on yet
-    extra = [
-        {k: v for k, v in row.items() if k != "_fresh"}
-        for rid, row in local_by_id.items()
-        if rid not in seen_local and row.get("_fresh")
-    ]
-    return extra + merged
 
 
 async def _update_local_visit(
@@ -219,14 +273,14 @@ async def _update_local_visit(
     vrsta_posjete: str | None = None,
     admission_type: str | None = None,
     reason: str | None = None,
+    service_provider_code: str | None = None,
     set_period_end: bool = False,
     clear_period_end: bool = False,
 ) -> None:
     """Upsert the local CezihVisit mirror for this visit.
 
-    If no row exists yet (e.g. the visit was created before migration 031
-    recreated the mirror table, or before any mirror code ran), insert a
-    fresh row so the edit is reflected. Non-fatal on failure.
+    If no row exists yet, insert a fresh row so the edit is reflected.
+    Non-fatal on failure.
     """
     if not db or not tenant_id or not visit_id:
         return
@@ -257,6 +311,7 @@ async def _update_local_visit(
                 vrsta_posjete=vrsta_posjete,
                 reason=reason,
                 period_start=datetime.now(UTC),
+                service_provider_code=service_provider_code,
             )
             if set_period_end:
                 row.period_end = datetime.now(UTC)
@@ -272,6 +327,8 @@ async def _update_local_visit(
                 row.vrsta_posjete = vrsta_posjete
             if reason is not None:
                 row.reason = reason
+            if service_provider_code and not row.service_provider_code:
+                row.service_provider_code = service_provider_code
             if set_period_end:
                 row.period_end = datetime.now(UTC)
             if clear_period_end:
@@ -374,6 +431,7 @@ async def dispatch_create_visit(
         tip_posjete=tip_posjete,
         vrsta_posjete=vrsta_posjete,
         reason=reason,
+        service_provider_code=org_code,
     )
     return resp
 
@@ -464,6 +522,7 @@ async def dispatch_update_visit(
         vrsta_posjete=vrsta_posjete,
         admission_type=nacin_prijema,
         reason=reason,
+        service_provider_code=org_code,
     )
     return resp
 
@@ -575,18 +634,21 @@ async def dispatch_visit_action(
             db, tenant_id, visit_id,
             patient_mbo=identifier_value,
             status_str="finished", set_period_end=True,
+            service_provider_code=org_code,
         )
     elif action == "reopen":
         await _update_local_visit(
             db, tenant_id, visit_id,
             patient_mbo=identifier_value,
             status_str="in-progress", clear_period_end=True,
+            service_provider_code=org_code,
         )
     elif action == "storno":
         await _update_local_visit(
             db, tenant_id, visit_id,
             patient_mbo=identifier_value,
             status_str="entered-in-error",
+            service_provider_code=org_code,
         )
     return parsed
 
@@ -599,7 +661,14 @@ async def dispatch_list_visits(
     tenant_id: UUID,
     http_client=None,
 ) -> list[dict]:
-    """List visits for a patient from CEZIH (TC14)."""
+    """List visits for a patient — local-first.
+
+    Flow: query CEZIH (TC14) → upsert every returned Encounter into
+    cezih_visits (CEZIH-authoritative fields always overwrite, locally-
+    authoritative fields backfill only when NULL) → return the full local
+    mirror for this patient. If the CEZIH call fails, we still return the
+    mirror so the UI stays useful during CEZIH outages.
+    """
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
@@ -612,22 +681,33 @@ async def dispatch_list_visits(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
+    remote: list[dict] = []
     try:
-        result = await real_service.list_visits(http_client, system_uri, value)
+        remote = await real_service.list_visits(http_client, system_uri, value)
     except CezihError as e:
-        _raise_cezih_error(e)
+        logger.warning(
+            "CEZIH list_visits failed for patient %s — serving local mirror only: %s",
+            patient_id, e,
+        )
     await _write_audit(
         db, tenant_id, user_id, action="visit_list",
         details={"patient_id": str(patient_id), "identifier_system": system_uri},
     )
-    local = await _fetch_fresh_local_visits_by_patient(db, tenant_id, patient_id)
-    return _merge_visits_with_local(result, local)
+    for row in remote:
+        await _upsert_cezih_visit_from_response(
+            db, tenant_id, patient_id, value, row,
+        )
+    try:
+        await db.flush()
+    except (IntegrityError, OperationalError) as exc:
+        logger.warning("Flush after visit upsert failed: %s", exc)
+    return await _list_local_visits_as_dicts(db, tenant_id, patient_id)
 
 
 __all__ = [
     "_persist_local_visit_by_patient_id",
-    "_fetch_fresh_local_visits_by_patient",
-    "_merge_visits_with_local",
+    "_upsert_cezih_visit_from_response",
+    "_list_local_visits_as_dicts",
     "_update_local_visit",
     "_parse_visit_response",
     "dispatch_create_visit",
