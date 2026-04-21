@@ -405,20 +405,23 @@ async def dispatch_update_case(
     )
     if action == "create_recurring":
         new_cezih_id = result.get("cezih_case_id") or ""
+        # ICD + verification come from parent_row (already fetched above);
+        # create_recurring_case doesn't echo those in its return dict.
         await _persist_local_case_by_patient_id(
             db, tenant_id, patient_id, identifier_value,
             local_case_id=result.get("local_case_id") or "",
             cezih_case_id=new_cezih_id,
-            icd_code=result.get("icd_code") or "",
-            icd_display=result.get("icd_display") or "",
-            onset_date=result.get("onset_date") or datetime.now(UTC).strftime("%Y-%m-%d"),
-            verification_status=result.get("verification_status") or "confirmed",
+            icd_code=parent_row.icd_code or "",
+            icd_display=parent_row.icd_display or "",
+            onset_date=datetime.now(UTC).strftime("%Y-%m-%d"),
+            verification_status=parent_row.verification_status or "confirmed",
             note_text=None,
         )
         if new_cezih_id:
             await _update_local_case(
                 db, tenant_id, new_cezih_id, clinical_status="recurrence",
             )
+        return {"success": True, "case_id": new_cezih_id or None, "action": "create_recurring"}
     else:
         new_status = _CASE_ACTION_TO_STATUS.get(action)
         if new_status:
