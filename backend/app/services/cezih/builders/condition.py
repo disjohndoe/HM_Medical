@@ -190,7 +190,10 @@ def build_condition_data_update(
 
     # con-4: if abated, clinicalStatus must be inactive/resolved/remission.
     # Since entered-in-error drops clinicalStatus (con-5), abatement must also be dropped.
-    if abatement_date and not entered_in_error:
+    # On 2.6 (data update) clinicalStatus is echoed from current state and cannot change;
+    # if the current state is active/recurrence, sending abatement violates con-4.
+    cs_allows_abatement = current_clinical_status in ("inactive", "resolved", "remission")
+    if abatement_date and not entered_in_error and cs_allows_abatement:
         if len(abatement_date) == 10:  # Date-only "YYYY-MM-DD"
             now = datetime.now(_TZ_ZAGREB)
             abatement_dt = datetime.combine(
