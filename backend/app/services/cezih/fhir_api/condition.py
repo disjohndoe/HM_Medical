@@ -160,6 +160,11 @@ async def create_case(
         verification_status=verification_status, note_text=note_text,
     )
     local_case_id = condition["identifier"][0]["value"]
+    # H1 mirror (2026-04-21): drop asserter from 2.1 to match 2.2/2.6 fix.
+    # CEZIH state machine rejects create bundles that emit asserter with
+    # ERR_HEALTH_ISSUE_2000; working lifecycle ops (2.4/2.9) never emit it.
+    # practitioner_id still flows into MessageHeader.author via build_message_bundle.
+    condition.pop("asserter", None)
     bundle = await build_message_bundle(
         "2.1", condition,
         sender_org_code=org_code, author_practitioner_id=practitioner_id,
