@@ -96,7 +96,10 @@ const CASE_ACTIONS = [
   { value: "relapse", label: "Relaps" },
   { value: "resolve", label: "Zatvori" },
   { value: "reopen", label: "Ponovno otvori" },
-  { value: "create_recurring", label: "Ponovi slučaj" },
+  // create_recurring (2.2 Ponavljajući) is intentionally NOT exposed — the
+  // backend bundle currently fails CEZIH profile validation with
+  // ERR_HEALTH_ISSUE_2000 "not-supported". See
+  // docs/CEZIH/findings/2026-04-21-cezih-2.2-recurrence-not-supported.md
 ]
 
 interface CaseManagementProps {
@@ -249,7 +252,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
       case "relapse":
         return filter(["remission", "resolve"])
       case "resolved":
-        return filter(["reopen", "create_recurring"])
+        return filter(["reopen"])
       case "inactive":
         return []
       default:
