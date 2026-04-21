@@ -195,6 +195,11 @@ async def create_recurring_case(
     local_case_id = condition["identifier"][0]["value"]
     # 2.2 profile: identifier max=0 (FORBIDDEN) — server assigns global ID
     condition.pop("identifier", None)
+    # H1 (2026-04-21): asserter dropped for 2.2 to match 2.6 state-machine fix.
+    # Working lifecycle ops (2.4/2.9) never emit asserter; 2.6 fixed by dropping
+    # it (commit 5cb984c). Mirror here — state machine is stricter than profile,
+    # which allows asserter max=1 mustSupport.
+    condition.pop("asserter", None)
     bundle = await build_message_bundle(
         "2.2", condition,
         sender_org_code=org_code, author_practitioner_id=practitioner_id,
