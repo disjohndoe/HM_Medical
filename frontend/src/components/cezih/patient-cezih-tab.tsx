@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe } from "lucide-react"
 import { toast } from "sonner"
@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -33,6 +34,8 @@ import { OSIGURANJE_STATUS, COUNTRY_HR } from "@/lib/constants"
 import { isForeignPatient, type Patient } from "@/lib/types"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateTimeHR } from "@/lib/utils"
+
+const PAGE_SIZE = 30
 
 interface PatientCezihTabProps {
   patientId: string
@@ -106,6 +109,16 @@ export function PatientCezihTab({
       status: (r) => (r.cezih_storno ? 1 : 0),
     },
   })
+
+  const [nalaziPage, setNalaziPage] = useState(0)
+  const pagedENalazi = useMemo(
+    () => sortedENalazi.slice(nalaziPage * PAGE_SIZE, (nalaziPage + 1) * PAGE_SIZE),
+    [sortedENalazi, nalaziPage],
+  )
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(sortedENalazi.length / PAGE_SIZE) - 1)
+    if (nalaziPage > maxPage) setNalaziPage(maxPage)
+  }, [sortedENalazi.length, nalaziPage])
 
   function handleCheckInsurance() {
     if (isForeign) return
@@ -324,7 +337,7 @@ export function PatientCezihTab({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortedENalazi.map((item) => {
+                    {pagedENalazi.map((item) => {
                       const wasEdited = item._wasEdited
                       return (
                       <TableRow key={item.record_id}>
@@ -369,6 +382,16 @@ export function PatientCezihTab({
                     })}
                   </TableBody>
                 </Table>
+              )}
+              {sortedENalazi.length > PAGE_SIZE && (
+                <div className="mt-3">
+                  <TablePagination
+                    page={nalaziPage}
+                    pageSize={PAGE_SIZE}
+                    total={sortedENalazi.length}
+                    onPageChange={setNalaziPage}
+                  />
+                </div>
               )}
             </CardContent>
           </Card>
