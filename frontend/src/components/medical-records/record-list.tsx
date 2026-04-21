@@ -42,7 +42,7 @@ import { RECORD_SENSITIVITY, RECORD_SENSITIVITY_COLORS } from "@/lib/constants"
 import { formatDateHR } from "@/lib/utils"
 import type { MedicalRecord } from "@/lib/types"
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 30
 
 interface RecordListProps {
   patientId: string

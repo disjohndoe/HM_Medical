@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { FileText, Plus, Loader2, Pencil, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
@@ -42,6 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { useTableSort } from "@/lib/hooks/use-table-sort"
 import {
   useRetrieveCases,
@@ -51,6 +52,8 @@ import {
   useIcd10Search,
 } from "@/lib/hooks/use-cezih"
 import type { CaseItem } from "@/lib/types"
+
+const PAGE_SIZE = 30
 
 const CLINICAL_STATUS_COLORS: Record<string, string> = {
   active: "bg-blue-100 text-blue-800",
@@ -272,6 +275,16 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
     },
   })
 
+  const [casesPage, setCasesPage] = useState(0)
+  const pagedCases = useMemo(
+    () => sortedCases.slice(casesPage * PAGE_SIZE, (casesPage + 1) * PAGE_SIZE),
+    [sortedCases, casesPage],
+  )
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(sortedCases.length / PAGE_SIZE) - 1)
+    if (casesPage > maxPage) setCasesPage(maxPage)
+  }, [sortedCases.length, casesPage])
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -434,7 +447,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedCases.map((c) => {
+                  {pagedCases.map((c) => {
                     const actions = getAvailableActions(c)
                     return (
                       <TableRow key={c.case_id}>
@@ -509,6 +522,14 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                 </TableBody>
               </Table>
             </div>
+            {sortedCases.length > PAGE_SIZE && (
+              <TablePagination
+                page={casesPage}
+                pageSize={PAGE_SIZE}
+                total={sortedCases.length}
+                onPageChange={setCasesPage}
+              />
+            )}
           </div>
         )}
 

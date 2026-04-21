@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Plus, Loader2, Building2, ExternalLink, Pencil, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
@@ -42,6 +42,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
+import { TablePagination } from "@/components/shared/table-pagination"
 import { useTableSort } from "@/lib/hooks/use-table-sort"
 import {
   useListVisits,
@@ -53,6 +54,7 @@ import {
 import type { VisitItem } from "@/lib/types"
 
 const NO_CASE = "__none__"
+const PAGE_SIZE = 30
 
 const VISIT_STATUS_COLORS: Record<string, string> = {
   "in-progress": "bg-blue-100 text-blue-800",
@@ -166,6 +168,16 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
       updated_at: (v: VisitItem) => v.updated_at || null,
     },
   })
+
+  const [visitsPage, setVisitsPage] = useState(0)
+  const pagedVisits = useMemo(
+    () => sortedVisits.slice(visitsPage * PAGE_SIZE, (visitsPage + 1) * PAGE_SIZE),
+    [sortedVisits, visitsPage],
+  )
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(sortedVisits.length / PAGE_SIZE) - 1)
+    if (visitsPage > maxPage) setVisitsPage(maxPage)
+  }, [sortedVisits.length, visitsPage])
 
   const handleCreate = () => {
     // Close dialog and reset form BEFORE firing the mutation. The optimistic
@@ -398,7 +410,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedVisits.map((v) => {
+                  {pagedVisits.map((v) => {
                     const external = isExternalVisit(v)
                     const actions = getAvailableActions(v)
                     return (
@@ -506,7 +518,14 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                 </TableBody>
               </Table>
             </div>
-
+            {sortedVisits.length > PAGE_SIZE && (
+              <TablePagination
+                page={visitsPage}
+                pageSize={PAGE_SIZE}
+                total={sortedVisits.length}
+                onPageChange={setVisitsPage}
+              />
+            )}
           </div>
         )}
       </CardContent>
