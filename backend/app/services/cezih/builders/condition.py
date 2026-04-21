@@ -198,8 +198,11 @@ def build_condition_data_update(
         else:
             condition["abatementDateTime"] = abatement_date
 
-    if practitioner_id:
-        condition["asserter"] = practitioner_ref(practitioner_id)
+    # H1 (2026-04-21): asserter dropped from 2.6. CEZIH state machine rejects
+    # data-update bundles that re-send asserter even though the profile allows
+    # max=1; working lifecycle ops (2.4/2.9) never emit it. _ = practitioner_id
+    # keeps the kwarg live for callers without flagging as unused.
+    _ = practitioner_id
 
     if severity_code:
         condition["severity"] = {
