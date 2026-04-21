@@ -72,7 +72,7 @@ What needs to be done next...
 | [ITI-65-403-blocker.md](ITI-65-403-blocker.md) | 2026-04-10 | resolved | 403 on doc-mhd-svc — wrong bundle type (message vs transaction) — VERIFIED TC18 2026-04-10 |
 | [ITI-65-document-profile.md](ITI-65-document-profile.md) | 2026-04-10 | active | HRMinimalDocumentReference — full profile field requirements, all CEZIHDR-* rules |
 | [TC20-cancel-document-blocker.md](TC20-cancel-document-blocker.md) | 2026-04-13 | resolved | TC20 cancel = ITI-65 replace with OID. entered-in-error rejected; literal refs rejected. VERIFIED 2026-04-13 |
-| [2026-04-20-cezih-test-env-fhir-server-down.md](2026-04-20-cezih-test-env-fhir-server-down.md) | 2026-04-20 | resolved | CEZIH test env internal FHIR server is back up (verified 2026-04-21 06:46 UTC) — TC20 retry returns proper `OperationOutcome` instead of NoHttpResponseException. Infrastructure issue closed. |
+| [2026-04-20-cezih-test-env-fhir-server-down.md](2026-04-20-cezih-test-env-fhir-server-down.md) | 2026-04-20 | resolved | CEZIH env intermittent on OID-lookup path — retry within ~1 min passes. **TC20 re-verified 2026-04-21 on fresh Ref 1402943 (send + storno HTTP 200).** Confirmed ITI-65 is unsigned by design (no Certilia push for storno/replace/send). |
 | [2026-04-20-clear-cezih-error-deadlock.md](2026-04-20-clear-cezih-error-deadlock.md) | 2026-04-20 | resolved | Backend self-deadlock in `clear_cezih_error` on retry-after-error path. Opened fresh session to UPDATE a row the dispatcher had already flushed. TC19 hang diagnosed + fixed (thread `session=db` through all 9 call sites). |
 
 ### Patient Registry (PMIR)

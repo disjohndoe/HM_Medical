@@ -4,83 +4,97 @@ topic: endpoints
 status: resolved
 ---
 
-# CEZIH test env internal FHIR server intermittently down (ERR_DOCTRANSVAL_1000) — RESOLVED 2026-04-21
+# CEZIH test env internal FHIR server intermittent (ERR_DOCTRANSVAL_1000) — TC20 re-verified on fresh nalaz 2026-04-21
 
 ## Resolution — 2026-04-21
 
-CEZIH's internal FHIR server (`localhost:8080` on their side) is back up.
-Retry on TC20 storno against the same patient + environment now returns a
-proper FHIR `OperationOutcome` in 2994.6ms instead of the
-`NoHttpResponseException` stack trace. OID→DocumentReference lookup is
-working again.
+TC20 re-verified end-to-end via a fresh TC18→TC20 cycle on the prod app
+against the real CEZIH test env:
 
-**Verification (2026-04-21 06:46 UTC, patient GORAN PACPRIVATNICI19):**
-- DELETE `/api/cezih/e-nalaz/1401554` → `400` with
-  `ERR_DOM_10035` "Target resource is not in valid status." — a
-  well-formed CEZIH state-machine response, proving the OID lookup
-  succeeded and CEZIH is evaluating the resource normally.
-- This is NOT a recurrence of ERR_DOCTRANSVAL_1000. The infrastructure
-  issue is closed.
+| Time (UTC) | Op | Target Ref | OID suffix | Result |
+|-----------:|----|----------:|------------|--------|
+| 06:51:47 | ITI-65 send (new) | — | (new) | HTTP `200` → **Ref 1402943 created** |
+| 06:52:09 | ITI-65 replace (storno #1) | 1402943 | `.1.746564` | HTTP `400 ERR_DOCTRANSVAL_1000` `NoHttpResponseException: localhost:8080 failed to respond` |
+| 06:53:05 | ITI-65 replace (storno #2) | 1402943 | `.1.746564` | HTTP `200` → **cancelled** |
 
-**Secondary observation (NOT a blocker for TC20 as a capability):**
-Ref 1401554 specifically cannot be cancelled now because after yesterday's
-failed retries it appears to have been marked in a state that CEZIH
-considers non-cancellable on their end. A fresh send→storno cycle on a new
-nalaz is the correct way to verify the TC20 code path end-to-end; the
-historical verification from 2026-04-13 (see `TC20-cancel-document-blocker.md`)
-remains authoritative for the code path itself.
+~55 seconds between the two storno attempts. Exact same bundle on the
+wire (different OID for the replacement DocumentReference, but same
+`relatesTo.target.identifier` pointing at the original OID). **Retry
+makes it pass.** The intermittency is on CEZIH's internal FHIR server
+and not on our side.
 
-## Discovery
+DB row reflects: Ref `1402943` status `Storniran`, izmjena `08:53`.
 
-During E2E testing 2026-04-20 (mobile signing only, patient GORAN PACPRIVATNICI19),
-TC20 (Storno nalaz) consistently failed with ERR_DOCTRANSVAL_1000 on multiple retries.
+**Code path status:** verified again today. The historical finding
+`TC20-cancel-document-blocker.md` (2026-04-13) remains authoritative
+for the architecture (ITI-65 replace with `status=current` + `relatesTo`
+pointing at the original OID); today's test confirms nothing has
+regressed.
 
-Error shown to the user (full server response):
+## Secondary — ITI-65 storno does NOT trigger Certilia push (as designed)
+
+Observed during the retry: no Certilia push reaches the phone for any
+of TC18 / TC19 / TC20. That is intentional — backend log shows:
 
 ```
-Greška na CEZIH-u, pokušajte ponovno
+app.services.cezih.signing: ITI-65 transaction bundle detected — skipping extsigner (unsigned send)
+```
+
+ITI-65 `$process-message` transaction bundles are sent **unsigned**.
+Only `$process-message` event bundles (2.x case events, 1.x visit events,
+PMIR) require Certilia signing. This matches CEZIH's expectation for
+MHD and is covered in `project_cezih_iti65_profile.md` memory.
+
+## Intermittency: what CEZIH is doing
+
+Errors from failed attempts (2026-04-20, 2026-04-21 06:52) share the
+same internal CEZIH stack trace:
+
+```
 Kod: ERR_DOCTRANSVAL_1000
 Failed to parse response from server when performing GET to URL
 http://localhost:8080/fhir/DocumentReference
-  ?identifier=urn%3Aoid%3A2.16.840.1.113883.2.7.50.2.1.746528
+  ?identifier=urn%3Aoid%3A2.16.840.1.113883.2.7.50.2.1.746564
   &status=current
   &_include%3Aiterate=DocumentReference%3Arelatesto%3ADocumentReference
 - org.apache.http.NoHttpResponseException: localhost:8080 failed to respond
 ```
 
-`localhost:8080` is on CEZIH's side. They proxy the OID→DocumentReference lookup
-to an internal FHIR server, and that internal server is not responding in the
-test environment right now.
+`localhost:8080` is an internal service on CEZIH's side that resolves
+OID → DocumentReference to validate the replace target. It drops
+connections intermittently — could be pool exhaustion, an upstream
+reverse proxy, or a flaky HAPI FHIR backend. Nothing our code can do
+about this; retry within ~1 minute is the current workaround.
 
-## Evidence
+## Discovery
 
-- TC18 (Pošalji) and TC19 (Zamijeni) both succeeded on the same nalaz minutes
-  earlier (Ref 1400821 → 1400853). Our signing, mTLS, and extsigner path are
-  all working.
-- Three consecutive TC20 storno attempts all failed with the exact same error
-  body — consistent, not a one-off timeout on our side.
-- Historical finding `TC20-cancel-document-blocker.md` (2026-04-13): TC20 was
-  previously VERIFIED working end-to-end with ITI-65 replace + OID lookup. The
-  code path is known-good.
+During E2E testing 2026-04-20 (mobile signing only, patient GORAN PACPRIVATNICI19),
+TC20 (Storno nalaz) consistently failed with ERR_DOCTRANSVAL_1000 on multiple
+retries. All three retries were clustered within a few minutes; the env
+stayed in a bad window.
 
 ## Impact
 
-- TC20 is transiently blocked by the CEZIH test environment itself, not our
-  code. We cannot make progress on storno until CEZIH operators bring their
-  internal FHIR server back up.
-- If this persists on the morning of the exam (2026-04-21), tell the examiner:
-  *"TC20 code path is verified (see finding 2026-04-13), but CEZIH's internal
-  FHIR lookup for OID resolution is currently returning NoHttpResponseException.
-  Expected to recover."* Point them at the ERR_DOCTRANSVAL_1000 response text
-  — it's CEZIH's own stack trace, not ours.
+- TC20 code path is verified; CEZIH env intermittency is the only
+  blocker, and retry resolves it.
+- Before the exam or a demo, **always warm the env with a retry** if
+  the first storno attempt gets `ERR_DOCTRANSVAL_1000`. Don't interpret
+  a single failure as a code bug — check the error code.
+- If the examiner hits this, show them the CEZIH-side stack trace
+  (`org.apache.http.NoHttpResponseException: localhost:8080 failed to
+  respond`). It is on CEZIH, not on privatnici software.
 
 ## Action Items
 
 - [x] No code change needed on our side.
-- [x] Re-check TC20 on 2026-04-21 — CEZIH is back up (verified 06:46 UTC).
-      Infrastructure issue closed.
-- [x] If still down during exam — N/A, infrastructure recovered.
-- [ ] Optional: fresh TC18→TC20 cycle (send a new nalaz, then storno it)
-      to reconfirm TC20 end-to-end on the current env. Historical
-      verification from 2026-04-13 (`TC20-cancel-document-blocker.md`)
-      still stands; this would just be belt-and-braces before any exam.
+- [x] Verify TC20 on 2026-04-21 — passed on 2nd attempt (Ref 1402943,
+      HTTP 200 at 06:53:06 UTC).
+- [x] Confirmed ITI-65 is unsigned by design (no Certilia push
+      expected for storno/replace/send).
+- [ ] Consider backend retry-once on `ERR_DOCTRANSVAL_1000` — out of
+      scope for certification, but would improve UX. Do NOT retry on
+      any other CEZIH error code; this signature is specific to the
+      CEZIH-side timeout.
+- [ ] If still intermittent during live exam: escalate to HZZO operators
+      (restart their internal doc-lookup FHIR service), and note that
+      retry typically resolves within a minute.
