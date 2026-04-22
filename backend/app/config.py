@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     CEZIH_SMARTCARD_DUMMY_ALG: str = "RS256"  # DEBUG: algorithm for dummy JWS — "RS256" or "ES384"
     CEZIH_SMARTCARD_INCLUDE_DATA: bool = True  # DEBUG: include data="" in JWS payload (True=match extsigner, False=per spec)
     CEZIH_SIGNING_DEBUG: bool = False  # DEBUG: dump full JWS header + payload + sig for byte-diff between smartcard and extsigner
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "json"  # "json" (prod) or "text" (dev readability)
+
     RATE_LIMIT_ENABLED: bool = True
     CEZIH_ORG_CODE: str = ""  # HZZO sifra zdravstvene organizacije
     CEZIH_OID: str = ""  # FHIR system OID (auto-generated via TC6 generateOIDBatch, NOT from HZZO)

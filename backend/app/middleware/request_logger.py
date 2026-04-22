@@ -5,6 +5,8 @@ from fastapi import Request
 from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.logging import request_id_ctx
+
 logger = logging.getLogger("app.request_logger")
 
 _SKIP_PATHS = {"/api/health", "/docs", "/openapi.json", "/redoc"}
@@ -21,10 +23,12 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 
         # Log path only — never log query params (may contain patient_id, MBO, etc.)
         logger.info(
-            "%s %s → %d (%.1fms)",
-            request.method,
-            request.url.path,
-            response.status_code,
-            duration_ms,
+            "request completed",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": round(duration_ms, 1),
+            },
         )
         return response

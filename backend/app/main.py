@@ -13,14 +13,13 @@ from app.api.agent_ws import router as agent_ws_router
 from app.api.auth import limiter
 from app.api.router import api_router
 from app.config import settings
+from app.core.logging import get_logger, setup_logging
 from app.middleware.error_handler import ErrorHandlerMiddleware
+from app.middleware.request_id import RequestIdMiddleware
 from app.middleware.request_logger import RequestLoggerMiddleware
 from app.services.cezih.exceptions import CezihError
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s [%(name)s] %(message)s",
-)
+setup_logging(level=settings.LOG_LEVEL, fmt=settings.LOG_FORMAT)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -71,9 +70,14 @@ async def cezih_error_handler(request: Request, exc: CezihError) -> JSONResponse
     """Safety net for any CezihError that escapes the dispatcher's
     _raise_cezih_error. Produces the same structured body the frontend
     CezihApiError parser expects (detail.message + detail.cezih_error)."""
-    logging.getLogger("app.cezih").warning(
-        "CEZIH error on %s %s: %s (%s)",
-        request.method, request.url.path, exc.__class__.__name__, exc.message,
+    get_logger("cezih").warning(
+        "CEZIH error",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "error": exc.__class__.__name__,
+            "cezih_message": exc.message,
+        },
     )
     return JSONResponse(
         status_code=exc.http_status_code,
@@ -88,13 +92,14 @@ async def cezih_error_handler(request: Request, exc: CezihError) -> JSONResponse
 app.add_middleware(RequestLoggerMiddleware)
 app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
-    expose_headers=["Content-Disposition", "X-Pdf-Digitally-Signed", "X-Pdf-Unsigned-Reason"],
+    expose_headers=["Content-Disposition", "X-Pdf-Digitally-Signed", "X-Pdf-Unsigned-Reason", "X-Request-ID"],
 )
 
 app.include_router(api_router, prefix="/api")

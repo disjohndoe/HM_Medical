@@ -1,11 +1,19 @@
 "use client";
 
+import { useEffect } from "react";
+import { reportClientError } from "@/lib/api-client";
+
 export default function GlobalError({
+  error,
   unstable_retry,
 }: {
   error: Error & { digest?: string };
   unstable_retry: () => void;
 }) {
+  useEffect(() => {
+    reportClientError(error);
+  }, [error]);
+
   return (
     <html lang="hr">
       <body className="flex min-h-screen items-center justify-center bg-gray-50">
