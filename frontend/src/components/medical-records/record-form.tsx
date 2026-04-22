@@ -23,7 +23,7 @@ import {
   useUpdateMedicalRecord,
 } from "@/lib/hooks/use-medical-records"
 import { useUploadDocument } from "@/lib/hooks/use-documents"
-import { useDrugSearch } from "@/lib/hooks/use-cezih"
+import { useDrugSearch, useIcd10Search } from "@/lib/hooks/use-cezih"
 import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem } from "@/lib/types"
 
 const recordSchema = z.object({
@@ -72,14 +72,20 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const [drugSearchOpen, setDrugSearchOpen] = useState(false)
   const [drugSearchQuery, setDrugSearchQuery] = useState("")
   const [therapy, setTherapy] = useState<PreporucenaTerapijaEntry[]>([])
+  const [icdQuery, setIcdQuery] = useState("")
+  const [selectedIcd, setSelectedIcd] = useState<{ code: string; display: string } | null>(null)
+  const [manualCode, setManualCode] = useState("")
+  const [manualDisplay, setManualDisplay] = useState("")
   const { data: drugs } = useDrugSearch(drugSearchQuery)
   const { data: recordTypes } = useRecordTypes()
+  const icdSearch = useIcd10Search(icdQuery)
 
   const {
     register,
     handleSubmit,
     reset,
     control,
+    setValue,
     formState: { errors },
   } = useForm<RecordFormData>({
     resolver: standardSchemaResolver(recordSchema),
@@ -121,8 +127,12 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
       setAttachedFile(null)
       setDrugSearchQuery("")
       setDrugSearchOpen(false)
+      setSelectedIcd(null)
+      setManualCode("")
+      setManualDisplay("")
       if (record) {
         setTherapy(record.preporucena_terapija ?? [])
+        setIcdQuery(record.dijagnoza_mkb ?? "")
         reset({
           datum: record.datum.split("T")[0],
           tip: record.tip,
@@ -132,6 +142,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         })
       } else {
         setTherapy([])
+        setIcdQuery("")
         reset({
           datum: new Date().toISOString().split("T")[0],
           tip: "",
@@ -311,7 +322,70 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
 
           <div className="space-y-2">
             <Label htmlFor="mkb">Dijagnoza MKB</Label>
-            <Input id="mkb" placeholder="npr. K04.1" {...register("dijagnoza_mkb")} className="max-w-[200px]" />
+            <Input
+              id="mkb"
+              placeholder="Pretraži po šifri ili nazivu..."
+              value={icdQuery}
+              onChange={(e) => {
+                setIcdQuery(e.target.value)
+                setSelectedIcd(null)
+                setValue("dijagnoza_mkb", "")
+              }}
+              className="max-w-[400px]"
+            />
+            {icdSearch.data && icdSearch.data.length > 0 && !selectedIcd && (
+              <div className="mt-1 border rounded-md max-h-40 overflow-y-auto max-w-[400px]">
+                {icdSearch.data.map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-accent text-sm"
+                    onClick={() => {
+                      setSelectedIcd({ code: item.code, display: item.display })
+                      setIcdQuery(`${item.code} — ${item.display}`)
+                      setValue("dijagnoza_mkb", item.code, { shouldValidate: true })
+                    }}
+                  >
+                    <span className="font-mono font-medium">{item.code}</span>{" "}
+                    <span className="text-muted-foreground">{item.display}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {icdQuery.length >= 2 && !selectedIcd && icdSearch.data?.length === 0 && !icdSearch.isLoading && (
+              <div className="mt-1 space-y-2 max-w-[400px]">
+                <p className="text-xs text-muted-foreground">Nema rezultata. Unesite ručno:</p>
+                <div className="flex gap-2">
+                  <Input
+                    className="w-28"
+                    placeholder="Šifra (npr. J06.9)"
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value)}
+                  />
+                  <Input
+                    className="flex-1"
+                    placeholder="Naziv dijagnoze"
+                    value={manualDisplay}
+                    onChange={(e) => setManualDisplay(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const code = manualCode.trim()
+                      if (!code) return
+                      const display = manualDisplay.trim() || code
+                      setSelectedIcd({ code, display })
+                      setIcdQuery(`${code} — ${display}`)
+                      setValue("dijagnoza_mkb", code, { shouldValidate: true })
+                    }}
+                  >
+                    Potvrdi
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
