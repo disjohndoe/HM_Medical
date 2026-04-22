@@ -41,8 +41,9 @@ fi
 echo "=== Running database migrations ==="
 docker compose exec -T backend alembic upgrade head
 
-echo "=== Cleaning up old images ==="
+echo "=== Cleaning up old images and build cache ==="
 docker image prune -f
+docker builder prune -f
 
 echo "=== Deployment complete ==="
 docker compose ps
