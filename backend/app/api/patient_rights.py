@@ -51,7 +51,9 @@ async def export_data(
         filename = _safe_filename(patient_name, "zip")
 
         await write_audit(
-            db, tenant_id, current_user.id,
+            db,
+            tenant_id,
+            current_user.id,
             action="data_export",
             resource_type="patient",
             resource_id=patient_id,
@@ -67,7 +69,9 @@ async def export_data(
     filename = _safe_filename(patient_name, "json")
 
     await write_audit(
-        db, tenant_id, current_user.id,
+        db,
+        tenant_id,
+        current_user.id,
         action="data_export",
         resource_type="patient",
         resource_id=patient_id,

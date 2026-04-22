@@ -68,12 +68,8 @@ class UserCreate(BaseModel):
     mbo_lijecnika: str | None = None
     cezih_signing_method: CezihSigningMethod = "extsigner"
 
-    _coerce_practitioner_id = field_validator("practitioner_id", mode="before")(
-        _coerce_practitioner_id
-    )
-    _coerce_mbo_lijecnika = field_validator("mbo_lijecnika", mode="before")(
-        _coerce_mbo_lijecnika
-    )
+    _coerce_practitioner_id = field_validator("practitioner_id", mode="before")(_coerce_practitioner_id)
+    _coerce_mbo_lijecnika = field_validator("mbo_lijecnika", mode="before")(_coerce_mbo_lijecnika)
 
 
 class UserUpdate(BaseModel):
@@ -98,22 +94,14 @@ class UserUpdate(BaseModel):
     mbo_lijecnika: str | None = None
     cezih_signing_method: CezihSigningMethod | None = None
 
-    _coerce_practitioner_id = field_validator("practitioner_id", mode="before")(
-        _coerce_practitioner_id
-    )
-    _coerce_mbo_lijecnika = field_validator("mbo_lijecnika", mode="before")(
-        _coerce_mbo_lijecnika
-    )
+    _coerce_practitioner_id = field_validator("practitioner_id", mode="before")(_coerce_practitioner_id)
+    _coerce_mbo_lijecnika = field_validator("mbo_lijecnika", mode="before")(_coerce_mbo_lijecnika)
 
     @field_validator("cezih_signing_method")
     @classmethod
-    def reject_explicit_null_signing_method(
-        cls, v: CezihSigningMethod | None
-    ) -> CezihSigningMethod | None:
+    def reject_explicit_null_signing_method(cls, v: CezihSigningMethod | None) -> CezihSigningMethod | None:
         if v is None:
-            raise ValueError(
-                "cezih_signing_method ne smije biti null; izostavite polje da ga ne mijenjate"
-            )
+            raise ValueError("cezih_signing_method ne smije biti null; izostavite polje da ga ne mijenjate")
         return v
 
 

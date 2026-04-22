@@ -1,4 +1,5 @@
 """Seed only user accounts (no demo data). Run: python seed_users.py"""
+
 import asyncio
 import uuid
 
@@ -23,6 +24,7 @@ USERS = [
 
 async def main() -> None:
     import os
+
     db_url = os.environ.get("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/medical_mvp")
     engine = create_async_engine(db_url)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

@@ -1,4 +1,5 @@
 """CEZIH Registry services — OID, Terminology, Subject Registry (TC6-9)."""
+
 from __future__ import annotations
 
 import logging
@@ -15,16 +16,12 @@ async def send_erecept(
     lijekovi: list[dict],
 ) -> dict:
     """Send e-prescription — not yet part of CEZIH unified private provider certification."""
-    raise CezihError(
-        "e-Recept API nije implementiran u CEZIH sustavu za privatne ordinacije."
-    )
+    raise CezihError("e-Recept API nije implementiran u CEZIH sustavu za privatne ordinacije.")
 
 
 async def cancel_erecept(client, recept_id: str) -> dict:
     """Cancel/storno an e-prescription — not yet part of CEZIH unified private provider certification."""
-    raise CezihError(
-        "Storno e-Recepta nije implementiran u CEZIH sustavu za privatne ordinacije."
-    )
+    raise CezihError("Storno e-Recepta nije implementiran u CEZIH sustavu za privatne ordinacije.")
 
 
 async def get_status(client) -> dict:
@@ -54,12 +51,14 @@ async def search_drugs(client, query: str) -> list[dict]:
     if response.get("resourceType") == "Bundle":
         for entry in response.get("entry", []):
             cs = entry.get("resource", {})
-            drugs.append({
-                "atk": cs.get("id", ""),
-                "naziv": cs.get("name", ""),
-                "oblik": "",
-                "jacina": "",
-            })
+            drugs.append(
+                {
+                    "atk": cs.get("id", ""),
+                    "naziv": cs.get("name", ""),
+                    "oblik": "",
+                    "jacina": "",
+                }
+            )
 
     return drugs
 
@@ -98,7 +97,10 @@ async def generate_oid(client, quantity: int = 1) -> dict:
 
 
 async def query_code_system(
-    client, system_name: str, query: str, count: int = 20,
+    client,
+    system_name: str,
+    query: str,
+    count: int = 20,
 ) -> list[dict]:
     """Query a CEZIH code system (ITI-96 SVCM).
 
@@ -134,14 +136,18 @@ async def query_code_system(
                 )
                 concepts = []
                 for contains in expand_resp.get("expansion", {}).get("contains", []):
-                    concepts.append({
-                        "code": contains.get("code", ""),
-                        "display": contains.get("display", ""),
-                        "system": contains.get("system", cs_url),
-                        "_tier": "expand",
-                    })
+                    concepts.append(
+                        {
+                            "code": contains.get("code", ""),
+                            "display": contains.get("display", ""),
+                            "system": contains.get("system", cs_url),
+                            "_tier": "expand",
+                        }
+                    )
                 if concepts:
-                    logger.info("CodeSystem '%s': query='%s' -> tier=expand (results=%d)", system_name, query, len(concepts))
+                    logger.info(
+                        "CodeSystem '%s': query='%s' -> tier=expand (results=%d)", system_name, query, len(concepts)
+                    )
                     return concepts
             except Exception:
                 continue
@@ -183,12 +189,14 @@ async def query_code_system(
                 display = concept.get("display", "")
                 if query and query.lower() not in code.lower() and query.lower() not in display.lower():
                     continue
-                results.append({
-                    "code": code,
-                    "display": display,
-                    "system": cs.get("url", system_name),
-                    "_tier": "inline",
-                })
+                results.append(
+                    {
+                        "code": code,
+                        "display": display,
+                        "system": cs.get("url", system_name),
+                        "_tier": "inline",
+                    }
+                )
     logger.info("CodeSystem '%s': query='%s' -> tier=inline (results=%d)", system_name, query, len(results))
     return results
 
@@ -199,7 +207,9 @@ async def query_code_system(
 
 
 async def expand_value_set(
-    client, url: str, filter_text: str | None = None,
+    client,
+    url: str,
+    filter_text: str | None = None,
 ) -> dict:
     """Expand a CEZIH value set (ITI-95 SVCM $expand)."""
     fhir_client = CezihFhirClient(client)
@@ -220,21 +230,25 @@ async def expand_value_set(
     expansion = response.get("expansion", {})
     if expansion:
         for contains in expansion.get("contains", []):
-            concepts.append({
-                "code": contains.get("code", ""),
-                "display": contains.get("display", ""),
-                "system": contains.get("system", ""),
-            })
+            concepts.append(
+                {
+                    "code": contains.get("code", ""),
+                    "display": contains.get("display", ""),
+                    "system": contains.get("system", ""),
+                }
+            )
     else:
         # Fallback: extract from Bundle.entry
         for entry in response.get("entry", []):
             resource = entry.get("resource", {})
             if resource.get("resourceType") == "Concept":
-                concepts.append({
-                    "code": resource.get("code", ""),
-                    "display": resource.get("display", ""),
-                    "system": resource.get("system", ""),
-                })
+                concepts.append(
+                    {
+                        "code": resource.get("code", ""),
+                        "display": resource.get("display", ""),
+                        "system": resource.get("system", ""),
+                    }
+                )
 
     return {
         "url": url,
@@ -263,12 +277,14 @@ async def find_organizations(client, name: str) -> list[dict]:
             for ident in org.get("identifier", []):
                 if "HZZO" in (ident.get("system") or ""):
                     hzzo_code = ident.get("value", "")
-            results.append({
-                "id": org.get("id", ""),
-                "name": org.get("name", ""),
-                "hzzo_code": hzzo_code,
-                "active": org.get("active", True),
-            })
+            results.append(
+                {
+                    "id": org.get("id", ""),
+                    "name": org.get("name", ""),
+                    "hzzo_code": hzzo_code,
+                    "active": org.get("active", True),
+                }
+            )
     return results
 
 
@@ -287,13 +303,15 @@ async def find_practitioners(client, name: str) -> list[dict]:
                 if "HZJZ" in (ident.get("system") or ""):
                     hzjz_id = ident.get("value", "")
             name_parts = pract.get("name", [{}])[0] if pract.get("name") else {}
-            results.append({
-                "id": pract.get("id", ""),
-                "family": name_parts.get("family", ""),
-                "given": " ".join(name_parts.get("given", [])),
-                "hzjz_id": hzjz_id,
-                "active": pract.get("active", True),
-            })
+            results.append(
+                {
+                    "id": pract.get("id", ""),
+                    "family": name_parts.get("family", ""),
+                    "given": " ".join(name_parts.get("given", [])),
+                    "hzjz_id": hzjz_id,
+                    "active": pract.get("active", True),
+                }
+            )
     return results
 
 

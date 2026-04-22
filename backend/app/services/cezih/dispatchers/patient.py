@@ -1,4 +1,5 @@
 """CEZIH patient dispatcher — import, insurance checks, foreigner registration."""
+
 from __future__ import annotations
 
 import logging
@@ -38,7 +39,9 @@ async def import_patient_from_cezih(
     # Check if patient with this MBO already exists
     result = await db.execute(
         select(Patient).where(
-            Patient.tenant_id == tenant_id, Patient.mbo == mbo, Patient.is_active.is_(True),
+            Patient.tenant_id == tenant_id,
+            Patient.mbo == mbo,
+            Patient.is_active.is_(True),
         )
     )
     if result.scalar_one_or_none():
@@ -49,7 +52,10 @@ async def import_patient_from_cezih(
 
     try:
         cezih_data = await real_service.search_patient_by_identifier(
-            http_client, identifier_system="mbo", value=mbo, tenant_id=tenant_id,
+            http_client,
+            identifier_system="mbo",
+            value=mbo,
+            tenant_id=tenant_id,
         )
     except CezihError as e:
         logger.error("CEZIH patient import failed: %s", e.message)
@@ -113,7 +119,9 @@ async def import_patient_from_cezih(
     await db.refresh(patient)
 
     await _write_audit(
-        db, tenant_id, user_id,
+        db,
+        tenant_id,
+        user_id,
         action="cezih_patient_import",
         resource_id=patient.id,
         details={"mbo": mbo, "ime": patient.ime, "prezime": patient.prezime},
@@ -160,7 +168,9 @@ async def import_patient_by_identifier(
 
     try:
         cezih_data = await real_service.search_patient_by_identifier(
-            http_client, identifier_system=identifier_type, value=identifier_value,
+            http_client,
+            identifier_system=identifier_type,
+            value=identifier_value,
             tenant_id=tenant_id,
         )
     except CezihError as e:
@@ -197,12 +207,15 @@ async def import_patient_by_identifier(
 
     if dup_filters:
         from sqlalchemy import or_
+
         existing = await db.execute(
-            select(Patient).where(
+            select(Patient)
+            .where(
                 Patient.tenant_id == tenant_id,
                 Patient.is_active.is_(True),
                 or_(*dup_filters),
-            ).limit(1),
+            )
+            .limit(1),
         )
         existing_patient = existing.scalar_one_or_none()
         if existing_patient:
@@ -237,7 +250,8 @@ async def import_patient_by_identifier(
                 "ime": existing_patient.ime,
                 "prezime": existing_patient.prezime,
                 "datum_rodjenja": existing_patient.datum_rodjenja.isoformat()
-                    if existing_patient.datum_rodjenja else None,
+                if existing_patient.datum_rodjenja
+                else None,
                 "oib": existing_patient.oib,
                 "spol": existing_patient.spol,
                 "mbo": existing_patient.mbo,
@@ -300,7 +314,9 @@ async def import_patient_by_identifier(
     await db.refresh(patient)
 
     await _write_audit(
-        db, tenant_id, user_id,
+        db,
+        tenant_id,
+        user_id,
         action="cezih_patient_import",
         resource_id=patient.id,
         details={
@@ -327,7 +343,9 @@ async def import_patient_by_identifier(
 
 
 async def _persist_insurance_to_patient_by_id(
-    db: AsyncSession, patient_id: UUID, status_osiguranja: str,
+    db: AsyncSession,
+    patient_id: UUID,
+    status_osiguranja: str,
 ) -> None:
     """Update patient's cached insurance status by patient UUID."""
     from app.models.patient import Patient
@@ -363,7 +381,9 @@ async def insurance_check_by_identifier(
         )
     try:
         cezih_data = await real_service.search_patient_by_identifier(
-            http_client, identifier_system=identifier_type, value=identifier_value,
+            http_client,
+            identifier_system=identifier_type,
+            value=identifier_value,
             tenant_id=tenant_id,
         )
     except CezihError as e:
@@ -393,7 +413,9 @@ async def insurance_check_by_identifier(
     }
 
     await _write_audit(
-        db, tenant_id, user_id,
+        db,
+        tenant_id,
+        user_id,
         action="insurance_check",
         details={
             "identifier_type": identifier_type,
@@ -414,7 +436,12 @@ async def insurance_check_by_mbo(
 ) -> dict:
     """Backward-compat wrapper — forwards to insurance_check_by_identifier('mbo', ...)."""
     return await insurance_check_by_identifier(
-        "mbo", mbo, db=db, user_id=user_id, tenant_id=tenant_id, http_client=http_client,
+        "mbo",
+        mbo,
+        db=db,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        http_client=http_client,
     )
 
 
@@ -435,6 +462,7 @@ async def insurance_check(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -451,11 +479,15 @@ async def insurance_check(
         _raise_cezih_error(e)
 
     await _persist_insurance_to_patient_by_id(
-        db, patient_id, result.get("status_osiguranja", ""),
+        db,
+        patient_id,
+        result.get("status_osiguranja", ""),
     )
 
     await _write_audit(
-        db, tenant_id, user_id,
+        db,
+        tenant_id,
+        user_id,
         action="insurance_check",
         resource_id=patient_id,
         details={
@@ -483,19 +515,28 @@ async def foreigner_registration(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
     try:
         result = await real_service.register_foreigner(
-            http_client, patient_data, org_code=org_code, source_oid=source_oid,
+            http_client,
+            patient_data,
+            org_code=org_code,
+            source_oid=source_oid,
             practitioner_id=practitioner_id,
         )
     except CezihError as e:
         if "ERR_FOREIGNPATIENT_1002" in e.message or "already exists" in e.message.lower():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Pacijent je već registriran u CEZIH-u. Pretražite ga po putovnici ili EHIC-u i dodajte u kartoteku.",
+                detail=(
+                    "Pacijent je već registriran u CEZIH-u."
+                    " Pretražite ga po putovnici ili EHIC-u i dodajte u kartoteku."
+                ),
             ) from e
         _raise_cezih_error(e)
     patient_name = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}"
     await _write_audit(
-        db, tenant_id, user_id, action="foreigner_register",
+        db,
+        tenant_id,
+        user_id,
+        action="foreigner_register",
         details={"patient_name": patient_name},
     )
     return result

@@ -11,9 +11,7 @@ from app.models.base import Base, BaseTenantModel
 class PredracunCounter(Base):
     __tablename__ = "predracun_counters"
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
-    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
     year: Mapped[int] = mapped_column(Integer, primary_key=True)
     next_seq: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 

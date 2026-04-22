@@ -3,6 +3,7 @@
 Revision ID: 041_cezih_case_abatement
 Revises: 040_doctor_identifiers
 """
+
 import sqlalchemy as sa
 
 from alembic import op

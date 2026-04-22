@@ -1,10 +1,10 @@
 """CEZIH registries dispatcher — health checks, terminology, subject registry."""
+
 from __future__ import annotations
 
 import logging
 from uuid import UUID
 
-from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.cezih import service as real_service
@@ -99,7 +99,10 @@ async def code_system_query(
     except CezihError as e:
         _raise_cezih_error(e)
     await _write_audit(
-        db, tenant_id, user_id, action="code_system_query",
+        db,
+        tenant_id,
+        user_id,
+        action="code_system_query",
         details={"system": system_name, "query": query},
     )
     return result

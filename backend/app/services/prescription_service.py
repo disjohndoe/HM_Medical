@@ -84,9 +84,7 @@ async def list_prescriptions(
     total = (await db.execute(count_q)).scalar_one()
 
     query = _join_query(base)
-    result = await db.execute(
-        query.order_by(Prescription.created_at.desc()).offset(skip).limit(limit)
-    )
+    result = await db.execute(query.order_by(Prescription.created_at.desc()).offset(skip).limit(limit))
     return [_row_to_dict(row) for row in result.all()], total
 
 
@@ -371,7 +369,9 @@ async def send_to_cezih(
         logger.critical(
             "CEZIH e-Recept sent but DB update FAILED — manual reconciliation needed. "
             "prescription_id=%s recept_id=%s tenant_id=%s",
-            prescription_id, prescription.cezih_recept_id, tenant_id,
+            prescription_id,
+            prescription.cezih_recept_id,
+            tenant_id,
         )
         raise
 
@@ -421,7 +421,9 @@ async def storno_prescription(
         logger.critical(
             "CEZIH storno sent but DB update FAILED — manual reconciliation needed. "
             "prescription_id=%s recept_id=%s tenant_id=%s",
-            prescription_id, prescription.cezih_recept_id, tenant_id,
+            prescription_id,
+            prescription.cezih_recept_id,
+            tenant_id,
         )
         raise
 

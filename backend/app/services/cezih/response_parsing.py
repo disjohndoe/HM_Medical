@@ -3,6 +3,7 @@
 Every CEZIH action that returns a Bundle goes through parse_message_response.
 Error codes are looked up in a small table; diagnostics are pattern-matched.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,12 +28,10 @@ _CEZIH_ERROR_MESSAGES_HR: dict[str, str] = {
         "Provjerite da je pametna kartica ispravna i obratite se podršci."
     ),
     "ERR_DOM_10057": (
-        "CEZIH ne prihvaća traženi status dokumenta. "
-        "Dokument se može otkazati samo kroz zamjenu (replace)."
+        "CEZIH ne prihvaća traženi status dokumenta. Dokument se može otkazati samo kroz zamjenu (replace)."
     ),
     "ERR_EHE_1099": (
-        "CEZIH odbija korišteni profil poruke. Koristite standardni "
-        "profil umjesto privatnog (npr. HRExternalMinimal)."
+        "CEZIH odbija korišteni profil poruke. Koristite standardni profil umjesto privatnog (npr. HRExternalMinimal)."
     ),
 }
 
@@ -97,7 +96,9 @@ def parse_message_response(response_body: dict[str, Any]) -> dict[str, Any]:
                     issue_code = issue.get("code")
                     logger.warning(
                         "CEZIH ERROR DETAIL: code=%s issue_code=%s diagnostics=%s details=%s",
-                        error_code, issue_code, diagnostics,
+                        error_code,
+                        issue_code,
+                        diagnostics,
                         json.dumps(details, ensure_ascii=False)[:500],
                     )
                     result["error_message"] = _translate_cezih_error(error_code, diagnostics)

@@ -45,9 +45,16 @@ def _patient_dict(patient: Patient) -> dict:
 
 def _to_ascii(s: str) -> str:
     cro_to_ascii = {
-        "š": "s", "Š": "S", "đ": "dj", "Đ": "Dj",
-        "č": "c", "Č": "C", "ć": "c", "Ć": "C",
-        "ž": "z", "Ž": "Z",
+        "š": "s",
+        "Š": "S",
+        "đ": "dj",
+        "Đ": "Dj",
+        "č": "c",
+        "Č": "C",
+        "ć": "c",
+        "Ć": "C",
+        "ž": "z",
+        "Ž": "Z",
     }
     for cro, ascii_ch in cro_to_ascii.items():
         s = s.replace(cro, ascii_ch)
@@ -75,7 +82,7 @@ def _pdf_response(pdf_bytes: bytes, predracun_dict: dict, patient: Patient) -> S
         BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded}',
+            "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{encoded}",
         },
     )
 
@@ -118,7 +125,11 @@ async def list_predracuni(
 ):
     """List predračuni for a patient."""
     items, total = await predracun_service.list_predracuni(
-        db, current_user.tenant_id, patient_id, skip, limit,
+        db,
+        current_user.tenant_id,
+        patient_id,
+        skip,
+        limit,
     )
     return {"items": items, "total": total, "skip": skip, "limit": limit}
 

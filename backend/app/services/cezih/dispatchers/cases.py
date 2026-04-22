@@ -1,4 +1,5 @@
 """CEZIH case dispatcher — case management with local DB mirror sync."""
+
 from __future__ import annotations
 
 import logging
@@ -17,7 +18,9 @@ from app.services.cezih.exceptions import CezihError
 
 
 async def _lookup_local_case_id(
-    db: AsyncSession | None, tenant_id: UUID | None, case_id: str,
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    case_id: str,
 ) -> UUID | None:
     """Resolve the CEZIH-side case identifier (or our local_case_id) to the
     local CezihCase.id so per-row error persistence can mark the right row."""
@@ -27,6 +30,7 @@ async def _lookup_local_case_id(
         from sqlalchemy import or_
 
         from app.models.cezih_case import CezihCase
+
         res = await db.execute(
             select(CezihCase.id).where(
                 CezihCase.tenant_id == tenant_id,
@@ -41,11 +45,14 @@ async def _lookup_local_case_id(
     except SQLAlchemyError:
         return None
 
+
 logger = logging.getLogger(__name__)
 
 
 async def _lookup_patient_id(
-    db: AsyncSession, tenant_id: UUID, patient_mbo: str,
+    db: AsyncSession,
+    tenant_id: UUID,
+    patient_mbo: str,
 ) -> UUID | None:
     """Look up local Patient.id by any CEZIH identifier value.
 
@@ -89,26 +96,31 @@ async def _persist_local_case_by_patient_id(
         return
     try:
         from app.models.cezih_case import CezihCase
-        db.add(CezihCase(
-            tenant_id=tenant_id,
-            patient_id=patient_id,
-            patient_mbo=identifier_value,
-            local_case_id=local_case_id,
-            cezih_case_id=cezih_case_id or None,
-            icd_code=icd_code,
-            icd_display=icd_display or "",
-            clinical_status="active",
-            verification_status=verification_status or "unconfirmed",
-            onset_date=onset_date,
-            note=note_text,
-        ))
+
+        db.add(
+            CezihCase(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                patient_mbo=identifier_value,
+                local_case_id=local_case_id,
+                cezih_case_id=cezih_case_id or None,
+                icd_code=icd_code,
+                icd_display=icd_display or "",
+                clinical_status="active",
+                verification_status=verification_status or "unconfirmed",
+                onset_date=onset_date,
+                note=note_text,
+            )
+        )
         await db.flush()
     except (IntegrityError, OperationalError) as exc:
         logger.warning("Failed to persist local CezihCase mirror: %s", exc)
 
 
 async def _fetch_fresh_local_cases_by_patient(
-    db: AsyncSession | None, tenant_id: UUID | None, patient_id: UUID,
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    patient_id: UUID,
 ) -> list[dict]:
     """Fetch all local CezihCase mirror rows for this patient.
 
@@ -123,10 +135,12 @@ async def _fetch_fresh_local_cases_by_patient(
         from app.models.cezih_case import CezihCase
 
         result = await db.execute(
-            select(CezihCase).where(
+            select(CezihCase)
+            .where(
                 CezihCase.tenant_id == tenant_id,
                 CezihCase.patient_id == patient_id,
-            ).order_by(CezihCase.created_at.desc())
+            )
+            .order_by(CezihCase.created_at.desc())
         )
         rows = result.scalars().all()
         return [
@@ -153,7 +167,9 @@ async def _fetch_fresh_local_cases_by_patient(
 
 
 def _merge_with_local(
-    remote: list[dict], local: list[dict], id_key: str,
+    remote: list[dict],
+    local: list[dict],
+    id_key: str,
 ) -> list[dict]:
     """Merge local mirror rows into the remote list (cases).
 
@@ -255,6 +271,7 @@ async def dispatch_retrieve_cases(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -269,7 +286,10 @@ async def dispatch_retrieve_cases(
     except CezihError as e:
         _raise_cezih_error(e)
     await _write_audit(
-        db, tenant_id, user_id, action="case_retrieve",
+        db,
+        tenant_id,
+        user_id,
+        action="case_retrieve",
         details={"patient_id": str(patient_id), "identifier_system": system_uri},
     )
     local = await _fetch_fresh_local_cases_by_patient(db, tenant_id, patient_id)
@@ -296,6 +316,7 @@ async def dispatch_create_case(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -307,8 +328,15 @@ async def dispatch_create_case(
 
     try:
         result = await real_service.create_case(
-            http_client, identifier_value, practitioner_id, org_code,
-            icd_code, icd_display, onset_date, verification_status, note_text,
+            http_client,
+            identifier_value,
+            practitioner_id,
+            org_code,
+            icd_code,
+            icd_display,
+            onset_date,
+            verification_status,
+            note_text,
             source_oid=source_oid,
             identifier_system=identifier_system,
         )
@@ -316,14 +344,21 @@ async def dispatch_create_case(
         # create failed → no local CezihCase yet; dialog + toast are the signal.
         _raise_cezih_error(e)
     await _write_audit(
-        db, tenant_id, user_id, action="case_create",
+        db,
+        tenant_id,
+        user_id,
+        action="case_create",
         details={"patient_id": str(patient_id), "icd": icd_code},
     )
     await _persist_local_case_by_patient_id(
-        db, tenant_id, patient_id, identifier_value,
+        db,
+        tenant_id,
+        patient_id,
+        identifier_value,
         local_case_id=result.get("local_case_id") or "",
         cezih_case_id=result.get("cezih_case_id") or "",
-        icd_code=icd_code, icd_display=icd_display,
+        icd_code=icd_code,
+        icd_display=icd_display,
         onset_date=onset_date,
         verification_status=verification_status,
         note_text=note_text,
@@ -348,6 +383,7 @@ async def dispatch_update_case(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -367,21 +403,28 @@ async def dispatch_update_case(
             # Parent data comes from our local DB mirror — CEZIH QEDm retrieve
             # is flaky on the test env and a local row is always authoritative
             # for fields we need (ICD + verification).
-            from app.models.cezih_case import CezihCase
             from sqlalchemy import or_
-            parent_row = (await db.execute(
-                select(CezihCase).where(
-                    CezihCase.tenant_id == tenant_id,
-                    or_(
-                        CezihCase.cezih_case_id == case_id,
-                        CezihCase.local_case_id == case_id,
-                    ),
+
+            from app.models.cezih_case import CezihCase
+
+            parent_row = (
+                await db.execute(
+                    select(CezihCase).where(
+                        CezihCase.tenant_id == tenant_id,
+                        or_(
+                            CezihCase.cezih_case_id == case_id,
+                            CezihCase.local_case_id == case_id,
+                        ),
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if parent_row is None:
                 raise CezihError(f"Roditeljski slučaj {case_id} nije pronađen za pacijenta.")
             result = await real_service.create_recurring_case(
-                http_client, identifier_value, practitioner_id, org_code,
+                http_client,
+                identifier_value,
+                practitioner_id,
+                org_code,
                 icd_code=parent_row.icd_code or "",
                 icd_display=parent_row.icd_display or "",
                 onset_date=datetime.now(UTC).strftime("%Y-%m-%d"),
@@ -391,7 +434,12 @@ async def dispatch_update_case(
             )
         else:
             result = await real_service.update_case(
-                http_client, case_id, identifier_value, practitioner_id, org_code, action,
+                http_client,
+                case_id,
+                identifier_value,
+                practitioner_id,
+                org_code,
+                action,
                 source_oid=source_oid,
                 identifier_system=identifier_system,
             )
@@ -400,15 +448,22 @@ async def dispatch_update_case(
         _raise_cezih_error(e)
     await clear_cezih_error("case", local_case_id, tenant_id, session=db)
     await _write_audit(
-        db, tenant_id, user_id, action=f"case_{action}",
+        db,
+        tenant_id,
+        user_id,
+        action=f"case_{action}",
         details={"case_id": case_id, "action": action, "patient_id": str(patient_id)},
     )
     if action == "create_recurring":
+        assert parent_row is not None  # guarded by CezihError above
         new_cezih_id = result.get("cezih_case_id") or ""
         # ICD + verification come from parent_row (already fetched above);
         # create_recurring_case doesn't echo those in its return dict.
         await _persist_local_case_by_patient_id(
-            db, tenant_id, patient_id, identifier_value,
+            db,
+            tenant_id,
+            patient_id,
+            identifier_value,
             local_case_id=result.get("local_case_id") or "",
             cezih_case_id=new_cezih_id,
             icd_code=parent_row.icd_code or "",
@@ -419,19 +474,21 @@ async def dispatch_update_case(
         )
         if new_cezih_id:
             await _update_local_case(
-                db, tenant_id, new_cezih_id, clinical_status="recurrence",
+                db,
+                tenant_id,
+                new_cezih_id,
+                clinical_status="recurrence",
             )
         return {"success": True, "case_id": new_cezih_id or None, "action": "create_recurring"}
     else:
         new_status = _CASE_ACTION_TO_STATUS.get(action)
         if new_status:
             await _update_local_case(
-                db, tenant_id, case_id,
+                db,
+                tenant_id,
+                case_id,
                 clinical_status=new_status,
-                abatement_date=(
-                    datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-                    if action == "resolve" else None
-                ),
+                abatement_date=(datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00") if action == "resolve" else None),
                 clear_abatement=(action == "reopen"),
             )
     return result
@@ -460,6 +517,7 @@ async def dispatch_update_case_data(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -473,11 +531,18 @@ async def dispatch_update_case_data(
 
     try:
         result = await real_service.update_case_data(
-            http_client, case_id, identifier_value, practitioner_id, org_code,
+            http_client,
+            case_id,
+            identifier_value,
+            practitioner_id,
+            org_code,
             current_clinical_status=current_clinical_status,
             verification_status=verification_status,
-            icd_code=icd_code, icd_display=icd_display,
-            onset_date=onset_date, abatement_date=abatement_date, note_text=note_text,
+            icd_code=icd_code,
+            icd_display=icd_display,
+            onset_date=onset_date,
+            abatement_date=abatement_date,
+            note_text=note_text,
             source_oid=source_oid,
             identifier_system=identifier_system,
         )
@@ -487,16 +552,23 @@ async def dispatch_update_case_data(
 
     await clear_cezih_error("case", local_case_id, tenant_id, session=db)
     await _write_audit(
-        db, tenant_id, user_id, action="case_update_data",
+        db,
+        tenant_id,
+        user_id,
+        action="case_update_data",
         details={"case_id": case_id},
     )
 
     await _update_local_case(
-        db, tenant_id, case_id,
+        db,
+        tenant_id,
+        case_id,
         clinical_status=current_clinical_status,
         verification_status=verification_status,
-        icd_code=icd_code, icd_display=icd_display,
-        onset_date=onset_date, abatement_date=abatement_date,
+        icd_code=icd_code,
+        icd_display=icd_display,
+        onset_date=onset_date,
+        abatement_date=abatement_date,
         note=note_text,
     )
     return result

@@ -38,10 +38,12 @@ async def seed_system_record_types(db: AsyncSession, tenant_id: uuid.UUID) -> No
     """Seed default system record types for a new tenant. Idempotent."""
     existing = await db.execute(
         select(func.count()).select_from(
-            select(RecordType).where(
+            select(RecordType)
+            .where(
                 RecordType.tenant_id == tenant_id,
                 RecordType.is_system.is_(True),
-            ).subquery()
+            )
+            .subquery()
         )
     )
     if existing.scalar_one() > 0:
@@ -98,10 +100,12 @@ async def create_record_type(
     if not color:
         count_result = await db.execute(
             select(func.count()).select_from(
-                select(RecordType).where(
+                select(RecordType)
+                .where(
                     RecordType.tenant_id == tenant_id,
                     RecordType.is_system.is_(False),
-                ).subquery()
+                )
+                .subquery()
             )
         )
         custom_count = count_result.scalar_one()

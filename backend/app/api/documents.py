@@ -202,12 +202,15 @@ async def import_cezih_document(
     content = await cezih.dispatch_retrieve_document(
         data.cezih_reference_id,
         document_url=data.content_url,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=request.app.state.http_client,
     )
 
     if not content.startswith(b"%PDF"):
         from app.services.pdf_generator import cezih_text_to_pdf
+
         text = content.decode("utf-8", errors="replace")
         content = cezih_text_to_pdf(text)
 

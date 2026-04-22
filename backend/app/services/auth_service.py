@@ -60,10 +60,12 @@ async def register(db: AsyncSession, data: RegisterRequest) -> TokenResponse:
 
     # Seed default procedures for new tenant
     from app.utils.seed_data import seed_default_procedures
+
     await seed_default_procedures(db, tenant.id)
 
     # Seed default record types for new tenant
     from app.services.record_type_service import seed_system_record_types
+
     await seed_system_record_types(db, tenant.id)
 
     # Create tokens
@@ -143,11 +145,13 @@ async def login(db: AsyncSession, email: str, password: str) -> TokenResponse:
     )
 
     active_sessions_q = select(func.count()).select_from(
-        select(RefreshToken).where(
+        select(RefreshToken)
+        .where(
             RefreshToken.user_id.in_(non_admin_user_ids),
             RefreshToken.is_revoked.is_(False),
             RefreshToken.expires_at > now,
-        ).subquery()
+        )
+        .subquery()
     )
     active_sessions = (await db.execute(active_sessions_q)).scalar_one()
 
@@ -211,15 +215,15 @@ async def refresh(db: AsyncSession, raw_token: str) -> TokenResponse:
         limits = get_plan_limits(tenant.plan_tier)
         now = datetime.now(UTC)
         active_sessions_q = select(func.count()).select_from(
-            select(RefreshToken).where(
+            select(RefreshToken)
+            .where(
                 RefreshToken.user_id.in_(
-                    select(User.id).where(
-                        User.tenant_id == tenant.id, User.is_active.is_(True), User.role != "admin"
-                    )
+                    select(User.id).where(User.tenant_id == tenant.id, User.is_active.is_(True), User.role != "admin")
                 ),
                 RefreshToken.is_revoked.is_(False),
                 RefreshToken.expires_at > now,
-            ).subquery()
+            )
+            .subquery()
         )
         active_sessions = (await db.execute(active_sessions_q)).scalar_one()
         if active_sessions >= limits.max_concurrent_sessions:
@@ -246,33 +250,38 @@ async def get_active_sessions(db: AsyncSession, tenant_id) -> list[dict]:
     """List all active sessions for a tenant."""
     now = datetime.now(UTC)
     result = await db.execute(
-        select(RefreshToken, User.ime, User.prezime, User.email).join(
-            User, RefreshToken.user_id == User.id
-        ).where(
+        select(RefreshToken, User.ime, User.prezime, User.email)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(
             User.tenant_id == tenant_id,
             User.is_active.is_(True),
             RefreshToken.is_revoked.is_(False),
             RefreshToken.expires_at > now,
-        ).order_by(RefreshToken.created_at.desc())
+        )
+        .order_by(RefreshToken.created_at.desc())
     )
     sessions = []
     for token, ime, prezime, email in result.all():
-        sessions.append({
-            "id": str(token.id),
-            "user_id": str(token.user_id),
-            "user_ime": ime,
-            "user_prezime": prezime,
-            "user_email": email,
-            "created_at": token.created_at.isoformat(),
-            "expires_at": token.expires_at.isoformat(),
-        })
+        sessions.append(
+            {
+                "id": str(token.id),
+                "user_id": str(token.user_id),
+                "user_ime": ime,
+                "user_prezime": prezime,
+                "user_email": email,
+                "created_at": token.created_at.isoformat(),
+                "expires_at": token.expires_at.isoformat(),
+            }
+        )
     return sessions
 
 
 async def revoke_session(db: AsyncSession, tenant_id, session_id: str) -> bool:
     """Revoke a specific session by its refresh token ID. Only within the same tenant."""
     result = await db.execute(
-        select(RefreshToken).join(User, RefreshToken.user_id == User.id).where(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(
             RefreshToken.id == session_id,
             User.tenant_id == tenant_id,
             RefreshToken.is_revoked.is_(False),
@@ -289,7 +298,9 @@ async def revoke_other_sessions(db: AsyncSession, tenant_id, current_refresh_has
     """Revoke all tenant sessions except the caller's current one."""
     now = datetime.now(UTC)
     result = await db.execute(
-        select(RefreshToken).join(User, RefreshToken.user_id == User.id).where(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(
             User.tenant_id == tenant_id,
             RefreshToken.is_revoked.is_(False),
             RefreshToken.expires_at > now,
@@ -307,7 +318,9 @@ async def revoke_user_sessions(db: AsyncSession, tenant_id, user_id) -> int:
     """Revoke all active sessions for a specific user within a tenant."""
     now = datetime.now(UTC)
     result = await db.execute(
-        select(RefreshToken).join(User, RefreshToken.user_id == User.id).where(
+        select(RefreshToken)
+        .join(User, RefreshToken.user_id == User.id)
+        .where(
             User.tenant_id == tenant_id,
             RefreshToken.user_id == user_id,
             RefreshToken.is_revoked.is_(False),
@@ -326,27 +339,19 @@ async def cleanup_expired_tokens(db: AsyncSession) -> int:
     now = datetime.now(UTC)
     result = await db.execute(
         select(func.count()).select_from(
-            select(RefreshToken).where(
-                (RefreshToken.is_revoked) | (RefreshToken.expires_at < now)
-            ).subquery()
+            select(RefreshToken).where((RefreshToken.is_revoked) | (RefreshToken.expires_at < now)).subquery()
         )
     )
     count = result.scalar_one()
 
     if count > 0:
-        await db.execute(
-            delete(RefreshToken).where(
-                (RefreshToken.is_revoked) | (RefreshToken.expires_at < now)
-            )
-        )
+        await db.execute(delete(RefreshToken).where((RefreshToken.is_revoked) | (RefreshToken.expires_at < now)))
 
     return count
 
 
 async def _create_token_pair(db: AsyncSession, user: User) -> TokenResponse:
-    access_token = create_access_token(
-        {"user_id": str(user.id), "tenant_id": str(user.tenant_id), "role": user.role}
-    )
+    access_token = create_access_token({"user_id": str(user.id), "tenant_id": str(user.tenant_id), "role": user.role})
 
     raw_refresh = create_refresh_token()
     refresh_token_obj = RefreshToken(

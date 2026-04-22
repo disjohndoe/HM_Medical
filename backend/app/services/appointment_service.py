@@ -73,9 +73,7 @@ async def list_appointments(
     total = (await db.execute(count_q)).scalar_one()
 
     query = _join_appointment_query(base)
-    result = await db.execute(
-        query.order_by(Appointment.datum_vrijeme).offset(skip).limit(limit)
-    )
+    result = await db.execute(query.order_by(Appointment.datum_vrijeme).offset(skip).limit(limit))
     return [_row_to_dict(row) for row in result.all()], total
 
 
@@ -129,12 +127,16 @@ async def check_conflict(
 ) -> bool:
     new_end = start_dt + timedelta(minutes=duration_min)
 
-    q = select(Appointment).where(
-        Appointment.tenant_id == tenant_id,
-        Appointment.doktor_id == doktor_id,
-        Appointment.status != "otkazan",
-        Appointment.datum_vrijeme < new_end,
-    ).with_for_update()
+    q = (
+        select(Appointment)
+        .where(
+            Appointment.tenant_id == tenant_id,
+            Appointment.doktor_id == doktor_id,
+            Appointment.status != "otkazan",
+            Appointment.datum_vrijeme < new_end,
+        )
+        .with_for_update()
+    )
     if exclude_id:
         q = q.where(Appointment.id != exclude_id)
 
@@ -151,9 +153,7 @@ async def create_appointment(
     tenant_id: uuid.UUID,
     data: AppointmentCreate,
 ) -> dict:
-    conflict = await check_conflict(
-        db, tenant_id, data.doktor_id, data.datum_vrijeme, data.trajanje_minuta
-    )
+    conflict = await check_conflict(db, tenant_id, data.doktor_id, data.datum_vrijeme, data.trajanje_minuta)
     if conflict:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -187,9 +187,7 @@ async def update_appointment(
         new_doktor = update_data.get("doktor_id", appointment.doktor_id)
         new_duration = update_data.get("trajanje_minuta", appointment.trajanje_minuta)
 
-        conflict = await check_conflict(
-            db, tenant_id, new_doktor, new_start, new_duration, exclude_id=appointment_id
-        )
+        conflict = await check_conflict(db, tenant_id, new_doktor, new_start, new_duration, exclude_id=appointment_id)
         if conflict:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -238,13 +236,15 @@ async def get_available_slots(
     day_end = datetime.combine(day, time(23, 59, 59, 999999))
 
     result = await db.execute(
-        select(Appointment).where(
+        select(Appointment)
+        .where(
             Appointment.tenant_id == tenant_id,
             Appointment.doktor_id == doktor_id,
             Appointment.status != "otkazan",
             Appointment.datum_vrijeme >= day_start,
             Appointment.datum_vrijeme <= day_end,
-        ).order_by(Appointment.datum_vrijeme)
+        )
+        .order_by(Appointment.datum_vrijeme)
     )
     appointments = result.scalars().all()
 
@@ -272,10 +272,12 @@ async def get_available_slots(
                 break
 
         if not overlaps:
-            slots.append({
-                "start": f"{current // 60:02d}:{current % 60:02d}",
-                "end": f"{slot_end // 60:02d}:{slot_end % 60:02d}",
-            })
+            slots.append(
+                {
+                    "start": f"{current // 60:02d}:{current % 60:02d}",
+                    "end": f"{slot_end // 60:02d}:{slot_end % 60:02d}",
+                }
+            )
 
         current += slot_granularity
 

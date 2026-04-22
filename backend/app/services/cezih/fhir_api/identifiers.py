@@ -1,4 +1,5 @@
 """CEZIH identifier system constants and patient-identifier resolution."""
+
 from __future__ import annotations
 
 from app.services.cezih.exceptions import CezihError
@@ -34,8 +35,7 @@ def _require_identifier_system(patient_data: dict) -> str:
     system = patient_data.get("identifier_system")
     if not system:
         raise CezihError(
-            "patient_data missing 'identifier_system' — caller must pass "
-            "resolve_cezih_identifier() output"
+            "patient_data missing 'identifier_system' — caller must pass resolve_cezih_identifier() output"
         )
     return system
 
@@ -48,10 +48,7 @@ def _require_identifier_value(patient_data: dict) -> str:
     """
     value = patient_data.get("identifier_value") or patient_data.get("mbo")
     if not value:
-        raise CezihError(
-            "patient_data missing 'identifier_value' — caller must pass "
-            "resolve_cezih_identifier() output"
-        )
+        raise CezihError("patient_data missing 'identifier_value' — caller must pass resolve_cezih_identifier() output")
     return value
 
 
@@ -73,8 +70,14 @@ def resolve_cezih_identifier(patient) -> tuple[str, str]:
 
 
 __all__ = [
-    "SYS_MBO", "SYS_OIB", "SYS_PUTOVNICA", "SYS_EUROPSKA", "SYS_JEDINSTVENI",
-    "_IDENTIFIER_SYSTEM_MAP", "_IDENTIFIER_LABEL_MAP",
-    "_require_identifier_system", "_require_identifier_value",
+    "SYS_MBO",
+    "SYS_OIB",
+    "SYS_PUTOVNICA",
+    "SYS_EUROPSKA",
+    "SYS_JEDINSTVENI",
+    "_IDENTIFIER_SYSTEM_MAP",
+    "_IDENTIFIER_LABEL_MAP",
+    "_require_identifier_system",
+    "_require_identifier_value",
     "resolve_cezih_identifier",
 ]

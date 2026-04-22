@@ -6,6 +6,7 @@ Organised by resource domain:
   - encounter: Encounter resource + visit action maps
   - condition: Condition resource + case action/profile maps
 """
+
 from app.services.cezih.builders.bundles import *  # noqa: F401,F403
 from app.services.cezih.builders.common import *  # noqa: F401,F403
 from app.services.cezih.builders.condition import *  # noqa: F401,F403

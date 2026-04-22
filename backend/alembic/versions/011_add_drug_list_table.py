@@ -5,6 +5,7 @@ Revises: 010_prescriptions
 Create Date: 2026-03-31
 
 """
+
 import uuid
 from collections.abc import Sequence
 
@@ -40,10 +41,7 @@ def upgrade() -> None:
     op.create_index("ix_drug_list_search", "drug_list", ["aktivan"])
     # GIN trigram index for fast ILIKE (requires pg_trgm extension)
     op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-    op.execute(
-        "CREATE INDEX ix_drug_list_search_trgm ON drug_list "
-        "USING gin (search_text gin_trgm_ops)"
-    )
+    op.execute("CREATE INDEX ix_drug_list_search_trgm ON drug_list USING gin (search_text gin_trgm_ops)")
 
 
 def downgrade() -> None:

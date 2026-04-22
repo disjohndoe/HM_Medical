@@ -1,4 +1,5 @@
 """CEZIH PMIR (Foreigner Registration) service — ITI-93 (TC11)."""
+
 from __future__ import annotations
 
 import logging
@@ -49,35 +50,49 @@ async def register_foreigner(
     # birthDate and gender are standard FHIR Patient fields — include them when provided.
     identifiers = []
     if patient_data.get("broj_putovnice"):
-        identifiers.append({
-            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica",
-            "value": patient_data["broj_putovnice"],
-        })
+        identifiers.append(
+            {
+                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica",
+                "value": patient_data["broj_putovnice"],
+            }
+        )
     if patient_data.get("ehic_broj"):
-        identifiers.append({
-            "system": "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica",
-            "value": patient_data["ehic_broj"],
-        })
+        identifiers.append(
+            {
+                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica",
+                "value": patient_data["ehic_broj"],
+            }
+        )
 
     # address.country binding=required to ValueSet/drzave (ISO 3166-1 alpha-3).
     # Frontend may send alpha-2 (DE) — convert to alpha-3 (DEU).
     from app.services.cezih._country_codes import to_alpha3
 
-    country = to_alpha3(patient_data.get("drzavljanstvo"))
+    country = to_alpha3(patient_data.get("drzavljanstvo") or "")
     patient_resource: dict = {
         "resourceType": "Patient",
         "identifier": identifiers,
         "active": True,
-        "name": [{
-            "use": "official",
-            "family": patient_data["prezime"],
-            "given": [patient_data["ime"]],
-        }],
+        "name": [
+            {
+                "use": "official",
+                "family": patient_data["prezime"],
+                "given": [patient_data["ime"]],
+            }
+        ],
         "address": [{"country": country}],
     }
     if patient_data.get("datum_rodjenja"):
         patient_resource["birthDate"] = patient_data["datum_rodjenja"]
-    _gender_map = {"M": "male", "Z": "female", "Ž": "female", "F": "female", "male": "male", "female": "female", "unknown": "unknown"}
+    _gender_map = {
+        "M": "male",
+        "Z": "female",
+        "Ž": "female",
+        "F": "female",
+        "male": "male",
+        "female": "female",
+        "unknown": "unknown",
+    }
     raw_spol = patient_data.get("spol") or ""
     fhir_gender = _gender_map.get(raw_spol)
     if fhir_gender:
@@ -89,16 +104,24 @@ async def register_foreigner(
     inner_bundle = {
         "resourceType": "Bundle",
         "type": "history",
-        "entry": [{
-            "fullUrl": f"urn:uuid:{patient_uuid}",
-            "resource": patient_resource,
-            "request": {"method": "POST", "url": "Patient"},
-            "response": {"status": "201"},
-        }],
+        "entry": [
+            {
+                "fullUrl": f"urn:uuid:{patient_uuid}",
+                "resource": patient_resource,
+                "request": {"method": "POST", "url": "Patient"},
+                "response": {"status": "201"},
+            }
+        ],
     }
 
     # MessageHeader — IHE PMIR profile, matching official example field order
-    source_endpoint = f"urn:oid:{source_oid}" if source_oid else f"urn:oid:{org_code}" if org_code else "urn:oid:2.16.840.1.113883.2.7"
+    source_endpoint = (
+        f"urn:oid:{source_oid}"
+        if source_oid
+        else f"urn:oid:{org_code}"
+        if org_code
+        else "urn:oid:2.16.840.1.113883.2.7"
+    )
     message_header = {
         "resourceType": "MessageHeader",
         "eventUri": "urn:ihe:iti:pmir:2019:patient-feed",
@@ -146,8 +169,9 @@ async def register_foreigner(
     # Confirmed endpoint from CEZIH URL list + internal example: /api/iti93
     ep = "patient-registry-services/api/iti93"
     logger.info("PMIR: POST %s", ep)
-    response = await fhir_client.request("POST", ep, json_body=bundle)
+    response: dict = await fhir_client.request("POST", ep, json_body=bundle)  # type: ignore[assignment]
     import json as _json_log
+
     logger.info("PMIR success on %s — response: %s", ep, _json_log.dumps(response, ensure_ascii=False)[:3000])
     patient_id = _extract_patient_id(response)
     mbo = _extract_mbo_from_response(response)
@@ -198,6 +222,7 @@ def _extract_cezih_patient_identifier(response: dict) -> str:
 
     Foreigners don't get MBO — they get 'jedinstveni-identifikator-pacijenta'.
     """
+
     def _find_in_identifiers(identifiers: list) -> str:
         for ident in identifiers:
             sys = ident.get("system", "")

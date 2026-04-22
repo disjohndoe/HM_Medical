@@ -5,6 +5,7 @@ Revises: 006_perm_roles
 Create Date: 2026-03-31
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

@@ -13,10 +13,12 @@ async def _next_broj(db: AsyncSession, tenant_id: uuid.UUID, year: int) -> str:
     """Get next sequential predračun number for tenant+year, with row-level lock."""
     # Ensure counter row exists
     existing = await db.execute(
-        select(PredracunCounter).where(
+        select(PredracunCounter)
+        .where(
             PredracunCounter.tenant_id == tenant_id,
             PredracunCounter.year == year,
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     counter = existing.scalar_one_or_none()
 
@@ -26,10 +28,12 @@ async def _next_broj(db: AsyncSession, tenant_id: uuid.UUID, year: int) -> str:
         await db.flush()
         # Re-select with lock
         result = await db.execute(
-            select(PredracunCounter).where(
+            select(PredracunCounter)
+            .where(
                 PredracunCounter.tenant_id == tenant_id,
                 PredracunCounter.year == year,
-            ).with_for_update()
+            )
+            .with_for_update()
         )
         counter = result.scalar_one()
 
@@ -123,9 +127,7 @@ async def get_predracun(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Predračun nije pronađen")
 
     result = await db.execute(
-        select(PredracunStavka)
-        .where(PredracunStavka.predracun_id == predracun_id)
-        .order_by(PredracunStavka.sort_order)
+        select(PredracunStavka).where(PredracunStavka.predracun_id == predracun_id).order_by(PredracunStavka.sort_order)
     )
     stavke = result.scalars().all()
 
@@ -148,9 +150,7 @@ async def list_predracuni(
     count_result = await db.execute(select(func.count()).select_from(base.subquery()))
     total = count_result.scalar() or 0
 
-    result = await db.execute(
-        base.order_by(Predracun.datum.desc()).offset(skip).limit(limit)
-    )
+    result = await db.execute(base.order_by(Predracun.datum.desc()).offset(skip).limit(limit))
     predracuni = result.scalars().all()
 
     if not predracuni:

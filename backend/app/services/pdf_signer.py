@@ -50,6 +50,7 @@ class SignPdfResult:
     On failure, `pdf_bytes` is the original unsigned input, `signed` is False, and
     `reason` is one of the REASON_* tokens above.
     """
+
     pdf_bytes: bytes
     signed: bool
     reason: str | None = None
@@ -79,9 +80,7 @@ class AgentPdfSigner(signers.Signer):
             cert_registry=cert_store,
         )
 
-    async def async_sign_raw(
-        self, data: bytes, digest_algorithm: str, dry_run: bool = False
-    ) -> bytes:
+    async def async_sign_raw(self, data: bytes, digest_algorithm: str, dry_run: bool = False) -> bytes:
         """Sign raw data via the agent's smart card.
 
         pyHanko passes DER-encoded signed attributes as `data`.
@@ -151,7 +150,10 @@ async def _sign_with_agent(
     signed_bytes = output.getvalue()
     logger.info(
         "PDF signed (AKD smart card) for %s — %d -> %d bytes, alg=%s",
-        doctor_name, len(pdf_bytes), len(signed_bytes), agent_algorithm,
+        doctor_name,
+        len(pdf_bytes),
+        len(signed_bytes),
+        agent_algorithm,
     )
     return signed_bytes
 
@@ -178,7 +180,8 @@ async def sign_pdf(
     conn = agent_manager.get_any_connected(tenant_id)
     if conn is None:
         logger.info(
-            "PDF signing skipped: no Local Agent connected for tenant %s", tenant_id,
+            "PDF signing skipped: no Local Agent connected for tenant %s",
+            tenant_id,
         )
         return SignPdfResult(pdf_bytes=pdf_bytes, signed=False, reason=REASON_AGENT_NOT_CONNECTED)
 
@@ -201,11 +204,15 @@ async def sign_pdf(
         msg = str(e)
         if "cert info" in msg.lower() or "certificate DER" in msg:
             logger.warning(
-                "PDF signing failed at cert readout for tenant %s: %s", tenant_id, e,
+                "PDF signing failed at cert readout for tenant %s: %s",
+                tenant_id,
+                e,
             )
             return SignPdfResult(pdf_bytes=pdf_bytes, signed=False, reason=REASON_CERT_INFO_FAILED)
         logger.warning(
-            "PDF signing failed during agent sign for tenant %s: %s", tenant_id, e,
+            "PDF signing failed during agent sign for tenant %s: %s",
+            tenant_id,
+            e,
         )
         return SignPdfResult(pdf_bytes=pdf_bytes, signed=False, reason=REASON_SIGNING_FAILED)
     except Exception:

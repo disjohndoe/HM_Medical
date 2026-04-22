@@ -7,6 +7,7 @@ Create Date: 2026-03-24
 Expand tenant vrsta from 3 dental-only options to 7 specialty-agnostic options.
 Change default from 'stomatoloska' to 'privatna_ordinacija'.
 """
+
 from collections.abc import Sequence
 
 from alembic import op
@@ -33,9 +34,7 @@ def upgrade() -> None:
     op.alter_column("tenants", "vrsta", server_default="privatna_ordinacija")
 
     # Migrate any existing rows that have the old default
-    op.execute(
-        "UPDATE tenants SET vrsta = 'privatna_ordinacija' WHERE vrsta = 'stomatoloska'"
-    )
+    op.execute("UPDATE tenants SET vrsta = 'privatna_ordinacija' WHERE vrsta = 'stomatoloska'")
 
 
 def downgrade() -> None:
@@ -44,9 +43,7 @@ def downgrade() -> None:
         "UPDATE tenants SET vrsta = 'stomatoloska' "
         "WHERE vrsta NOT IN ('stomatoloska', 'poliklinika', 'privatna_ordinacija')"
     )
-    op.execute(
-        "UPDATE tenants SET vrsta = 'stomatoloska' WHERE vrsta = 'privatna_ordinacija'"
-    )
+    op.execute("UPDATE tenants SET vrsta = 'stomatoloska' WHERE vrsta = 'privatna_ordinacija'")
 
     # Restore old constraint
     op.drop_constraint("ck_tenant_vrsta", "tenants", type_="check")

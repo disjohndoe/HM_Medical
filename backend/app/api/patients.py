@@ -58,10 +58,7 @@ async def update_patient(
     current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
     db: AsyncSession = Depends(get_db),
 ):
-    if (
-        data.cezih_patient_id is not None
-        and current_user.role != "admin"
-    ):
+    if data.cezih_patient_id is not None and current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Samo admin može mijenjati CEZIH identifikator pacijenta",

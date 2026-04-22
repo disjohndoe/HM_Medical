@@ -42,5 +42,6 @@ class MedicalRecord(BaseTenantModel):
     cezih_last_error_display: Mapped[str | None] = mapped_column(Text, nullable=True)
     cezih_last_error_diagnostics: Mapped[str | None] = mapped_column(Text, nullable=True)
     cezih_last_error_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )

@@ -8,6 +8,7 @@ and renders the per-row error badge so the signal survives page refreshes.
 Revision ID: 042_cezih_row_error_columns
 Revises: 041_cezih_case_abatement
 """
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -33,5 +34,10 @@ def downgrade() -> None:
     for col in ("last_error_at", "last_error_diagnostics", "last_error_display", "last_error_code"):
         op.drop_column("cezih_visits", col)
         op.drop_column("cezih_cases", col)
-    for col in ("cezih_last_error_at", "cezih_last_error_diagnostics", "cezih_last_error_display", "cezih_last_error_code"):
+    for col in (
+        "cezih_last_error_at",
+        "cezih_last_error_diagnostics",
+        "cezih_last_error_display",
+        "cezih_last_error_code",
+    ):
         op.drop_column("medical_records", col)

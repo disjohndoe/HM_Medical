@@ -12,6 +12,7 @@ New code should import directly from the appropriate module:
   - app.services.cezih.fhir_api.patient for demographics lookup
   - app.services.cezih.fhir_api.identifiers for identifier resolution
 """
+
 from __future__ import annotations
 
 # Re-export from new packages for back-compat during refactor

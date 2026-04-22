@@ -5,6 +5,7 @@ Revises: 012_hzzo_drugs
 Create Date: 2026-03-31
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -23,9 +24,7 @@ def upgrade() -> None:
         sa.Column("has_hzzo_contract", sa.Boolean(), nullable=False, server_default=sa.text("false")),
     )
     # Backfill: tenants with a šifra ustanove likely have an HZZO contract
-    op.execute(
-        "UPDATE tenants SET has_hzzo_contract = true WHERE sifra_ustanove IS NOT NULL AND sifra_ustanove != ''"
-    )
+    op.execute("UPDATE tenants SET has_hzzo_contract = true WHERE sifra_ustanove IS NOT NULL AND sifra_ustanove != ''")
 
 
 def downgrade() -> None:

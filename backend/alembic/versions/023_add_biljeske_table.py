@@ -4,6 +4,7 @@ Revision ID: 023_add_biljeske
 Revises: 022_clear_stale_trial_expires
 Create Date: 2026-04-07
 """
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 

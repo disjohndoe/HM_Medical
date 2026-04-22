@@ -1,4 +1,5 @@
 """CEZIH Encounter (visit) service — QEDm (TC14)."""
+
 from __future__ import annotations
 
 import logging
@@ -77,24 +78,26 @@ async def list_visits(
                 val = d_ident.get("value", "") if isinstance(d_ident, dict) else ""
                 if val:
                     diagnosis_case_ids.append(val)
-            visits.append({
-                "visit_id": visit_id,
-                "patient_mbo": patient_mbo,
-                "status": enc.get("status", ""),
-                "visit_type": visit_type,
-                "visit_type_display": visit_type_display,
-                "vrsta_posjete": vrsta_posjete,
-                "vrsta_posjete_display": vrsta_posjete_display,
-                "tip_posjete": tip_posjete,
-                "tip_posjete_display": tip_posjete_display,
-                "reason": reason_text,
-                "period_start": period.get("start"),
-                "period_end": period.get("end"),
-                "service_provider_code": sp_code or None,
-                "practitioner_id": practitioner_ids[0] if practitioner_ids else None,
-                "practitioner_ids": practitioner_ids,
-                "diagnosis_case_ids": diagnosis_case_ids,
-            })
+            visits.append(
+                {
+                    "visit_id": visit_id,
+                    "patient_mbo": patient_mbo,
+                    "status": enc.get("status", ""),
+                    "visit_type": visit_type,
+                    "visit_type_display": visit_type_display,
+                    "vrsta_posjete": vrsta_posjete,
+                    "vrsta_posjete_display": vrsta_posjete_display,
+                    "tip_posjete": tip_posjete,
+                    "tip_posjete_display": tip_posjete_display,
+                    "reason": reason_text,
+                    "period_start": period.get("start"),
+                    "period_end": period.get("end"),
+                    "service_provider_code": sp_code or None,
+                    "practitioner_id": practitioner_ids[0] if practitioner_ids else None,
+                    "practitioner_ids": practitioner_ids,
+                    "diagnosis_case_ids": diagnosis_case_ids,
+                }
+            )
     return visits
 
 

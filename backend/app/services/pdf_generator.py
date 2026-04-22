@@ -93,90 +93,149 @@ def _build_styles() -> dict[str, ParagraphStyle]:
 
     return {
         "inst_name": ParagraphStyle(
-            "inst_name", parent=base["Normal"],
-            fontName=font_b, fontSize=13, leading=16,
+            "inst_name",
+            parent=base["Normal"],
+            fontName=font_b,
+            fontSize=13,
+            leading=16,
             textColor=_COLOR_PRIMARY,
         ),
         "inst_name_center": ParagraphStyle(
-            "inst_name_center", parent=base["Normal"],
-            fontName=font_b, fontSize=13, leading=16,
-            alignment=TA_CENTER, textColor=_COLOR_PRIMARY,
+            "inst_name_center",
+            parent=base["Normal"],
+            fontName=font_b,
+            fontSize=13,
+            leading=16,
+            alignment=TA_CENTER,
+            textColor=_COLOR_PRIMARY,
         ),
         "inst_detail": ParagraphStyle(
-            "inst_detail", parent=base["Normal"],
-            fontName=font, fontSize=8.5, leading=11,
+            "inst_detail",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=8.5,
+            leading=11,
             textColor=_COLOR_MUTED,
         ),
         "doc_type": ParagraphStyle(
-            "doc_type", parent=base["Normal"],
-            fontName=font_b, fontSize=15, leading=18,
-            alignment=TA_CENTER, textColor=_COLOR_PRIMARY,
+            "doc_type",
+            parent=base["Normal"],
+            fontName=font_b,
+            fontSize=15,
+            leading=18,
+            alignment=TA_CENTER,
+            textColor=_COLOR_PRIMARY,
             spaceAfter=2 * mm,
         ),
         "doc_date": ParagraphStyle(
-            "doc_date", parent=base["Normal"],
-            fontName=font, fontSize=10, leading=13,
-            alignment=TA_CENTER, textColor=_COLOR_MUTED,
+            "doc_date",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=10,
+            leading=13,
+            alignment=TA_CENTER,
+            textColor=_COLOR_MUTED,
         ),
         "section_header": ParagraphStyle(
-            "section_header", parent=base["Normal"],
-            fontName=font_b, fontSize=10, leading=13,
-            textColor=_COLOR_SECTION, spaceBefore=2 * mm, spaceAfter=1.5 * mm,
+            "section_header",
+            parent=base["Normal"],
+            fontName=font_b,
+            fontSize=10,
+            leading=13,
+            textColor=_COLOR_SECTION,
+            spaceBefore=2 * mm,
+            spaceAfter=1.5 * mm,
         ),
         "body": ParagraphStyle(
-            "body", parent=base["Normal"],
-            fontName=font, fontSize=10, leading=14,
+            "body",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=10,
+            leading=14,
             textColor=_COLOR_PRIMARY,
         ),
         "body_small": ParagraphStyle(
-            "body_small", parent=base["Normal"],
-            fontName=font, fontSize=9, leading=12,
+            "body_small",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=9,
+            leading=12,
             textColor=_COLOR_PRIMARY,
         ),
         "patient_label": ParagraphStyle(
-            "patient_label", parent=base["Normal"],
-            fontName=font, fontSize=8.5, leading=11,
+            "patient_label",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=8.5,
+            leading=11,
             textColor=_COLOR_MUTED,
         ),
         "patient_value": ParagraphStyle(
-            "patient_value", parent=base["Normal"],
-            fontName=font_b, fontSize=9.5, leading=12,
+            "patient_value",
+            parent=base["Normal"],
+            fontName=font_b,
+            fontSize=9.5,
+            leading=12,
             textColor=_COLOR_PRIMARY,
         ),
         "mkb_badge": ParagraphStyle(
-            "mkb_badge", parent=base["Normal"],
-            fontName=font_b, fontSize=10, leading=13,
+            "mkb_badge",
+            parent=base["Normal"],
+            fontName=font_b,
+            fontSize=10,
+            leading=13,
             textColor=_COLOR_MKB_TEXT,
         ),
         "footer_location": ParagraphStyle(
-            "footer_location", parent=base["Normal"],
-            fontName=font, fontSize=10, leading=13,
+            "footer_location",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=10,
+            leading=13,
             textColor=_COLOR_PRIMARY,
         ),
         "footer_doctor": ParagraphStyle(
-            "footer_doctor", parent=base["Normal"],
-            fontName=font_b, fontSize=10, leading=13,
-            alignment=TA_RIGHT, textColor=_COLOR_PRIMARY,
+            "footer_doctor",
+            parent=base["Normal"],
+            fontName=font_b,
+            fontSize=10,
+            leading=13,
+            alignment=TA_RIGHT,
+            textColor=_COLOR_PRIMARY,
         ),
         "signed_notice": ParagraphStyle(
-            "signed_notice", parent=base["Normal"],
-            fontName=font, fontSize=7.5, leading=10,
-            alignment=TA_CENTER, textColor=_COLOR_MUTED,
+            "signed_notice",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=7.5,
+            leading=10,
+            alignment=TA_CENTER,
+            textColor=_COLOR_MUTED,
             spaceBefore=3 * mm,
         ),
         "page_num": ParagraphStyle(
-            "page_num", parent=base["Normal"],
-            fontName=font, fontSize=8, leading=10,
-            alignment=TA_RIGHT, textColor=_COLOR_MUTED,
+            "page_num",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=8,
+            leading=10,
+            alignment=TA_RIGHT,
+            textColor=_COLOR_MUTED,
         ),
         "th": ParagraphStyle(
-            "th", parent=base["Normal"],
-            fontName=font_b, fontSize=8.5, leading=11,
+            "th",
+            parent=base["Normal"],
+            fontName=font_b,
+            fontSize=8.5,
+            leading=11,
             textColor=_COLOR_SECTION,
         ),
         "td": ParagraphStyle(
-            "td", parent=base["Normal"],
-            fontName=font, fontSize=9, leading=12,
+            "td",
+            parent=base["Normal"],
+            fontName=font,
+            fontSize=9,
+            leading=12,
             textColor=_COLOR_PRIMARY,
         ),
     }
@@ -200,11 +259,7 @@ def _escape(text: str | None) -> str:
     """Escape XML-unsafe characters for reportlab Paragraphs."""
     if not text:
         return ""
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _nl2br(text: str | None) -> str:
@@ -261,7 +316,7 @@ def _group_digits(s: str) -> str:
         if remaining <= 4:
             chunks.append(s[i:])
             break
-        chunks.append(s[i:i + 3])
+        chunks.append(s[i : i + 3])
         i += 3
     return " ".join(chunks)
 
@@ -308,12 +363,16 @@ def _build_tenant_header(tenant: dict, styles: dict) -> list:
         [details_para],
     ]
     header_table = Table(header_data, colWidths=[180 * mm])
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LINEBELOW", (0, -1), (-1, -1), 0.5, _COLOR_BORDER),
-        ("BOTTOMPADDING", (0, -1), (-1, -1), 3 * mm),
-        ("TOPPADDING", (0, 1), (0, 1), 2 * mm),
-    ]))
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LINEBELOW", (0, -1), (-1, -1), 0.5, _COLOR_BORDER),
+                ("BOTTOMPADDING", (0, -1), (-1, -1), 3 * mm),
+                ("TOPPADDING", (0, 1), (0, 1), 2 * mm),
+            ]
+        )
+    )
     return [header_table]
 
 
@@ -447,16 +506,20 @@ class NalazPDFGenerator:
             flat_data.append(flat_row)
 
         table = Table(flat_data, colWidths=[90 * mm, 90 * mm])
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), _COLOR_LIGHT_BG),
-            ("BOX", (0, 0), (-1, -1), 0.5, _COLOR_BORDER),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, _COLOR_BORDER),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
-        ]))
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), _COLOR_LIGHT_BG),
+                    ("BOX", (0, 0), (-1, -1), 0.5, _COLOR_BORDER),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.25, _COLOR_BORDER),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
+                ]
+            )
+        )
         return [
             Paragraph("PODACI O PACIJENTU", self.styles["section_header"]),
             table,
@@ -475,10 +538,7 @@ class NalazPDFGenerator:
 
         parts = []
         if mkb:
-            parts.append(
-                f'<font color="{_COLOR_MKB_TEXT.hexval()}">'
-                f"[{_escape(mkb)}]</font>"
-            )
+            parts.append(f'<font color="{_COLOR_MKB_TEXT.hexval()}">[{_escape(mkb)}]</font>')
         if tekst:
             parts.append(_escape(tekst))
 
@@ -519,13 +579,15 @@ class NalazPDFGenerator:
 
         data_rows = [header_row]
         for lijek in terapija:
-            data_rows.append([
-                Paragraph(_escape(lijek.get("naziv", "")), s["td"]),
-                Paragraph(_escape(lijek.get("jacina", "")), s["td"]),
-                Paragraph(_escape(lijek.get("oblik", "")), s["td"]),
-                Paragraph(_escape(lijek.get("doziranje", "")), s["td"]),
-                Paragraph(_escape(lijek.get("napomena", "")), s["td"]),
-            ])
+            data_rows.append(
+                [
+                    Paragraph(_escape(lijek.get("naziv", "")), s["td"]),
+                    Paragraph(_escape(lijek.get("jacina", "")), s["td"]),
+                    Paragraph(_escape(lijek.get("oblik", "")), s["td"]),
+                    Paragraph(_escape(lijek.get("doziranje", "")), s["td"]),
+                    Paragraph(_escape(lijek.get("napomena", "")), s["td"]),
+                ]
+            )
 
         col_widths = [50 * mm, 25 * mm, 25 * mm, 35 * mm, 45 * mm]
         table = Table(data_rows, colWidths=col_widths, repeatRows=1)
@@ -577,9 +639,13 @@ class NalazPDFGenerator:
 
         footer_data = [[footer_left, footer_right]]
         footer_table = Table(footer_data, colWidths=[90 * mm, 90 * mm])
-        footer_table.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ]))
+        footer_table.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
 
         return [
             footer_table,
@@ -607,6 +673,7 @@ class NalazPDFGenerator:
 # ---------------------------------------------------------------------------
 # CEZIH text-to-PDF converter (for ITI-68 retrieved plain-text documents)
 # ---------------------------------------------------------------------------
+
 
 def cezih_text_to_pdf(text: str) -> bytes:
     """Convert plain-text CEZIH document content to a clean A4 PDF."""
@@ -737,19 +804,22 @@ class PredracunPDFGenerator:
             textColor=_COLOR_DISCLAIMER_TEXT,
         )
         para = Paragraph(
-            "Ovo nije fiskalizirani račun. "
-            "Predračun služi kao informativni dokument o cijeni usluga.",
+            "Ovo nije fiskalizirani račun. Predračun služi kao informativni dokument o cijeni usluga.",
             style,
         )
         table = Table([[para]], colWidths=[180 * mm])
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), _COLOR_DISCLAIMER_BG),
-            ("BOX", (0, 0), (-1, -1), 1, _COLOR_DISCLAIMER_BORDER),
-            ("TOPPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
-        ]))
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), _COLOR_DISCLAIMER_BG),
+                    ("BOX", (0, 0), (-1, -1), 1, _COLOR_DISCLAIMER_BORDER),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4 * mm),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
+                ]
+            )
+        )
         return [table]
 
     # ------------------------------------------------------------------
@@ -781,16 +851,20 @@ class PredracunPDFGenerator:
         ]
 
         table = Table(data, colWidths=[90 * mm, 90 * mm])
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), _COLOR_LIGHT_BG),
-            ("BOX", (0, 0), (-1, -1), 0.5, _COLOR_BORDER),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, _COLOR_BORDER),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
-        ]))
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), _COLOR_LIGHT_BG),
+                    ("BOX", (0, 0), (-1, -1), 0.5, _COLOR_BORDER),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.25, _COLOR_BORDER),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2 * mm),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3 * mm),
+                ]
+            )
+        )
         return [
             Paragraph("PODACI O PRIMATELJU", s["section_header"]),
             table,
@@ -804,13 +878,19 @@ class PredracunPDFGenerator:
 
         _register_fonts()
         td_right = ParagraphStyle(
-            "td_right", parent=s["td"], alignment=TA_RIGHT,
+            "td_right",
+            parent=s["td"],
+            alignment=TA_RIGHT,
         )
         th_right = ParagraphStyle(
-            "th_right", parent=s["th"], alignment=TA_RIGHT,
+            "th_right",
+            parent=s["th"],
+            alignment=TA_RIGHT,
         )
         td_center = ParagraphStyle(
-            "td_center", parent=s["td"], alignment=TA_CENTER,
+            "td_center",
+            parent=s["td"],
+            alignment=TA_CENTER,
         )
 
         header_row = [
@@ -823,13 +903,15 @@ class PredracunPDFGenerator:
 
         data_rows = [header_row]
         for i, stavka in enumerate(self.stavke, 1):
-            data_rows.append([
-                Paragraph(str(i), td_center),
-                Paragraph(_escape(stavka.get("sifra", "")), s["td"]),
-                Paragraph(_escape(stavka.get("naziv", "")), s["td"]),
-                Paragraph(_format_date_hr(stavka.get("datum")), s["td"]),
-                Paragraph(_format_eur(stavka.get("cijena_cents", 0)), td_right),
-            ])
+            data_rows.append(
+                [
+                    Paragraph(str(i), td_center),
+                    Paragraph(_escape(stavka.get("sifra", "")), s["td"]),
+                    Paragraph(_escape(stavka.get("naziv", "")), s["td"]),
+                    Paragraph(_format_date_hr(stavka.get("datum")), s["td"]),
+                    Paragraph(_format_eur(stavka.get("cijena_cents", 0)), td_right),
+                ]
+            )
 
         col_widths = [12 * mm, 22 * mm, 85 * mm, 28 * mm, 33 * mm]
         table = Table(data_rows, colWidths=col_widths, repeatRows=1)
@@ -873,13 +955,17 @@ class PredracunPDFGenerator:
 
         total_data = [[Paragraph(total_text, total_style)]]
         table = Table(total_data, colWidths=[180 * mm])
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), _COLOR_TOTAL_BG),
-            ("BOX", (0, 0), (-1, -1), 0.5, _COLOR_BORDER),
-            ("TOPPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
-        ]))
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), _COLOR_TOTAL_BG),
+                    ("BOX", (0, 0), (-1, -1), 0.5, _COLOR_BORDER),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4 * mm),
+                ]
+            )
+        )
         return [table]
 
     # ------------------------------------------------------------------

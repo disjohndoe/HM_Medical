@@ -11,10 +11,9 @@ from __future__ import annotations
 
 RECORD_TIP_ALLOWED: set[str] = {
     # --- CEZIH mandatory document types (čl. 23, NN 14/2019) ---
-    "ambulantno_izvjesce",   # Izvješće nakon ambulantnog pregleda
-    "specijalisticki_nalaz", # Nalaz iz specijalističke ordinacije
-    "otpusno_pismo",         # Otpusno pismo
-
+    "ambulantno_izvjesce",  # Izvješće nakon ambulantnog pregleda
+    "specijalisticki_nalaz",  # Nalaz iz specijalističke ordinacije
+    "otpusno_pismo",  # Otpusno pismo
     # --- Internal / general types ---
     "nalaz",
     "dijagnoza",

@@ -5,6 +5,7 @@ Revises: a1b2c3d4e5f6
 Create Date: 2026-04-13
 
 """
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -32,10 +33,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("code", name="uq_icd10_code"),
     )
     op.create_index("ix_icd10_codes_code", "icd10_codes", ["code"])
-    op.execute(
-        "CREATE INDEX ix_icd10_codes_search_trgm ON icd10_codes "
-        "USING gin (search_text gin_trgm_ops)"
-    )
+    op.execute("CREATE INDEX ix_icd10_codes_search_trgm ON icd10_codes USING gin (search_text gin_trgm_ops)")
 
 
 def downgrade() -> None:

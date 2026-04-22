@@ -5,6 +5,7 @@ Revises: 011_drug_list
 Create Date: 2026-03-31
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

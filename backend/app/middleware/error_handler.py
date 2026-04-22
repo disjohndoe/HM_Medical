@@ -21,7 +21,9 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
             else:
                 logger.error(
                     "Unhandled exception on %s %s:\n%s",
-                    request.method, request.url.path, traceback.format_exc(),
+                    request.method,
+                    request.url.path,
+                    traceback.format_exc(),
                 )
             return JSONResponse(
                 status_code=500,

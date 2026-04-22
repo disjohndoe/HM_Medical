@@ -30,9 +30,7 @@ class InsuranceCheckRequest(BaseModel):
         has_legacy_mbo = bool(self.mbo)
         has_typed = bool(self.identifier_type and self.identifier_value)
         if sum([has_patient, has_legacy_mbo, has_typed]) != 1:
-            raise ValueError(
-                "Proslijedite točno jedno: patient_id, mbo, ili (identifier_type + identifier_value)"
-            )
+            raise ValueError("Proslijedite točno jedno: patient_id, mbo, ili (identifier_type + identifier_value)")
         return self
 
 
@@ -68,7 +66,6 @@ class PatientIdentifierSearchResponse(BaseModel):
 
 
 class InsuranceCheckResponse(BaseModel):
-
     mbo: str
     ime: str
     prezime: str
@@ -88,7 +85,6 @@ class ENalazRequest(BaseModel):
 
 
 class ENalazResponse(BaseModel):
-
     success: bool
     reference_id: str
     sent_at: datetime
@@ -110,20 +106,17 @@ class EReceptRequest(BaseModel):
 
 
 class EReceptResponse(BaseModel):
-
     success: bool
     recept_id: str
 
 
 class EReceptStornoResponse(BaseModel):
-
     success: bool
     recept_id: str
     status: str
 
 
 class CezihStatusResponse(BaseModel):
-
     connected: bool
     agent_connected: bool
     last_heartbeat: datetime | None
@@ -186,7 +179,6 @@ class PatientCezihERecept(BaseModel):
 
 
 class PatientCezihSummary(BaseModel):
-
     insurance: PatientCezihInsurance
     e_nalaz_history: list[PatientCezihENalaz] = []
     e_recept_history: list[PatientCezihERecept] = []
@@ -199,7 +191,6 @@ class PatientCezihSummary(BaseModel):
 
 
 class CezihDashboardStats(BaseModel):
-
     danas_operacije: int = 0
     neposlani_nalazi: int = 0
     zadnja_operacija: datetime | None = None
@@ -225,7 +216,6 @@ class OidGenerateRequest(BaseModel):
 
 
 class OidGenerateResponse(BaseModel):
-
     generated_oid: str
     oids: list[str] = []
 
@@ -236,7 +226,6 @@ class OidGenerateResponse(BaseModel):
 
 
 class CodeSystemItem(BaseModel):
-
     code: str
     display: str
     system: str
@@ -254,7 +243,6 @@ class ValueSetConceptItem(BaseModel):
 
 
 class ValueSetExpandResponse(BaseModel):
-
     url: str
     concepts: list[ValueSetConceptItem]
     total: int
@@ -266,7 +254,6 @@ class ValueSetExpandResponse(BaseModel):
 
 
 class OrganizationItem(BaseModel):
-
     id: str
     name: str
     hzzo_code: str
@@ -274,7 +261,6 @@ class OrganizationItem(BaseModel):
 
 
 class PractitionerItem(BaseModel):
-
     id: str
     family: str
     given: str
@@ -298,7 +284,6 @@ class ForeignerRegistrationRequest(BaseModel):
 
 
 class ForeignerRegistrationResponse(BaseModel):
-
     success: bool
     patient_id: str
     mbo: str
@@ -312,9 +297,9 @@ class ForeignerRegistrationResponse(BaseModel):
 
 class CreateVisitRequest(BaseModel):
     patient_id: UUID
-    nacin_prijema: str = "6"      # 1-10, default: 6=Ostalo
-    vrsta_posjete: str = "1"      # 1-3, default: 1=Pacijent prisutan
-    tip_posjete: str = "2"        # 1-3, default: 2=Posjeta SKZZ
+    nacin_prijema: str = "6"  # 1-10, default: 6=Ostalo
+    vrsta_posjete: str = "1"  # 1-3, default: 1=Pacijent prisutan
+    tip_posjete: str = "2"  # 1-3, default: 2=Posjeta SKZZ
     reason: str | None = None
 
 
@@ -334,7 +319,6 @@ class VisitActionRequest(BaseModel):
 
 
 class VisitResponse(BaseModel):
-
     success: bool
     visit_id: str
     status: str  # planned, in-progress, finished, cancelled, entered-in-error
@@ -344,7 +328,6 @@ class VisitResponse(BaseModel):
 
 
 class VisitItem(BaseModel):
-
     visit_id: str
     patient_mbo: str
     status: str
@@ -369,7 +352,6 @@ class VisitItem(BaseModel):
 
 
 class VisitsListResponse(BaseModel):
-
     visits: list[VisitItem]
 
 
@@ -379,7 +361,6 @@ class VisitsListResponse(BaseModel):
 
 
 class CaseItem(BaseModel):
-
     case_id: str
     icd_code: str
     icd_display: str
@@ -396,7 +377,6 @@ class CaseItem(BaseModel):
 
 
 class CasesListResponse(BaseModel):
-
     cases: list[CaseItem]
 
 
@@ -410,7 +390,6 @@ class CreateCaseRequest(BaseModel):
 
 
 class CaseResponse(BaseModel):
-
     success: bool
     local_case_id: str
     cezih_case_id: str
@@ -431,7 +410,6 @@ class UpdateCaseDataRequest(BaseModel):
 
 
 class CaseActionResponse(BaseModel):
-
     success: bool
     case_id: str | None = None
     action: str | None = None
@@ -456,6 +434,7 @@ class ReplaceDocumentWithEditRequest(BaseModel):
     Backend signs + calls CEZIH first, and only on 2xx applies the edits +
     swaps cezih_reference_id. On failure the medical_record is untouched so
     local DB does not diverge from CEZIH."""
+
     record_id: UUID
     patient_id: UUID
     encounter_id: str = ""
@@ -471,7 +450,6 @@ class ReplaceDocumentWithEditRequest(BaseModel):
 
 
 class DocumentActionResponse(BaseModel):
-
     success: bool
     reference_id: str | None = None
     new_reference_id: str | None = None
@@ -480,7 +458,6 @@ class DocumentActionResponse(BaseModel):
 
 
 class DocumentSearchItem(BaseModel):
-
     id: str
     datum_izdavanja: str
     izdavatelj: str

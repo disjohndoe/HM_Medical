@@ -4,6 +4,7 @@ Revision ID: 024_cezih_insurance
 Revises: 023_add_biljeske
 Create Date: 2026-04-07
 """
+
 import sqlalchemy as sa
 
 from alembic import op

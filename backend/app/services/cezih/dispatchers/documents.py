@@ -1,4 +1,5 @@
 """CEZIH document dispatcher — e-Nalazi, e-Recepti, signing, document operations."""
+
 from __future__ import annotations
 
 import logging
@@ -65,6 +66,7 @@ async def send_enalaz(
 ) -> dict:
     """Send an e-Nalaz (finding) to CEZIH via ITI-65."""
     from app.models.patient import Patient
+
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     record = await _get_medical_record(db, tenant_id, patient_id, record_id)
@@ -75,7 +77,7 @@ async def send_enalaz(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Tip zapisa '{record.tip}' nije predviđen za slanje na CEZIH. "
-                   f"Dozvoljeni tipovi: {', '.join(sorted(CEZIH_ELIGIBLE_TYPES))}",
+            f"Dozvoljeni tipovi: {', '.join(sorted(CEZIH_ELIGIBLE_TYPES))}",
         )
 
     patient = await db.get(Patient, patient_id)
@@ -112,10 +114,14 @@ async def send_enalaz(
 
     try:
         result = await real_service.send_enalaz(
-            http_client, patient_data, record_data,
+            http_client,
+            patient_data,
+            record_data,
             practitioner_id=practitioner_id,
-            org_code=org_code or "", source_oid=source_oid or "",
-            encounter_id=encounter_id, case_id=case_id,
+            org_code=org_code or "",
+            source_oid=source_oid or "",
+            encounter_id=encounter_id,
+            case_id=case_id,
             practitioner_name=practitioner_name,
         )
     except CezihError as e:
@@ -204,7 +210,9 @@ async def send_erecept(
     recept_id = result["recept_id"]
 
     await _write_audit(
-        db, tenant_id, user_id,
+        db,
+        tenant_id,
+        user_id,
         action="e_recept_send",
         resource_id=patient_id,
         details={
@@ -232,7 +240,9 @@ async def cancel_erecept(
     except CezihError as e:
         _raise_cezih_error(e)
     await _write_audit(
-        db, tenant_id, user_id,
+        db,
+        tenant_id,
+        user_id,
         action="e_recept_cancel",
         details={"recept_id": recept_id},
     )
@@ -253,7 +263,9 @@ async def sign_document(
 
     try:
         result = await real_sign_document(
-            http_client, document_bytes, document_id=document_id,
+            http_client,
+            document_bytes,
+            document_id=document_id,
         )
     except CezihSigningError as e:
         logger.error("CEZIH signing failed: %s", e.message)
@@ -281,6 +293,7 @@ async def dispatch_search_documents(
     patient_value: str | None = None
     if patient_id is not None:
         from app.models.patient import Patient
+
         patient = await db.get(Patient, patient_id)
         if not patient or patient.tenant_id != tenant_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -292,14 +305,20 @@ async def dispatch_search_documents(
     try:
         result = await real_service.search_documents(
             http_client,
-            patient_system=patient_system, patient_value=patient_value,
+            patient_system=patient_system,
+            patient_value=patient_value,
             document_type=document_type,
-            date_from=date_from, date_to=date_to, status_filter=status_filter,
+            date_from=date_from,
+            date_to=date_to,
+            status_filter=status_filter,
         )
     except CezihError as e:
         _raise_cezih_error(e)
     await _write_audit(
-        db, tenant_id, user_id, action="document_search",
+        db,
+        tenant_id,
+        user_id,
+        action="document_search",
         details={
             "patient_id": str(patient_id) if patient_id else "",
             "type": document_type or "",
@@ -326,11 +345,13 @@ async def dispatch_replace_document(
 ) -> dict:
     """Replace a document on CEZIH (ITI-65 replace, used for cancel/storno)."""
     from app.models.patient import Patient
+
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     # Load full record and patient data from DB (same pattern as send_enalaz)
     if not record_id and db and tenant_id and not (patient_data and record_data):
         from app.models.medical_record import MedicalRecord
+
         db_result = await db.execute(
             sa_select(MedicalRecord).where(
                 MedicalRecord.tenant_id == tenant_id,
@@ -380,10 +401,14 @@ async def dispatch_replace_document(
 
     try:
         result = await real_service.replace_document(
-            http_client, original_reference_id, patient_data or {}, record_data or {},
+            http_client,
+            original_reference_id,
+            patient_data or {},
+            record_data or {},
             practitioner_id=practitioner_id,
             org_code=org_code,
-            encounter_id=encounter_id, case_id=case_id,
+            encounter_id=encounter_id,
+            case_id=case_id,
             practitioner_name=practitioner_name,
             original_document_oid=stored_oid,
         )
@@ -404,7 +429,10 @@ async def dispatch_replace_document(
             await db.flush()
 
     await _write_audit(
-        db, tenant_id, user_id, action="e_nalaz_replace",
+        db,
+        tenant_id,
+        user_id,
+        action="e_nalaz_replace",
         details={"reference_id": original_reference_id, "new_reference_id": new_ref},
     )
     if db:
@@ -433,8 +461,8 @@ async def dispatch_replace_document_with_edit(
     medical_record + swaps cezih_reference_id/oid. On failure the record is
     untouched so local DB does not diverge from CEZIH — exactly the bug the
     old PATCH-then-PUT flow was causing."""
-    from app.models.medical_record import MedicalRecord
     from app.models.patient import Patient
+
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     record = await _get_medical_record(db, tenant_id, patient_id, record_id)
@@ -496,10 +524,14 @@ async def dispatch_replace_document_with_edit(
 
     try:
         result = await real_service.replace_document(
-            http_client, original_reference_id, patient_data, record_data,
+            http_client,
+            original_reference_id,
+            patient_data,
+            record_data,
             practitioner_id=practitioner_id,
             org_code=org_code,
-            encounter_id=encounter_id, case_id=case_id,
+            encounter_id=encounter_id,
+            case_id=case_id,
             practitioner_name=practitioner_name,
             original_document_oid=stored_oid,
         )
@@ -532,7 +564,10 @@ async def dispatch_replace_document_with_edit(
     await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
 
     await _write_audit(
-        db, tenant_id, user_id, action="e_nalaz_replace_with_edit",
+        db,
+        tenant_id,
+        user_id,
+        action="e_nalaz_replace_with_edit",
         details={
             "reference_id": original_reference_id,
             "new_reference_id": new_ref,
@@ -557,6 +592,7 @@ async def dispatch_cancel_document(
     """Cancel/storno a document on CEZIH (via ITI-65 replace)."""
     from app.models.medical_record import MedicalRecord
     from app.models.patient import Patient
+
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     # Look up the record by cezih_reference_id — need full record data for ITI-65 bundle
@@ -586,7 +622,8 @@ async def dispatch_cancel_document(
                         "mbo": id_val,
                         "identifier_system": id_sys,
                         "identifier_value": id_val,
-                        "ime": patient.ime, "prezime": patient.prezime,
+                        "ime": patient.ime,
+                        "prezime": patient.prezime,
                     }
             encounter_id = record.cezih_encounter_id or ""
             case_id = record.cezih_case_id or ""
@@ -607,10 +644,14 @@ async def dispatch_cancel_document(
 
     try:
         result = await real_service.cancel_document(
-            http_client, reference_id,
-            patient_data=patient_data, record_data=record_data,
-            org_code=org_code, practitioner_id=practitioner_id,
-            encounter_id=encounter_id, case_id=case_id,
+            http_client,
+            reference_id,
+            patient_data=patient_data,
+            record_data=record_data,
+            org_code=org_code,
+            practitioner_id=practitioner_id,
+            encounter_id=encounter_id,
+            case_id=case_id,
             practitioner_name=practitioner_name,
             original_document_oid=stored_oid,
         )
@@ -633,7 +674,10 @@ async def dispatch_cancel_document(
             await db.flush()
 
     await _write_audit(
-        db, tenant_id, user_id, action="e_nalaz_cancel",
+        db,
+        tenant_id,
+        user_id,
+        action="e_nalaz_cancel",
         details={"reference_id": reference_id, "new_reference_id": result.get("new_reference_id")},
     )
     if db:
@@ -652,6 +696,7 @@ async def dispatch_retrieve_document(
 ) -> bytes:
     """Retrieve a document from CEZIH (ITI-68)."""
     from app.models.medical_record import MedicalRecord
+
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     # Resolve reference_id to local MedicalRecord.id so we can mark row errors
@@ -682,7 +727,10 @@ async def dispatch_retrieve_document(
 
     await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
     await _write_audit(
-        db, tenant_id, user_id, action="document_retrieve",
+        db,
+        tenant_id,
+        user_id,
+        action="document_retrieve",
         details={"reference_id": reference_id},
     )
     return result

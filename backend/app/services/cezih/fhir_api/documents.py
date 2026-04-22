@@ -1,4 +1,5 @@
 """CEZIH clinical document service — ITI-65/67/68 MHD document submission/search/retrieval."""
+
 from __future__ import annotations
 
 import base64
@@ -41,7 +42,9 @@ async def _build_document_bundle(
     """
     logger.info(
         "ITI-65 build: patient_system=%s encounter_id=%r case_id=%r",
-        patient_data.get("identifier_system"), encounter_id, case_id,
+        patient_data.get("identifier_system"),
+        encounter_id,
+        case_id,
     )
 
     # Build clinical content text
@@ -96,8 +99,8 @@ async def _build_document_bundle(
 
     _doc_ref_profile = (
         "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternaltMinimalDocumentReference"
-        if use_external_profile else
-        "http://fhir.cezih.hr/specifikacije/StructureDefinition/HR.MinimalDocumentReference"
+        if use_external_profile
+        else "http://fhir.cezih.hr/specifikacije/StructureDefinition/HR.MinimalDocumentReference"
     )
     doc_ref_dict: dict = {
         "resourceType": "DocumentReference",
@@ -109,18 +112,22 @@ async def _build_document_bundle(
             "system": "urn:ietf:rfc:3986",
             "value": f"urn:oid:{doc_oid}" if doc_oid else f"urn:uuid:{doc_uuid}",
         },
-        "identifier": [{
-            "use": "official",
-            "system": "urn:ietf:rfc:3986",
-            "value": f"urn:uuid:{doc_uuid}",
-        }],
+        "identifier": [
+            {
+                "use": "official",
+                "system": "urn:ietf:rfc:3986",
+                "value": f"urn:uuid:{doc_uuid}",
+            }
+        ],
         "status": "current",
         "type": {
-            "coding": [{
-                "system": coding["system"],
-                "code": coding["code"],
-                "display": coding["display"],
-            }]
+            "coding": [
+                {
+                    "system": coding["system"],
+                    "code": coding["code"],
+                    "display": coding["display"],
+                }
+            ]
         },
         "subject": {
             "type": "Patient",
@@ -149,13 +156,15 @@ async def _build_document_bundle(
 
     # Author: organization (HZZO code)
     if org_code:
-        doc_ref_dict["author"].append({
-            "type": "Organization",
-            "identifier": {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije",
-                "value": org_code,
-            },
-        })
+        doc_ref_dict["author"].append(
+            {
+                "type": "Organization",
+                "identifier": {
+                    "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije",
+                    "value": org_code,
+                },
+            }
+        )
 
     # Authenticator (CEZIHDR-001: odgovorna osoba) — display required (min:1)
     if practitioner_id:
@@ -185,29 +194,35 @@ async def _build_document_bundle(
             "end": _now_iso(),
         },
         "practiceSetting": {
-            "coding": [{
-                "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/djelatnosti-zz",
-                "code": "1010000",
-                "display": "Opća/obiteljska medicina",
-            }]
+            "coding": [
+                {
+                    "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/djelatnosti-zz",
+                    "code": "1010000",
+                    "display": "Opća/obiteljska medicina",
+                }
+            ]
         },
     }
     if encounter_id:
-        context["encounter"] = [{
-            "type": "Encounter",
-            "identifier": {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-posjete",
-                "value": encounter_id,
-            },
-        }]
+        context["encounter"] = [
+            {
+                "type": "Encounter",
+                "identifier": {
+                    "system": "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-posjete",
+                    "value": encounter_id,
+                },
+            }
+        ]
     if case_id:
-        context["related"] = [{
-            "type": "Condition",
-            "identifier": {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-slucaja",
-                "value": case_id,
-            },
-        }]
+        context["related"] = [
+            {
+                "type": "Condition",
+                "identifier": {
+                    "system": "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-slucaja",
+                    "value": case_id,
+                },
+            }
+        ]
     doc_ref_dict["context"] = context
 
     # relatesTo for replace operations (TC19)
@@ -228,13 +243,15 @@ async def _build_document_bundle(
             "contentType": "text/plain",
             "data": "",
         }
-    doc_ref_dict["content"] = [{
-        "attachment": {
-            "contentType": "text/plain",
-            "language": "hr-HR",
-            "url": f"urn:uuid:{binary_uuid}",
+    doc_ref_dict["content"] = [
+        {
+            "attachment": {
+                "contentType": "text/plain",
+                "language": "hr-HR",
+                "url": f"urn:uuid:{binary_uuid}",
+            }
         }
-    }]
+    ]
 
     # Build IHE MHD ITI-65 transaction bundle
     entries = [doc_ref_dict]
@@ -244,7 +261,9 @@ async def _build_document_bundle(
     _bundle_profile = None
     _ss_profile = None
     if use_external_profile:
-        _bundle_profile = "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternalMinimalProvideDocumentBundle"
+        _bundle_profile = (
+            "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternalMinimalProvideDocumentBundle"
+        )
         _ss_profile = "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternalMinimalSubmissionSet"
 
     bundle_dict = build_iti65_transaction_bundle(
@@ -300,9 +319,13 @@ async def send_enalaz(
     fhir_client = CezihFhirClient(client)
 
     bundle_dict, doc_oid = await _build_document_bundle(
-        fhir_client, patient_data, record_data,
-        practitioner_id=practitioner_id, org_code=org_code,
-        encounter_id=encounter_id, case_id=case_id,
+        fhir_client,
+        patient_data,
+        record_data,
+        practitioner_id=practitioner_id,
+        org_code=org_code,
+        encounter_id=encounter_id,
+        case_id=case_id,
         practitioner_name=practitioner_name,
     )
 
@@ -411,16 +434,18 @@ async def search_documents(
                     if att.get("url"):
                         content_url = att["url"]
                         break
-                items.append({
-                    "id": doc_ref.get("id", ""),
-                    "datum_izdavanja": doc_ref.get("date", ""),
-                    "izdavatelj": author or _extract_reference_display(doc_ref.get("custodian")),
-                    "svrha": _extract_codeable_text(doc_ref.get("type")),
-                    "specijalist": author,
-                    "status": _map_fhir_status(doc_ref.get("status", "current")),
-                    "type": _extract_codeable_text(doc_ref.get("type")),
-                    "content_url": content_url,
-                })
+                items.append(
+                    {
+                        "id": doc_ref.get("id", ""),
+                        "datum_izdavanja": doc_ref.get("date", ""),
+                        "izdavatelj": author or _extract_reference_display(doc_ref.get("custodian")),
+                        "svrha": _extract_codeable_text(doc_ref.get("type")),
+                        "specijalist": author,
+                        "status": _map_fhir_status(doc_ref.get("status", "current")),
+                        "type": _extract_codeable_text(doc_ref.get("type")),
+                        "content_url": content_url,
+                    }
+                )
             except Exception as parse_exc:
                 logger.warning("Skipping unparseable DocumentReference: %s", parse_exc)
                 continue
@@ -450,12 +475,18 @@ async def replace_document(
     # Look up document OID from CEZIH if not provided
     if not original_document_oid and _require_identifier_value(patient_data):
         original_document_oid = await _lookup_document_oid(
-            fhir_client, original_reference_id, _require_identifier_value(patient_data),
+            fhir_client,
+            original_reference_id,
+            _require_identifier_value(patient_data),
             identifier_system=_require_identifier_system(patient_data),
         )
 
     if original_document_oid:
-        oid_value = original_document_oid if original_document_oid.startswith("urn:oid:") else f"urn:oid:{original_document_oid}"
+        oid_value = (
+            original_document_oid
+            if original_document_oid.startswith("urn:oid:")
+            else f"urn:oid:{original_document_oid}"
+        )
         relates_to = {
             "code": "replaces",
             "target": {
@@ -475,9 +506,13 @@ async def replace_document(
         }
 
     bundle_dict, new_oid = await _build_document_bundle(
-        fhir_client, patient_data, record_data,
-        practitioner_id=practitioner_id, org_code=org_code,
-        encounter_id=encounter_id, case_id=case_id,
+        fhir_client,
+        patient_data,
+        record_data,
+        practitioner_id=practitioner_id,
+        org_code=org_code,
+        encounter_id=encounter_id,
+        case_id=case_id,
         practitioner_name=practitioner_name,
         relates_to=relates_to,
         use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
@@ -579,13 +614,19 @@ async def cancel_document(
     # Look up document OID from CEZIH if not provided — CEZIH needs OID for relatesTo
     if not original_document_oid and _require_identifier_value(patient_data):
         original_document_oid = await _lookup_document_oid(
-            fhir_client, reference_id, _require_identifier_value(patient_data),
+            fhir_client,
+            reference_id,
+            _require_identifier_value(patient_data),
             identifier_system=_require_identifier_system(patient_data),
         )
 
     # Build relatesTo with logical OID reference (CEZIH requires OID, not numeric ID)
     if original_document_oid:
-        oid_value = original_document_oid if original_document_oid.startswith("urn:oid:") else f"urn:oid:{original_document_oid}"
+        oid_value = (
+            original_document_oid
+            if original_document_oid.startswith("urn:oid:")
+            else f"urn:oid:{original_document_oid}"
+        )
         relates_to = {
             "code": "replaces",
             "target": {
@@ -606,9 +647,13 @@ async def cancel_document(
         }
 
     bundle_dict, new_oid = await _build_document_bundle(
-        fhir_client, patient_data, record_data,
-        practitioner_id=practitioner_id, org_code=org_code,
-        encounter_id=encounter_id, case_id=case_id,
+        fhir_client,
+        patient_data,
+        record_data,
+        practitioner_id=practitioner_id,
+        org_code=org_code,
+        encounter_id=encounter_id,
+        case_id=case_id,
         practitioner_name=practitioner_name,
         relates_to=relates_to,
         use_external_profile=False,
@@ -696,7 +741,9 @@ async def retrieve_document(client: httpx.AsyncClient, document_url: str) -> byt
         preview = response[:200] if size > 0 else b""
         logger.info(
             "retrieve_document returning bytes: %d bytes, is_pdf=%s, preview=%r",
-            size, is_pdf, preview,
+            size,
+            is_pdf,
+            preview,
         )
         return response
     content = response.get("data", b"") if isinstance(response, dict) else b""
@@ -706,7 +753,9 @@ async def retrieve_document(client: httpx.AsyncClient, document_url: str) -> byt
     preview = final_content[:200] if size > 0 else b""
     logger.info(
         "retrieve_document returning extracted: %d bytes, is_pdf=%s, preview=%r",
-        size, is_pdf, preview,
+        size,
+        is_pdf,
+        preview,
     )
     return final_content
 

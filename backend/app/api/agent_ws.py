@@ -68,12 +68,14 @@ async def agent_websocket(websocket: WebSocket):
     if settings.CEZIH_FHIR_BASE_URL:
         base = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
         warmup_url = f"{base}/services-router/gateway/patient-registry-services/api/v1/Patient?_count=0"
-    await websocket.send_json({
-        "type": "connected",
-        "message": "Agent spojen",
-        "agent_id": agent_id,
-        "cezih_warmup_url": warmup_url,
-    })
+    await websocket.send_json(
+        {
+            "type": "connected",
+            "message": "Agent spojen",
+            "agent_id": agent_id,
+            "cezih_warmup_url": warmup_url,
+        }
+    )
 
     # Start ping loop
     ping_task = asyncio.create_task(_ping_loop(tenant_id, agent_id))
@@ -117,8 +119,13 @@ async def agent_websocket(websocket: WebSocket):
                 req_id = msg.get("request_id", "")
                 agent_manager.resolve_proxy_response(req_id, msg)
 
-            elif msg_type in ("sign_response", "sign_error", "sign_jws_response",
-                              "get_cert_info_response", "sign_raw_response"):
+            elif msg_type in (
+                "sign_response",
+                "sign_error",
+                "sign_jws_response",
+                "get_cert_info_response",
+                "sign_raw_response",
+            ):
                 req_id = msg.get("request_id", "")
                 logger.info("Received %s from agent %s for tenant %s", msg_type, agent_id[:8], tenant_id)
                 agent_manager.resolve_proxy_response(req_id, msg)
@@ -158,7 +165,9 @@ async def _handle_card_removal(tenant_id: UUID, agent_id: str, card_holder: str 
 
     logger.warning(
         "Card removal detected on agent %s for tenant %s (holder: %s)",
-        agent_id[:8], tenant_id, card_holder,
+        agent_id[:8],
+        tenant_id,
+        card_holder,
     )
 
     async with async_session() as db:
@@ -179,7 +188,9 @@ async def _handle_card_removal(tenant_id: UUID, agent_id: str, card_holder: str 
                 if count > 0:
                     logger.info(
                         "Revoked %d session(s) for user %s (card removal from agent %s)",
-                        count, user.email, agent_id[:8],
+                        count,
+                        user.email,
+                        agent_id[:8],
                     )
                     await audit_service.write_audit(
                         db,

@@ -6,10 +6,11 @@ record the failure, and we don't want the rollback to erase the error record.
 Non-fatal: if the persist itself fails (e.g. missing row, DB hiccup) we log
 and continue rather than masking the original CEZIH error with a 500.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -72,18 +73,23 @@ async def record_cezih_error(
             await session.execute(
                 update(model)
                 .where(model.id == row_id, model.tenant_id == tenant_id)
-                .values({
-                    code_col: (payload.get("code") or "CEZIH_ERROR")[:128],
-                    display_col: payload.get("display") or "",
-                    diag_col: payload.get("diagnostics") or "",
-                    at_col: datetime.now(timezone.utc),
-                })
+                .values(
+                    {
+                        code_col: (payload.get("code") or "CEZIH_ERROR")[:128],
+                        display_col: payload.get("display") or "",
+                        diag_col: payload.get("diagnostics") or "",
+                        at_col: datetime.now(UTC),
+                    }
+                )
             )
             await session.commit()
     except Exception:
         logger.warning(
             "Failed to persist CEZIH row error for %s %s (tenant=%s): %s",
-            target, row_id, tenant_id, error.__class__.__name__,
+            target,
+            row_id,
+            tenant_id,
+            error.__class__.__name__,
             exc_info=True,
         )
 
@@ -111,12 +117,14 @@ async def clear_cezih_error(
                 model.tenant_id == tenant_id,
                 code_col.isnot(None),
             )
-            .values({
-                code_col: None,
-                display_col: None,
-                diag_col: None,
-                at_col: None,
-            })
+            .values(
+                {
+                    code_col: None,
+                    display_col: None,
+                    diag_col: None,
+                    at_col: None,
+                }
+            )
         )
         if session is not None:
             await session.execute(stmt)
@@ -127,6 +135,8 @@ async def clear_cezih_error(
     except Exception:
         logger.warning(
             "Failed to clear CEZIH row error for %s %s (tenant=%s)",
-            target, row_id, tenant_id,
+            target,
+            row_id,
+            tenant_id,
             exc_info=True,
         )

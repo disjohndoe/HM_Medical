@@ -5,6 +5,7 @@ Revises: 009_cezih_storno
 Create Date: 2026-03-31
 
 """
+
 import json
 import uuid
 from collections.abc import Sequence

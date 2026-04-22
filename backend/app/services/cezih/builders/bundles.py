@@ -3,6 +3,7 @@
 - build_message_bundle:  Bundle type='message' for $process-message (Case/Visit)
 - build_iti65_transaction_bundle: Bundle type='transaction' for IHE MHD document submission
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,8 +43,7 @@ async def build_message_bundle(
         )
     if not source_oid:
         raise CezihError(
-            "OID informacijskog sustava nije konfiguriran za ovog zakupca. "
-            "Postavite ga u Postavke > Organizacija."
+            "OID informacijskog sustava nije konfiguriran za ovog zakupca. Postavite ga u Postavke > Organizacija."
         )
 
     resource_uuid = str(uuid.uuid4())
@@ -118,7 +118,10 @@ def build_iti65_transaction_bundle(
     submission_set: dict[str, Any] = {
         "resourceType": "List",
         "meta": {
-            "profile": [submission_set_profile or "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalSubmissionSet"],
+            "profile": [
+                submission_set_profile
+                or "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalSubmissionSet"
+            ],
         },
         "identifier": [
             {
@@ -135,10 +138,12 @@ def build_iti65_transaction_bundle(
         "status": "current",
         "mode": "working",
         "code": {
-            "coding": [{
-                "system": "https://profiles.ihe.net/ITI/MHD/CodeSystem/MHDlistTypes",
-                "code": "submissionset",
-            }]
+            "coding": [
+                {
+                    "system": "https://profiles.ihe.net/ITI/MHD/CodeSystem/MHDlistTypes",
+                    "code": "submissionset",
+                }
+            ]
         },
         "date": _now_iso(),
     }
@@ -159,10 +164,12 @@ def build_iti65_transaction_bundle(
         },
     ]
     if sender_org_code:
-        extensions.append({
-            "url": "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-authorOrg",
-            "valueReference": org_ref(sender_org_code),
-        })
+        extensions.append(
+            {
+                "url": "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-authorOrg",
+                "valueReference": org_ref(sender_org_code),
+            }
+        )
     submission_set["extension"] = extensions
 
     # Pre-assign UUIDs to entries without _uuid to ensure consistency
@@ -174,9 +181,7 @@ def build_iti65_transaction_bundle(
     doc_ref_entries = [e for e in entries if e.get("resourceType") == "DocumentReference"]
     doc_ref_uuids = [e["_uuid"] for e in doc_ref_entries]
     all_uuids = [e["_uuid"] for e in entries]
-    submission_set["entry"] = [
-        {"item": {"reference": f"urn:uuid:{u}"}} for u in doc_ref_uuids
-    ]
+    submission_set["entry"] = [{"item": {"reference": f"urn:uuid:{u}"}} for u in doc_ref_uuids]
 
     bundle_entries: list[dict[str, Any]] = [
         {
@@ -201,17 +206,22 @@ def build_iti65_transaction_bundle(
             request_entry = {"method": "POST", "url": resource_type}
             full_url = f"urn:uuid:{entry_uuid}"
 
-        bundle_entries.append({
-            "fullUrl": full_url,
-            "resource": resource,
-            "request": request_entry,
-        })
+        bundle_entries.append(
+            {
+                "fullUrl": full_url,
+                "resource": resource,
+                "request": request_entry,
+            }
+        )
 
     return {
         "resourceType": "Bundle",
         "id": str(uuid.uuid4()),
         "meta": {
-            "profile": [bundle_profile or "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalProvideDocumentBundle"],
+            "profile": [
+                bundle_profile
+                or "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRMinimalProvideDocumentBundle"
+            ],
         },
         "type": "transaction",
         "timestamp": _now_iso(),

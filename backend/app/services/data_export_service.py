@@ -47,9 +47,7 @@ def _model_to_dict(obj: object) -> dict:
 
 async def _load_doctor_names(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, str]:
     """Return {user_id_str: 'Ime Prezime'} for all doctors in the tenant."""
-    result = await db.execute(
-        select(User.id, User.ime, User.prezime).where(User.tenant_id == tenant_id)
-    )
+    result = await db.execute(select(User.id, User.ime, User.prezime).where(User.tenant_id == tenant_id))
     return {str(row.id): f"{row.ime} {row.prezime}" for row in result.all()}
 
 
@@ -110,9 +108,7 @@ async def export_patient_data(
 
     procedure_ids = list({pp.procedure_id for pp in pp_rows})
     if procedure_ids:
-        proc_result = await db.execute(
-            select(Procedure).where(Procedure.id.in_(procedure_ids))
-        )
+        proc_result = await db.execute(select(Procedure).where(Procedure.id.in_(procedure_ids)))
         proc_map = {p.id: p for p in proc_result.scalars().all()}
     else:
         proc_map = {}

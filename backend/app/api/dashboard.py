@@ -37,37 +37,53 @@ async def get_stats(
     # Today's non-cancelled appointments
     day_start = datetime.combine(today, time.min)
     day_end = datetime.combine(today, time(23, 59, 59, 999999))
-    q = select(func.count()).select_from(Appointment).where(
-        Appointment.tenant_id == tid,
-        Appointment.datum_vrijeme >= day_start,
-        Appointment.datum_vrijeme <= day_end,
-        Appointment.status != "otkazan",
+    q = (
+        select(func.count())
+        .select_from(Appointment)
+        .where(
+            Appointment.tenant_id == tid,
+            Appointment.datum_vrijeme >= day_start,
+            Appointment.datum_vrijeme <= day_end,
+            Appointment.status != "otkazan",
+        )
     )
     danas_termini = (await db.execute(q)).scalar_one()
 
     # Total active patients
-    q = select(func.count()).select_from(Patient).where(
-        Patient.tenant_id == tid,
-        Patient.is_active.is_(True),
+    q = (
+        select(func.count())
+        .select_from(Patient)
+        .where(
+            Patient.tenant_id == tid,
+            Patient.is_active.is_(True),
+        )
     )
     ukupno_pacijenti = (await db.execute(q)).scalar_one()
 
     # This week's non-cancelled appointments
     week_start = datetime.combine(monday, time.min)
     week_end = datetime.combine(sunday, time(23, 59, 59, 999999))
-    q = select(func.count()).select_from(Appointment).where(
-        Appointment.tenant_id == tid,
-        Appointment.datum_vrijeme >= week_start,
-        Appointment.datum_vrijeme <= week_end,
-        Appointment.status != "otkazan",
+    q = (
+        select(func.count())
+        .select_from(Appointment)
+        .where(
+            Appointment.tenant_id == tid,
+            Appointment.datum_vrijeme >= week_start,
+            Appointment.datum_vrijeme <= week_end,
+            Appointment.status != "otkazan",
+        )
     )
     ovaj_tjedan_termini = (await db.execute(q)).scalar_one()
 
     # New patients this month
-    q = select(func.count()).select_from(Patient).where(
-        Patient.tenant_id == tid,
-        Patient.is_active.is_(True),
-        Patient.created_at >= datetime.combine(first_of_month, time.min),
+    q = (
+        select(func.count())
+        .select_from(Patient)
+        .where(
+            Patient.tenant_id == tid,
+            Patient.is_active.is_(True),
+            Patient.created_at >= datetime.combine(first_of_month, time.min),
+        )
     )
     novi_pacijenti_mjesec = (await db.execute(q)).scalar_one()
 

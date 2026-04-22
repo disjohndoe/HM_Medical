@@ -13,29 +13,37 @@ class CezihCase(BaseTenantModel):
 
     __tablename__ = "cezih_cases"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     cezih_case_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, index=True,
+        String(100),
+        nullable=True,
+        index=True,
         comment="CEZIH-assigned global case identifier",
     )
     local_case_id: Mapped[str] = mapped_column(
-        String(100), nullable=False, index=True,
+        String(100),
+        nullable=False,
+        index=True,
         comment="Our local case identifier sent in create message",
     )
     patient_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True,
+        UUID(as_uuid=True),
+        ForeignKey("patients.id"),
+        nullable=False,
+        index=True,
     )
     patient_mbo: Mapped[str] = mapped_column(String(50), nullable=False)
     icd_code: Mapped[str] = mapped_column(String(20), nullable=False)
     icd_display: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     clinical_status: Mapped[str | None] = mapped_column(
-        String(30), nullable=True,
+        String(30),
+        nullable=True,
         comment="active, remission, relapse, resolved",
     )
     verification_status: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="unconfirmed",
+        String(30),
+        nullable=False,
+        default="unconfirmed",
     )
     onset_date: Mapped[str] = mapped_column(String(20), nullable=False)
     abatement_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -45,5 +53,6 @@ class CezihCase(BaseTenantModel):
     last_error_display: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_diagnostics: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )

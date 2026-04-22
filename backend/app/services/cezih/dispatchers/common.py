@@ -1,10 +1,11 @@
 """Common dispatcher utilities — audit helpers and context management."""
+
 from __future__ import annotations
 
 import logging
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.cezih.exceptions import CezihError
@@ -55,7 +56,9 @@ async def _write_audit(
 
 
 def _require_audit_params(
-    db: AsyncSession | None, user_id: UUID | None, tenant_id: UUID | None,
+    db: AsyncSession | None,
+    user_id: UUID | None,
+    tenant_id: UUID | None,
 ) -> tuple[AsyncSession, UUID, UUID]:
     """Audit parameters are mandatory for traceability. Returns narrowed types.
 
@@ -73,6 +76,7 @@ def _require_audit_params(
         current_tenant_id,
         current_user_id,
     )
+
     current_tenant_id.set(tenant_id)
     current_user_id.set(user_id)
     current_db_session.set(db)

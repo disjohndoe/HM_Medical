@@ -41,9 +41,7 @@ async def list_procedures(
     count_q = select(func.count()).select_from(base.subquery())
     total = (await db.execute(count_q)).scalar_one()
 
-    result = await db.execute(
-        base.order_by(Procedure.sifra).offset(skip).limit(limit)
-    )
+    result = await db.execute(base.order_by(Procedure.sifra).offset(skip).limit(limit))
     return list(result.scalars().all()), total
 
 
@@ -180,9 +178,7 @@ async def list_performed(
     total = (await db.execute(count_q)).scalar_one()
 
     query = _join_performed_query(base)
-    result = await db.execute(
-        query.order_by(PerformedProcedure.datum.desc()).offset(skip).limit(limit)
-    )
+    result = await db.execute(query.order_by(PerformedProcedure.datum.desc()).offset(skip).limit(limit))
     return [_performed_row_to_dict(row) for row in result.all()], total
 
 

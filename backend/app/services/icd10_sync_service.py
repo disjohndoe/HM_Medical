@@ -71,10 +71,7 @@ async def search_icd10(query: str, limit: int = 20) -> list[dict]:
             .limit(limit)
         )
         result = await db.execute(stmt)
-        return [
-            {"code": r.code, "display": r.display, "system": r.system}
-            for r in result.scalars().all()
-        ]
+        return [{"code": r.code, "display": r.display, "system": r.system} for r in result.scalars().all()]
 
 
 async def get_icd10_count() -> int:
@@ -108,11 +105,13 @@ async def _fetch_from_cezih() -> list[dict]:
             )
             concepts = []
             for c in resp.get("expansion", {}).get("contains", []):
-                concepts.append({
-                    "code": c.get("code", ""),
-                    "display": c.get("display", ""),
-                    "system": c.get("system", ICD10_SYSTEM_URL),
-                })
+                concepts.append(
+                    {
+                        "code": c.get("code", ""),
+                        "display": c.get("display", ""),
+                        "system": c.get("system", ICD10_SYSTEM_URL),
+                    }
+                )
             if concepts:
                 logger.info("ICD-10 sync: fetched %d codes from CEZIH", len(concepts))
             return concepts
@@ -131,11 +130,13 @@ def _load_bootstrap() -> list[dict]:
         data = json.loads(BOOTSTRAP_PATH.read_text(encoding="utf-8"))
         concepts = []
         for c in data.get("concept", []):
-            concepts.append({
-                "code": c.get("code", ""),
-                "display": c.get("display", ""),
-                "system": data.get("url", ICD10_SYSTEM_URL),
-            })
+            concepts.append(
+                {
+                    "code": c.get("code", ""),
+                    "display": c.get("display", ""),
+                    "system": data.get("url", ICD10_SYSTEM_URL),
+                }
+            )
         logger.info("ICD-10 bootstrap: loaded %d codes from %s", len(concepts), BOOTSTRAP_PATH.name)
         return concepts
     except Exception:
@@ -155,14 +156,16 @@ async def _upsert_codes(concepts: list[dict]) -> int:
             for c in concepts[i : i + batch_size]:
                 code = c["code"]
                 display = c["display"]
-                batch.append({
-                    "code": code,
-                    "display": display,
-                    "system": c.get("system", ICD10_SYSTEM_URL),
-                    "aktivan": True,
-                    "synced_at": now,
-                    "search_text": f"{code.lower()} {display.lower()}",
-                })
+                batch.append(
+                    {
+                        "code": code,
+                        "display": display,
+                        "system": c.get("system", ICD10_SYSTEM_URL),
+                        "aktivan": True,
+                        "synced_at": now,
+                        "search_text": f"{code.lower()} {display.lower()}",
+                    }
+                )
 
             stmt = pg_insert(Icd10Code).values(batch)
             stmt = stmt.on_conflict_do_update(
@@ -185,9 +188,7 @@ async def _upsert_codes(concepts: list[dict]) -> int:
 async def _is_sync_fresh(max_days: int = 30) -> bool:
     """Check if ICD-10 data was synced within the last N days."""
     async with async_session() as db:
-        result = await db.execute(
-            select(func.max(Icd10Code.synced_at))
-        )
+        result = await db.execute(select(func.max(Icd10Code.synced_at)))
         last_sync = result.scalar()
         if last_sync is None:
             return False

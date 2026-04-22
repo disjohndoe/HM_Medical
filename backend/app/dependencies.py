@@ -49,11 +49,13 @@ async def get_current_user(
     # GAP 1 fix: reject if user has no active refresh tokens (kicked/revoked session)
     now = datetime.now(UTC)
     has_active = await db.execute(
-        select(RefreshToken.id).where(
+        select(RefreshToken.id)
+        .where(
             RefreshToken.user_id == user.id,
             RefreshToken.is_revoked.is_(False),
             RefreshToken.expires_at > now,
-        ).limit(1)
+        )
+        .limit(1)
     )
     if not has_active.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesija je istekla")

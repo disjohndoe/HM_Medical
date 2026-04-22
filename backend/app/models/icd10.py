@@ -25,8 +25,6 @@ class Icd10Code(Base):
         default="http://fhir.cezih.hr/specifikacije/CodeSystem/icd10-hr",
     )
     aktivan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    synced_at: Mapped[str] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    synced_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     # Lowercase composite for ILIKE search
     search_text: Mapped[str] = mapped_column(Text, nullable=False, default="")

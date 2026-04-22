@@ -31,10 +31,7 @@ class _TokenSlot:
         return (time.monotonic() - self.acquired_at) < (self.token.expires_in - buffer)
 
     def is_cooling_down(self) -> bool:
-        return bool(
-            self.last_failure_at
-            and (time.monotonic() - self.last_failure_at) < _FAILURE_COOLDOWN
-        )
+        return bool(self.last_failure_at and (time.monotonic() - self.last_failure_at) < _FAILURE_COOLDOWN)
 
 
 _slots: dict[str, _TokenSlot] = {}
@@ -76,11 +73,13 @@ async def _fetch_via_agent(tenant_id: UUID, oauth2_url: str) -> str:
 
     s = _slot(oauth2_url)
 
-    token_data = urlencode({
-        "grant_type": "client_credentials",
-        "client_id": settings.CEZIH_CLIENT_ID,
-        "client_secret": settings.CEZIH_CLIENT_SECRET,
-    })
+    token_data = urlencode(
+        {
+            "grant_type": "client_credentials",
+            "client_id": settings.CEZIH_CLIENT_ID,
+            "client_secret": settings.CEZIH_CLIENT_SECRET,
+        }
+    )
 
     logger.info("CEZIH OAuth2: fetching token via agent from %s", oauth2_url)
     try:
@@ -135,6 +134,7 @@ async def _fetch_new_token(
 
     if tenant_id:
         from app.services.agent_connection_manager import agent_manager
+
         if agent_manager.is_connected(tenant_id):
             return await _fetch_via_agent(tenant_id, oauth2_url)
 
@@ -155,14 +155,10 @@ async def _fetch_new_token(
         response.raise_for_status()
     except httpx.ConnectError as e:
         s.last_failure_at = time.monotonic()
-        raise CezihAuthError(
-            f"Cannot connect to OAuth2 server at {oauth2_url}. Is VPN connected?"
-        ) from e
+        raise CezihAuthError(f"Cannot connect to OAuth2 server at {oauth2_url}. Is VPN connected?") from e
     except httpx.TimeoutException as e:
         s.last_failure_at = time.monotonic()
-        raise CezihAuthError(
-            f"OAuth2 token request timed out after {settings.CEZIH_TIMEOUT}s"
-        ) from e
+        raise CezihAuthError(f"OAuth2 token request timed out after {settings.CEZIH_TIMEOUT}s") from e
     except httpx.HTTPStatusError as e:
         s.last_failure_at = time.monotonic()
         raise CezihAuthError(

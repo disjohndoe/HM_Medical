@@ -13,6 +13,7 @@ queries for foreigners, and bumps the mirror tables' patient_mbo column to
 fit 50-char jedinstveni-ids (the column now stores whichever identifier value
 was used for the CEZIH call, not strictly the MBO).
 """
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -40,13 +41,15 @@ def upgrade() -> None:
     )
 
     op.alter_column(
-        "cezih_visits", "patient_mbo",
+        "cezih_visits",
+        "patient_mbo",
         existing_type=sa.String(length=20),
         type_=sa.String(length=50),
         existing_nullable=False,
     )
     op.alter_column(
-        "cezih_cases", "patient_mbo",
+        "cezih_cases",
+        "patient_mbo",
         existing_type=sa.String(length=20),
         type_=sa.String(length=50),
         existing_nullable=False,
@@ -55,13 +58,15 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.alter_column(
-        "cezih_cases", "patient_mbo",
+        "cezih_cases",
+        "patient_mbo",
         existing_type=sa.String(length=50),
         type_=sa.String(length=20),
         existing_nullable=False,
     )
     op.alter_column(
-        "cezih_visits", "patient_mbo",
+        "cezih_visits",
+        "patient_mbo",
         existing_type=sa.String(length=50),
         type_=sa.String(length=20),
         existing_nullable=False,

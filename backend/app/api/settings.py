@@ -89,9 +89,7 @@ async def generate_oid(
     current_user: User = Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Tenant).where(Tenant.id == current_user.tenant_id).with_for_update()
-    )
+    result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id).with_for_update())
     tenant = result.scalar_one_or_none()
     if not tenant:
         raise HTTPException(status_code=404, detail="Klinika nije pronađena")
@@ -140,10 +138,12 @@ async def generate_agent_secret(
     all_conns = agent_manager.get_all(current_user.tenant_id)
     for conn in all_conns:
         try:
-            await conn.websocket.send_json({
-                "type": "secret_changed",
-                "message": "Tajni ključ je promijenjen. Ponovno uparivanje je potrebno.",
-            })
+            await conn.websocket.send_json(
+                {
+                    "type": "secret_changed",
+                    "message": "Tajni ključ je promijenjen. Ponovno uparivanje je potrebno.",
+                }
+            )
         except Exception:
             pass
     for conn in all_conns:

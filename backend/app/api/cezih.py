@@ -74,10 +74,12 @@ def _http_client(request: Request):
 
 
 async def _get_tenant_cezih_config(
-    db: AsyncSession, tenant_id,
+    db: AsyncSession,
+    tenant_id,
 ) -> tuple[str, str]:
     """Get validated org_code and OID for a tenant. Raises HTTPException if missing."""
     from fastapi import HTTPException
+
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Zakupac nije pronađen.")
@@ -92,7 +94,6 @@ async def _get_tenant_cezih_config(
             detail="OID informacijskog sustava nije generiran. Kliknite 'Generiraj OID' u Postavke > Klinika.",
         )
     return tenant.sifra_ustanove, tenant.oid
-
 
 
 @router.get("/status", response_model=CezihStatusResponse)
@@ -130,7 +131,6 @@ async def get_cezih_status(
     return result
 
 
-
 @router.post("/import-patient")
 async def import_patient_from_cezih(
     request: Request,
@@ -142,7 +142,9 @@ async def import_patient_from_cezih(
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.import_patient_from_cezih(
         data.mbo,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -161,8 +163,11 @@ async def import_patient_by_identifier(
     """
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.import_patient_by_identifier(
-        data.identifier_type, data.identifier_value,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        data.identifier_type,
+        data.identifier_value,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -178,19 +183,26 @@ async def provjera_osiguranja(
     if data.patient_id is not None:
         return await cezih.insurance_check(
             data.patient_id,
-            db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+            db=db,
+            user_id=current_user.id,
+            tenant_id=current_user.tenant_id,
             http_client=_http_client(request),
         )
     if data.identifier_type and data.identifier_value:
         return await cezih.insurance_check_by_identifier(
-            data.identifier_type, data.identifier_value,
-            db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+            data.identifier_type,
+            data.identifier_value,
+            db=db,
+            user_id=current_user.id,
+            tenant_id=current_user.tenant_id,
             http_client=_http_client(request),
         )
     if data.mbo:
         return await cezih.insurance_check_by_mbo(
             data.mbo,
-            db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+            db=db,
+            user_id=current_user.id,
+            tenant_id=current_user.tenant_id,
             http_client=_http_client(request),
         )
     raise HTTPException(
@@ -211,12 +223,17 @@ async def send_enalaz(
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip()
 
     return await cezih.send_enalaz(
-        db, current_user.tenant_id, data.patient_id, data.record_id,
+        db,
+        current_user.tenant_id,
+        data.patient_id,
+        data.record_id,
         user_id=current_user.id,
         http_client=_http_client(request),
         practitioner_id=current_user.practitioner_id or "",
-        org_code=org_code, source_oid=source_oid,
-        encounter_id=data.encounter_id, case_id=data.case_id,
+        org_code=org_code,
+        source_oid=source_oid,
+        encounter_id=data.encounter_id,
+        case_id=data.case_id,
         practitioner_name=practitioner_name,
     )
 
@@ -232,8 +249,11 @@ async def send_erecept(
     await check_hzzo_access(db, current_user.tenant_id)
     lijekovi_dicts = [item.model_dump() for item in data.lijekovi]
     return await cezih.send_erecept(
-        data.patient_id, lijekovi_dicts,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        data.patient_id,
+        lijekovi_dicts,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -249,7 +269,9 @@ async def cancel_erecept(
     await check_hzzo_access(db, current_user.tenant_id)
     return await cezih.cancel_erecept(
         recept_id,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -272,9 +294,7 @@ async def get_cezih_activity(
     count_result = await db.execute(select(func.count()).select_from(base.subquery()))
     total = count_result.scalar() or 0
 
-    result = await db.execute(
-        base.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit)
-    )
+    result = await db.execute(base.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit))
     rows = result.scalars().all()
 
     items = [
@@ -304,13 +324,13 @@ async def get_patient_cezih_summary(
     # e-Nalaz table: all CEZIH-eligible medical records for this patient
     # (sent + unsent). Status is derived on the frontend from cezih_sent_at / cezih_storno.
     records_result = await db.execute(
-        select(MedicalRecord).where(
+        select(MedicalRecord)
+        .where(
             MedicalRecord.tenant_id == current_user.tenant_id,
             MedicalRecord.patient_id == patient_id,
             MedicalRecord.tip.in_(CEZIH_ELIGIBLE_TYPES),
-        ).order_by(
-            func.coalesce(MedicalRecord.cezih_sent_at, MedicalRecord.created_at).desc()
         )
+        .order_by(func.coalesce(MedicalRecord.cezih_sent_at, MedicalRecord.created_at).desc())
     )
     records = records_result.scalars().all()
 
@@ -335,12 +355,14 @@ async def get_patient_cezih_summary(
 
     # e-Recept history from audit log
     recept_result = await db.execute(
-        select(AuditLog).where(
+        select(AuditLog)
+        .where(
             AuditLog.tenant_id == current_user.tenant_id,
             AuditLog.resource_type == "cezih",
             AuditLog.action == "e_recept_send",
             AuditLog.resource_id == patient_id,
-        ).order_by(AuditLog.created_at.desc())
+        )
+        .order_by(AuditLog.created_at.desc())
     )
     recept_logs = recept_result.scalars().all()
 
@@ -409,10 +431,13 @@ async def get_cezih_dashboard_stats(
 
     # Most recent CEZIH operation
     last_result = await db.execute(
-        select(AuditLog.created_at).where(
+        select(AuditLog.created_at)
+        .where(
             AuditLog.tenant_id == current_user.tenant_id,
             AuditLog.resource_type == "cezih",
-        ).order_by(AuditLog.created_at.desc()).limit(1)
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(1)
     )
     last_op = last_result.scalar_one_or_none()
 
@@ -471,7 +496,9 @@ async def oid_generate(
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.oid_generate(
         data.quantity,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -491,8 +518,12 @@ async def query_code_system(
     db: AsyncSession = Depends(get_db),
 ):
     return await cezih.code_system_query(
-        system, q, count,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        system,
+        q,
+        count,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -505,6 +536,7 @@ async def search_icd10_local(
 ):
     """Search local ICD-10 codes (synced from CEZIH, no VPN needed)."""
     from app.services.icd10_sync_service import search_icd10
+
     return await search_icd10(q, limit)
 
 
@@ -522,8 +554,11 @@ async def expand_value_set(
     db: AsyncSession = Depends(get_db),
 ):
     return await cezih.value_set_expand(
-        url, filter,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        url,
+        filter,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -542,7 +577,9 @@ async def search_organizations(
 ):
     return await cezih.organization_search(
         name,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -556,7 +593,9 @@ async def search_practitioners(
 ):
     return await cezih.practitioner_search(
         name,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -609,7 +648,7 @@ async def search_patient_by_identifier(
     )
 
     filters = []
-    for ident in (result.get("identifikatori") or []):
+    for ident in result.get("identifikatori") or []:
         sys_uri = ident.get("system")
         val = ident.get("value")
         if not sys_uri or not val:
@@ -629,11 +668,13 @@ async def search_patient_by_identifier(
 
     if filters:
         lookup = await db.execute(
-            select(Patient.id).where(
+            select(Patient.id)
+            .where(
                 Patient.tenant_id == current_user.tenant_id,
                 Patient.is_active.is_(True),
                 or_(*filters),
-            ).limit(1),
+            )
+            .limit(1),
         )
         local_id = lookup.scalar_one_or_none()
         if local_id:
@@ -660,9 +701,12 @@ async def register_foreigner(
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     result = await cezih.foreigner_registration(
         data.model_dump(),
-        org_code=org_code, source_oid=source_oid,
+        org_code=org_code,
+        source_oid=source_oid,
         practitioner_id=current_user.practitioner_id or "",
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -707,7 +751,9 @@ async def list_cases(
     await check_cezih_access(db, current_user.tenant_id)
     cases = await cezih.dispatch_retrieve_cases(
         patient_id,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
     return CasesListResponse(cases=[CaseItem.model_validate(c) for c in cases])
@@ -723,11 +769,17 @@ async def create_case(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_case(
-        data.patient_id, current_user.practitioner_id or "",
+        data.patient_id,
+        current_user.practitioner_id or "",
         org_code,
-        data.icd_code, data.icd_display, data.onset_date,
-        data.verification_status, data.note,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        data.icd_code,
+        data.icd_display,
+        data.onset_date,
+        data.verification_status,
+        data.note,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         source_oid=source_oid,
     )
@@ -745,10 +797,14 @@ async def update_case_status(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_case(
-        case_id, patient_id, current_user.practitioner_id or "",
+        case_id,
+        patient_id,
+        current_user.practitioner_id or "",
         org_code,
         data.action,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         source_oid=source_oid,
     )
@@ -766,14 +822,20 @@ async def update_case_data(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_case_data(
-        case_id, patient_id, current_user.practitioner_id or "",
+        case_id,
+        patient_id,
+        current_user.practitioner_id or "",
         org_code,
         current_clinical_status=data.current_clinical_status,
         verification_status=data.verification_status,
-        icd_code=data.icd_code, icd_display=data.icd_display,
-        onset_date=data.onset_date, abatement_date=data.abatement_date,
+        icd_code=data.icd_code,
+        icd_display=data.icd_display,
+        onset_date=data.onset_date,
+        abatement_date=data.abatement_date,
         note_text=data.note,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         source_oid=source_oid,
     )
@@ -797,9 +859,14 @@ async def search_documents(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     return await cezih.dispatch_search_documents(
-        patient_id=patient_id, document_type=type,
-        date_from=date_from, date_to=date_to, status_filter=status,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        patient_id=patient_id,
+        document_type=type,
+        date_from=date_from,
+        date_to=date_to,
+        status_filter=status,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
 
@@ -818,7 +885,9 @@ async def replace_document(
     return await cezih.dispatch_replace_document(
         reference_id,
         record_id=data.record_id if data else None,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         org_code=org_code,
         practitioner_id=current_user.practitioner_id,
@@ -849,7 +918,9 @@ async def replace_document_with_edit(
         record_id=data.record_id,
         patient_id=data.patient_id,
         edits=edits,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         org_code=org_code,
         practitioner_id=current_user.practitioner_id,
@@ -871,7 +942,9 @@ async def cancel_document(
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
     return await cezih.dispatch_cancel_document(
         reference_id,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         org_code=org_code,
         practitioner_id=current_user.practitioner_id,
@@ -893,9 +966,11 @@ async def retrieve_document(
     # Construct content_url from OID when direct URL not provided
     if not url and oid:
         import base64
+
         data_plain = f"documentUniqueId=urn:ietf:rfc:3986|urn:oid:{oid}&position=0"
         data_b64 = base64.b64encode(data_plain.encode()).decode()
         from app.config import settings
+
         base = settings.CEZIH_FHIR_BASE_URL.rstrip("/")
         url = f"{base}/services-router/gateway/doc-mhd-svc/api/v1/iti-68-service?data={data_b64}"
 
@@ -903,7 +978,9 @@ async def retrieve_document(
     content = await cezih.dispatch_retrieve_document(
         reference_id,
         document_url=url,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
     original_size = len(content)
@@ -914,9 +991,12 @@ async def retrieve_document(
         text_preview = content.decode("utf-8", errors="replace")[:500]
         logger.warning(
             "CEZIH document %s: NOT PDF (%d bytes), wrapping as PDF. Content preview: %r",
-            reference_id, original_size, text_preview,
+            reference_id,
+            original_size,
+            text_preview,
         )
         from app.services.pdf_generator import cezih_text_to_pdf
+
         text = content.decode("utf-8", errors="replace")
         content = cezih_text_to_pdf(text)
         logger.info("Wrapped non-PDF response as PDF: %d -> %d bytes", original_size, len(content))
@@ -944,7 +1024,10 @@ async def list_visits(
 ):
     await check_cezih_access(db, current_user.tenant_id)
     visits = await cezih.dispatch_list_visits(
-        patient_id, db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        patient_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
     return VisitsListResponse(visits=visits)  # type: ignore[arg-type]
@@ -960,11 +1043,18 @@ async def create_visit(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_visit(
-        data.patient_id, data.nacin_prijema, data.vrsta_posjete, data.tip_posjete, data.reason,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        data.patient_id,
+        data.nacin_prijema,
+        data.vrsta_posjete,
+        data.tip_posjete,
+        data.reason,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         practitioner_id=current_user.practitioner_id or "",
-        org_code=org_code, source_oid=source_oid,
+        org_code=org_code,
+        source_oid=source_oid,
     )
 
 
@@ -980,17 +1070,22 @@ async def update_visit(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_visit(
-        visit_id, patient_id, data.reason,
+        visit_id,
+        patient_id,
+        data.reason,
         nacin_prijema=data.nacin_prijema,
         vrsta_posjete=data.vrsta_posjete,
         tip_posjete=data.tip_posjete,
         diagnosis_case_id=data.diagnosis_case_id,
         additional_practitioner_id=data.additional_practitioner_id,
         period_start=data.period_start,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         practitioner_id=current_user.practitioner_id or "",
-        org_code=org_code, source_oid=source_oid,
+        org_code=org_code,
+        source_oid=source_oid,
     )
 
 
@@ -1006,12 +1101,17 @@ async def visit_action(
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_visit_action(
-        visit_id, data.action, patient_id,
+        visit_id,
+        data.action,
+        patient_id,
         period_start=data.period_start,
-        db=db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         practitioner_id=current_user.practitioner_id or "",
-        org_code=org_code, source_oid=source_oid,
+        org_code=org_code,
+        source_oid=source_oid,
     )
 
 
@@ -1024,4 +1124,5 @@ async def probe_extsigner_transaction(
     """Probe extsigner API to discover retrieval endpoint for signed documents."""
     await check_cezih_access(db, current_user.tenant_id)
     from app.services.cezih_signing import check_extsigner_transaction
+
     return await check_extsigner_transaction(transaction_code)

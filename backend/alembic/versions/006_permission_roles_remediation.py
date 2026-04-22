@@ -8,6 +8,7 @@ Adds:
 - users.card_required column (smart card enforcement)
 - medical_records.sensitivity column (record access scope)
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

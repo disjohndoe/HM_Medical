@@ -11,6 +11,7 @@ all mirror writes were silently swallowed by try/except. Recreating the
 table now, with tip_posjete added so we can persist visit type across
 reloads (CEZIH QEDm strips Encounter.type on read).
 """
+
 import sqlalchemy as sa
 
 from alembic import op

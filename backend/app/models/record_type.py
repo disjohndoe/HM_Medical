@@ -9,9 +9,7 @@ from app.models.base import BaseTenantModel
 
 class RecordType(BaseTenantModel):
     __tablename__ = "record_types"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "slug", name="uq_record_type_tenant_slug"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_record_type_tenant_slug"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(50), nullable=False)

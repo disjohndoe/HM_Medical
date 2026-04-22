@@ -10,9 +10,7 @@ from app.models.base import BaseTenantModel
 
 class Procedure(BaseTenantModel):
     __tablename__ = "procedures"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "sifra", name="uq_procedure_tenant_sifra"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "sifra", name="uq_procedure_tenant_sifra"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sifra: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -26,9 +24,7 @@ class Procedure(BaseTenantModel):
 
 class PerformedProcedure(BaseTenantModel):
     __tablename__ = "performed_procedures"
-    __table_args__ = (
-        Index("ix_performed_procedures_patient", "tenant_id", "patient_id", "datum"),
-    )
+    __table_args__ = (Index("ix_performed_procedures_patient", "tenant_id", "patient_id", "datum"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     patient_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)

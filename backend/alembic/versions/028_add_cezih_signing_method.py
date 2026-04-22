@@ -8,6 +8,7 @@ NULL = use system default (settings.CEZIH_SIGNING_METHOD env var).
 'smartcard' = sign via local Tauri agent (NCrypt JWS).
 'extsigner' = sign via Certilia remote signing (mobile push).
 """
+
 import sqlalchemy as sa
 
 from alembic import op

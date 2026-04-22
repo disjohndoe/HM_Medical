@@ -5,6 +5,7 @@ Revises: 026_unique_card_binding
 Create Date: 2026-04-15
 
 """
+
 import sqlalchemy as sa
 
 from alembic import op

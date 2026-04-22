@@ -43,6 +43,7 @@ def _extract_signature_from_cms(cms_der: bytes) -> bytes:
 
         # More reliable: use Python's built-in ASN.1 decoder if available
         from asn1crypto import cms as asn1_cms
+
         content_info = asn1_cms.ContentInfo.load(cms_der)
         signed_data = content_info["content"]
         signer_infos = signed_data["signer_infos"]
@@ -80,9 +81,7 @@ def _extract_signature_from_cms(cms_der: bytes) -> bytes:
     except Exception as e:
         errors.append(f"Manual ASN.1 parsiranje nije uspjelo: {e}")
 
-    raise CezihSigningError(
-        "Ekstrakcija potpisa iz CMS formata nije uspjela. " + "; ".join(errors)
-    )
+    raise CezihSigningError("Ekstrakcija potpisa iz CMS formata nije uspjela. " + "; ".join(errors))
 
 
 def _ecdsa_der_to_raw(der_sig: bytes) -> bytes:
@@ -93,13 +92,14 @@ def _ecdsa_der_to_raw(der_sig: bytes) -> bytes:
     """
     try:
         from asn1crypto.core import Sequence
+
         seq = Sequence.load(der_sig)
         r_bytes = seq[0].contents
         s_bytes = seq[1].contents
 
         # Remove leading zero padding from DER integers
-        r_bytes = r_bytes.lstrip(b'\x00')
-        s_bytes = s_bytes.lstrip(b'\x00')
+        r_bytes = r_bytes.lstrip(b"\x00")
+        s_bytes = s_bytes.lstrip(b"\x00")
 
         # Determine component size from the larger of r, s
         component_size = max(len(r_bytes), len(s_bytes))
@@ -109,17 +109,21 @@ def _ecdsa_der_to_raw(der_sig: bytes) -> bytes:
                 component_size = std_size
                 break
 
-        r_bytes = r_bytes.rjust(component_size, b'\x00')
-        s_bytes = s_bytes.rjust(component_size, b'\x00')
+        r_bytes = r_bytes.rjust(component_size, b"\x00")
+        s_bytes = s_bytes.rjust(component_size, b"\x00")
 
         raw = r_bytes + s_bytes
-        logger.info("ECDSA DER→raw: %d bytes DER → %d bytes raw (r=%d, s=%d)",
-                     len(der_sig), len(raw), len(r_bytes), len(s_bytes))
+        logger.info(
+            "ECDSA DER→raw: %d bytes DER → %d bytes raw (r=%d, s=%d)",
+            len(der_sig),
+            len(raw),
+            len(r_bytes),
+            len(s_bytes),
+        )
         return raw
     except Exception as e:
         raise CezihSigningError(
-            f"Konverzija ECDSA potpisa nije uspjela: {e}. "
-            "Potpis je u neispravnom formatu i ne može se koristiti."
+            f"Konverzija ECDSA potpisa nije uspjela: {e}. Potpis je u neispravnom formatu i ne može se koristiti."
         ) from e
 
 
@@ -139,25 +143,17 @@ def _detect_bundle_type(bundle_json_bytes: bytes) -> str:
         bundle_obj = json.loads(bundle_json_bytes)
     except json.JSONDecodeError as e:
         logger.error("Invalid JSON bundle: %s", e)
-        raise CezihSigningError(
-            "Neispravan JSON format u FHIR bundleu. "
-            "Kontaktirajte tehničku podršku."
-        ) from e
+        raise CezihSigningError("Neispravan JSON format u FHIR bundleu. Kontaktirajte tehničku podršku.") from e
 
     bundle_type = bundle_obj.get("type")
     if not bundle_type:
         resource_type = bundle_obj.get("resourceType", "unknown")
         logger.error("Bundle missing 'type' field: resourceType=%s", resource_type)
-        raise CezihSigningError(
-            "FHIR bundle nema obavezno 'type' polje. "
-            "Kontaktirajte tehničku podršku."
-        )
+        raise CezihSigningError("FHIR bundle nema obavezno 'type' polje. Kontaktirajte tehničku podršku.")
 
     if bundle_type not in ("transaction", "message"):
         logger.warning("Unknown bundle type: %s", bundle_type)
-        raise CezihSigningError(
-            f"Nepoznat tip bundla: {bundle_type}. Dozvoljeni: transaction, message."
-        )
+        raise CezihSigningError(f"Nepoznat tip bundla: {bundle_type}. Dozvoljeni: transaction, message.")
 
     logger.debug("Detected bundle type: %s", bundle_type)
     return bundle_type
@@ -199,17 +195,24 @@ def _should_use_agent() -> bool:
     go through the agent when it is connected.
     """
     from app.services.cezih.client import current_tenant_id
+
     tenant_id = current_tenant_id.get()
     if not tenant_id:
         return False
     from app.services.agent_connection_manager import agent_manager
+
     return agent_manager.is_connected(tenant_id)
 
 
 async def _request_via_agent(
-    method: str, url: str, headers: dict[str, str],
-    form_data: dict | None, json_body: dict | None, timeout: int,
-    *, raw_body: str | None = None,
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    form_data: dict | None,
+    json_body: dict | None,
+    timeout: int,
+    *,
+    raw_body: str | None = None,
 ) -> dict:
     """Route HTTP request through the agent for CEZIH connectivity."""
     from app.services.agent_connection_manager import agent_manager
@@ -240,8 +243,11 @@ async def _request_via_agent(
     try:
         result = await agent_manager.proxy_http_request(
             tenant_id,
-            method=method, url=url, headers=headers,
-            body=body, timeout=float(timeout),
+            method=method,
+            url=url,
+            headers=headers,
+            body=body,
+            timeout=float(timeout),
         )
     except RuntimeError as e:
         raise CezihSigningError(f"Greška agenta: {e}") from e
@@ -280,7 +286,9 @@ async def _request_via_agent(
         parsed["status_code"] = status_code  # Include status code in response
         return parsed
     except Exception as parse_err:
-        logger.error("Failed to parse signing response as JSON: %s. Raw body (first 500 chars): %s", parse_err, body_text[:500])
+        logger.error(
+            "Failed to parse signing response as JSON: %s. Raw body (first 500 chars): %s", parse_err, body_text[:500]
+        )
         raise CezihSigningError("Neispravan odgovor od CEZIH servisa za potpisivanje.") from parse_err
 
 
@@ -359,8 +367,7 @@ async def _get_signing_token(client: httpx.AsyncClient) -> str:
             raise
         except httpx.ConnectError as e:
             raise CezihSigningError(
-                f"Veza sa CEZIH servisom za potpisivanje nije uspjela ({oauth_url}). "
-                "Provjerite internet vezu i VPN.",
+                f"Veza sa CEZIH servisom za potpisivanje nije uspjela ({oauth_url}). Provjerite internet vezu i VPN.",
             ) from e
         except httpx.TimeoutException as e:
             raise CezihSigningError(
@@ -437,8 +444,7 @@ async def sign_bundle_for_cezih(
     # Step 4: Send to agent for raw signing
     data_b64 = base64.b64encode(signing_input).decode("ascii")
 
-    logger.info("CEZIH raw signing via agent (input=%d bytes, kid=%.16s, alg=%s)",
-                len(signing_input), kid, algorithm)
+    logger.info("CEZIH raw signing via agent (input=%d bytes, kid=%.16s, alg=%s)", len(signing_input), kid, algorithm)
 
     try:
         result = await agent_manager.sign_raw(
@@ -456,8 +462,7 @@ async def sign_bundle_for_cezih(
     sig_b64 = result.get("signature", "")
     signature_bytes = base64.b64decode(sig_b64)
 
-    logger.info("Agent raw signing OK: alg=%s, sig=%d bytes, kid=%.16s",
-                algorithm, len(signature_bytes), kid)
+    logger.info("Agent raw signing OK: alg=%s, sig=%d bytes, kid=%.16s", algorithm, len(signature_bytes), kid)
 
     return {
         "success": True,
@@ -467,8 +472,6 @@ async def sign_bundle_for_cezih(
         "signed_at": datetime.now(UTC).isoformat(),
         "kid": kid,
     }
-
-
 
 
 async def sign_bundle_via_extsigner(
@@ -490,9 +493,7 @@ async def sign_bundle_via_extsigner(
 
     signer_oib = settings.CEZIH_SIGNER_OIB
     if not signer_oib:
-        raise CezihSigningError(
-            "CEZIH_SIGNER_OIB nije postavljen. Potrebno je za udaljeno potpisivanje (extsigner)."
-        )
+        raise CezihSigningError("CEZIH_SIGNER_OIB nije postavljen. Potrebno je za udaljeno potpisivanje (extsigner).")
 
     # Extsigner uses public hostname (no VPN needed), falls back to VPN URL.
     base_url = settings.CEZIH_FHIR_PUB_BASE_URL or settings.CEZIH_FHIR_BASE_URL
@@ -504,6 +505,7 @@ async def sign_bundle_via_extsigner(
     retrieve_url = f"{base}/services-router/gateway/extsigner/api/getSignedDocuments"
 
     import uuid as _uuid
+
     request_id = str(_uuid.uuid4())
     msg_id = message_id or str(_uuid.uuid4())
 
@@ -533,7 +535,8 @@ async def sign_bundle_via_extsigner(
     # Auth: mTLS via agent session — NO Bearer token (adding one causes 401).
     logger.info(
         "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes)",
-        signer_oib, len(bundle_json_bytes),
+        signer_oib,
+        len(bundle_json_bytes),
     )
 
     sign_result = await _request_via_agent(
@@ -555,11 +558,13 @@ async def sign_bundle_via_extsigner(
 
     logger.info(
         "CEZIH extsigner step 1 OK: transactionCode=%.40s..., documents=%s",
-        transaction_code, sign_result.get("documents"),
+        transaction_code,
+        sign_result.get("documents"),
     )
 
     # Step 2: Poll for signed document (user needs to approve on phone)
     import urllib.parse
+
     tc_encoded = urllib.parse.quote(transaction_code, safe="")
     get_url = f"{retrieve_url}?transactionId={tc_encoded}"
 
@@ -569,7 +574,8 @@ async def sign_bundle_via_extsigner(
     for attempt in range(1, max_attempts + 1):
         logger.info(
             "CEZIH extsigner step 2: polling for signed document (attempt %d/%d)",
-            attempt, max_attempts,
+            attempt,
+            max_attempts,
         )
 
         try:
@@ -585,7 +591,9 @@ async def sign_bundle_via_extsigner(
             err_str = str(e)
             # ERROR_CODE_0022 = "not ready yet" (phase=HASH_SENT, waiting for Certilia approval)
             if "ERROR_CODE_0022" in err_str or "not ready" in err_str.lower():
-                logger.info("Extsigner: document not ready yet — phase=HASH_SENT (attempt %d/%d)", attempt, max_attempts)
+                logger.info(
+                    "Extsigner: document not ready yet — phase=HASH_SENT (attempt %d/%d)", attempt, max_attempts
+                )
                 await asyncio.sleep(poll_interval)
                 continue
             # Other retriable statuses
@@ -605,14 +613,11 @@ async def sign_bundle_via_extsigner(
         # A mismatch means the bundle was mutated after add_signature, which
         # invalidates the signature → ERR_DS_1002 / business-rule on verify.
         try:
-            docs = (
-                retrieve_result.get("documents")
-                or retrieve_result.get("signedDocuments")
-                or []
-            )
+            docs = retrieve_result.get("documents") or retrieve_result.get("signedDocuments") or []
             if docs:
                 import base64 as _b64
                 import hashlib as _hashlib
+
                 doc = docs[0] or {}
                 doc_b64 = (
                     doc.get("base64Document")
@@ -626,7 +631,9 @@ async def sign_bundle_via_extsigner(
                     sha = _hashlib.sha256(raw).hexdigest()[:16]
                     logger.info(
                         "Extsigner signed-document: size=%d bytes, sha256-prefix=%s, head=%s",
-                        len(raw), sha, raw[:500].decode("utf-8", errors="replace"),
+                        len(raw),
+                        sha,
+                        raw[:500].decode("utf-8", errors="replace"),
                     )
         except Exception as _diag_err:  # pragma: no cover — best-effort
             logger.warning("Extsigner signed-document diag failed: %s", _diag_err)
@@ -690,7 +697,8 @@ async def check_extsigner_transaction(transaction_code: str) -> dict:
         try:
             if method == "POST":
                 result = await _request_via_agent(
-                    method="POST", url=url,
+                    method="POST",
+                    url=url,
                     headers={"Content-Type": "application/json", "Accept": "application/json"},
                     form_data=None,
                     json_body={"transactionCode": transaction_code},
@@ -698,9 +706,11 @@ async def check_extsigner_transaction(transaction_code: str) -> dict:
                 )
             else:
                 result = await _request_via_agent(
-                    method="GET", url=url,
+                    method="GET",
+                    url=url,
                     headers={"Accept": "application/json"},
-                    form_data=None, json_body=None,
+                    form_data=None,
+                    json_body=None,
                     timeout=30,
                 )
             results[url] = result
@@ -738,7 +748,8 @@ async def sign_health_check(client: httpx.AsyncClient) -> dict:
         response = await client.get(url, timeout=10, follow_redirects=False)
     except httpx.ConnectError:
         return {
-            "reachable": True, "auth_works": False,
+            "reachable": True,
+            "auth_works": False,
             "reason": "Connected but needs VPN/session auth",
         }
     except httpx.TimeoutException:
@@ -752,7 +763,7 @@ async def sign_health_check(client: httpx.AsyncClient) -> dict:
             "reachable": True,
             "auth_works": False,
             "reason": "Endpoint requires browser-based session auth (authorization code flow). "
-                     "Direct API access needs VPN-protected endpoint (certws2).",
+            "Direct API access needs VPN-protected endpoint (certws2).",
             "status_code": response.status_code,
         }
 

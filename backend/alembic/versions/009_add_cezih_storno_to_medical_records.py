@@ -5,6 +5,7 @@ Revises: 008_medical_record_link
 Create Date: 2026-03-31
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

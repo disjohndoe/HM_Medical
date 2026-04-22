@@ -2,6 +2,7 @@
 
 Contains condition builders and CASE_ACTION_MAP for case lifecycle operations.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,13 +49,14 @@ def build_condition_create(
     local_id = local_case_id or str(uuid.uuid4())
 
     # Convert date-only string to selected date + current time
+    onset_dt: datetime | str | None = None
     if onset_date and len(onset_date) == 10:  # Date-only "YYYY-MM-DD"
         now = datetime.now(_TZ_ZAGREB)
         onset_dt = datetime.combine(
             date.fromisoformat(onset_date),
             now.time(),
         ).replace(tzinfo=_TZ_ZAGREB)
-    else:
+    elif onset_date:
         onset_dt = onset_date
 
     condition: dict[str, Any] = {
@@ -212,24 +214,40 @@ def build_condition_data_update(
 
     if severity_code:
         condition["severity"] = {
-            "coding": [{"system": "http://snomed.info/sct", "code": severity_code,
-                        **({"display": severity_display} if severity_display else {})}],
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": severity_code,
+                    **({"display": severity_display} if severity_display else {}),
+                }
+            ],
         }
 
     if body_site_code:
-        condition["bodySite"] = [{
-            "coding": [{"system": "http://snomed.info/sct", "code": body_site_code,
-                        **({"display": body_site_display} if body_site_display else {})}],
-        }]
+        condition["bodySite"] = [
+            {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": body_site_code,
+                        **({"display": body_site_display} if body_site_display else {}),
+                    }
+                ],
+            }
+        ]
 
     if note_text:
-        condition["note"] = [{
-            "extension": [{
-                "url": EXT_ANNOTATION_TYPE,
-                "valueCoding": {"system": CS_ANNOTATION_TYPE, "code": "4"},
-            }],
-            "text": note_text,
-        }]
+        condition["note"] = [
+            {
+                "extension": [
+                    {
+                        "url": EXT_ANNOTATION_TYPE,
+                        "valueCoding": {"system": CS_ANNOTATION_TYPE, "code": "4"},
+                    }
+                ],
+                "text": note_text,
+            }
+        ]
 
     return condition
 
@@ -266,7 +284,11 @@ CASE_ACTION_MAP: dict[str, dict[str, str]] = {
 #   abatement — include Condition.abatementDateTime (set to now())
 CASE_EVENT_PROFILE: dict[str, dict[str, Any]] = {
     "2.3": {"cs": False, "abatement": False, "cs_value": None},  # Remisija — minimal
-    "2.4": {"cs": True,  "abatement": True,  "cs_value": "resolved"},  # Resolve — cs=resolved + abatementDateTime REQUIRED
+    "2.4": {
+        "cs": True,
+        "abatement": True,
+        "cs_value": "resolved",
+    },  # Resolve — cs=resolved + abatementDateTime REQUIRED
     "2.5": {"cs": False, "abatement": False, "cs_value": None},  # Relapse — minimal
     "2.9": {"cs": False, "abatement": False, "cs_value": None},  # Reopen after resolve — minimal
     # 2.2 Ponavljajući routes through build_condition_create (hr-create-health-issue-recurrence-message)

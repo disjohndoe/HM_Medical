@@ -1,4 +1,5 @@
 """CEZIH patient service — PDQm queries, insurance check, demographics."""
+
 from __future__ import annotations
 
 import logging
@@ -55,8 +56,7 @@ async def search_patient_by_identifier(
     if resource_type == "OperationOutcome":
         issues = response.get("issue", [])
         diagnostics = "; ".join(
-            issue.get("diagnostics") or issue.get("details", {}).get("text", "")
-            for issue in issues
+            issue.get("diagnostics") or issue.get("details", {}).get("text", "") for issue in issues
         )
         raise CezihFhirError(
             f"CEZIH greška: {diagnostics or 'Nepoznata greška'}",
@@ -68,11 +68,15 @@ async def search_patient_by_identifier(
 
     entries = response.get("entry", [])
     if not entries:
-        id_label = {"mbo": "MBO", "putovnica": "putovnica", "ehic": "EHIC broj"}.get(identifier_system, identifier_system)
+        id_label = {"mbo": "MBO", "putovnica": "putovnica", "ehic": "EHIC broj"}.get(
+            identifier_system, identifier_system
+        )
         raise CezihError(f"Pacijent s {id_label} '{value}' nije pronađen u CEZIH registru")
 
     if len(entries) > 1:
-        logger.warning("PDQm patient search returned %d entries for %s|%s — using first", len(entries), identifier_system, value)
+        logger.warning(
+            "PDQm patient search returned %d entries for %s|%s — using first", len(entries), identifier_system, value
+        )
 
     raw_resource = entries[0].get("resource", {})
     logger.info("PDQm raw Patient resource (%s|%s): %.2000s", identifier_system, value, str(raw_resource))
@@ -257,8 +261,11 @@ async def check_insurance(
         }
 
     # Unexpected response format — log full response for debugging
-    logger.warning("CEZIH insurance check: unexpected response type: %s — full response: %.500s",
-                    response.get("resourceType"), str(response))
+    logger.warning(
+        "CEZIH insurance check: unexpected response type: %s — full response: %.500s",
+        response.get("resourceType"),
+        str(response),
+    )
     raise CezihError("Unexpected CEZIH response format for patient lookup")
 
 

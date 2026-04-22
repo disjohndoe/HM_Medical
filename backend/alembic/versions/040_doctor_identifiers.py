@@ -3,6 +3,7 @@
 Revision ID: 040_doctor_identifiers
 Revises: 039_cezih_ref_id
 """
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -32,8 +33,7 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_user_role_can_hold_doctor_ids",
         "users",
-        "role IN ('doctor','admin','nurse') OR "
-        "(practitioner_id IS NULL AND mbo_lijecnika IS NULL)",
+        "role IN ('doctor','admin','nurse') OR (practitioner_id IS NULL AND mbo_lijecnika IS NULL)",
     )
 
 

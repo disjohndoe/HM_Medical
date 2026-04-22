@@ -41,8 +41,6 @@ class DrugListItem(Base):
     s_lij: Mapped[int | None] = mapped_column(Integer, nullable=True)
     s_lio: Mapped[int | None] = mapped_column(Integer, nullable=True)
     aktivan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    synced_at: Mapped[str] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    synced_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     # Full-text search helper: lowercase composite for ILIKE queries
     search_text: Mapped[str] = mapped_column(Text, nullable=False, default="")

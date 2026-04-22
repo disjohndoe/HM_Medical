@@ -17,11 +17,13 @@ from app.services import prescription_service
 async def _validate_tip_for_tenant(db: AsyncSession, tenant_id: uuid.UUID, tip: str) -> None:
     """Raise 422 if tip is not an active record type for this tenant."""
     result = await db.execute(
-        select(RecordType).where(
+        select(RecordType)
+        .where(
             RecordType.tenant_id == tenant_id,
             RecordType.slug == tip,
             RecordType.is_active.is_(True),
-        ).limit(1)
+        )
+        .limit(1)
     )
     if not result.scalar_one_or_none() and tip not in RECORD_TIP_ALLOWED:
         raise HTTPException(
@@ -50,10 +52,7 @@ def _join_record_query(base):
 def _record_row_to_dict(row) -> dict:
     rec = row[0]
     patient_has_cezih = bool(
-        row.patient_mbo
-        or row.patient_cezih_patient_id
-        or row.patient_ehic_broj
-        or row.patient_broj_putovnice
+        row.patient_mbo or row.patient_cezih_patient_id or row.patient_ehic_broj or row.patient_broj_putovnice
     )
     return {
         "id": rec.id,
@@ -123,9 +122,7 @@ async def list_records(
     total = (await db.execute(count_q)).scalar_one()
 
     query = _join_record_query(base)
-    result = await db.execute(
-        query.order_by(MedicalRecord.datum.desc()).offset(skip).limit(limit)
-    )
+    result = await db.execute(query.order_by(MedicalRecord.datum.desc()).offset(skip).limit(limit))
     return [_record_row_to_dict(row) for row in result.all()], total
 
 

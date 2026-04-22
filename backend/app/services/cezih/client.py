@@ -4,6 +4,7 @@ import asyncio
 import contextvars
 import logging
 import time
+from typing import Literal, overload
 
 import httpx
 
@@ -96,10 +97,9 @@ class CezihFhirClient:
             from sqlalchemy import select
 
             from app.models.user import User
+
             try:
-                method = await db.scalar(
-                    select(User.cezih_signing_method).where(User.id == user_id)
-                )
+                method = await db.scalar(select(User.cezih_signing_method).where(User.id == user_id))
                 self._signing_method = method or settings.CEZIH_SIGNING_METHOD
             except Exception:
                 logger.warning("Could not resolve signing method from DB, using default")
@@ -134,7 +134,9 @@ class CezihFhirClient:
 
     async def _attach_auth(self, headers: dict[str, str], *, oauth2_url: str) -> dict[str, str]:
         token = await get_oauth_token(
-            client=self._client, tenant_id=self._tenant_id, oauth2_url=oauth2_url,
+            client=self._client,
+            tenant_id=self._tenant_id,
+            oauth2_url=oauth2_url,
         )
         headers["Authorization"] = f"Bearer {token}"
         return headers
@@ -148,11 +150,17 @@ class CezihFhirClient:
         if not self._tenant_id:
             return False
         from app.services.agent_connection_manager import agent_manager
+
         return agent_manager.is_connected(self._tenant_id)
 
     async def _request_via_agent(
-        self, method: str, url: str, headers: dict[str, str],
-        params: dict | None, json_body: dict | list | None, timeout: int,
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        params: dict | None,
+        json_body: dict | list | None,
+        timeout: int,
     ) -> dict | bytes:
         """Route request through the agent's native TLS for mTLS client cert."""
         import json as _json
@@ -162,6 +170,7 @@ class CezihFhirClient:
         # Append query params to URL
         if params:
             from urllib.parse import urlencode
+
             url = f"{url}?{urlencode(params, doseq=True)}"
 
         body_str = _json.dumps(json_body) if json_body else None
@@ -174,8 +183,11 @@ class CezihFhirClient:
         try:
             result = await agent_manager.proxy_http_request(
                 self._tenant_id,
-                method=method, url=url, headers=headers,
-                body=body_str, timeout=float(timeout),
+                method=method,
+                url=url,
+                headers=headers,
+                body=body_str,
+                timeout=float(timeout),
             )
         except RuntimeError as e:
             raise CezihConnectionError(str(e)) from e
@@ -192,10 +204,7 @@ class CezihFhirClient:
             # TC16 diagnostics: full body + Keycloak-redirect signal for health-issue-services.
             # Distinguishes cold-gateway rejection (HTML/auth-realm) from a FHIR OperationOutcome.
             if "health-issue-services" in url:
-                is_keycloak_redirect = (
-                    "/auth/realms/" in body_text_raw
-                    or body_text_raw.lstrip().startswith("<")
-                )
+                is_keycloak_redirect = "/auth/realms/" in body_text_raw or body_text_raw.lstrip().startswith("<")
                 logger.info(
                     "CEZIH diag health-issue-services error: status=%d is_keycloak_redirect=%s headers=%r body=%s",
                     status_code,
@@ -213,13 +222,16 @@ class CezihFhirClient:
         # Binary response: agent sets body_bytes (base64) and leaves body empty
         if body_bytes and status_code < 400:
             import base64
+
             decoded = base64.b64decode(body_bytes)
             size = len(decoded)
             is_pdf = decoded.startswith(b"%PDF")
             preview = decoded[:200] if size > 0 else b""
             logger.info(
                 "CEZIH binary response: %d bytes, is_pdf=%s, preview=%r",
-                size, is_pdf, preview,
+                size,
+                is_pdf,
+                preview,
             )
             return decoded
 
@@ -229,12 +241,15 @@ class CezihFhirClient:
             if status_code < 400:
                 logger.warning(
                     "CEZIH agent response is not valid JSON (status=%d, len=%d): %s",
-                    status_code, len(body_text), str(json_err)[:200],
+                    status_code,
+                    len(body_text),
+                    str(json_err)[:200],
                 )
                 return body_text.encode("utf-8") if body_text else b""
             logger.warning(
                 "CEZIH agent error response not parseable as JSON (status=%d): %.500s",
-                status_code, body_text,
+                status_code,
+                body_text,
             )
             body = {}
 
@@ -308,12 +323,22 @@ class CezihFhirClient:
         logger.info("CEZIH request: %s %s (attempt %d/%d)", method, url, _attempt + 1, max_attempts)
         if json_body:
             import json as _json_for_log
-            logger.info("CEZIH request body (%d chars): %s", len(_json_for_log.dumps(json_body)), _json_for_log.dumps(json_body, ensure_ascii=False)[:5000])
+
+            logger.info(
+                "CEZIH request body (%d chars): %s",
+                len(_json_for_log.dumps(json_body)),
+                _json_for_log.dumps(json_body, ensure_ascii=False)[:5000],
+            )
         start = time.perf_counter()
 
         try:
             response = await self._client.request(
-                method, url, params=params, json=json_body, headers=headers, timeout=timeout,
+                method,
+                url,
+                params=params,
+                json=json_body,
+                headers=headers,
+                timeout=timeout,
             )
         except httpx.ConnectError as e:
             raise CezihConnectionError(f"Cannot connect to CEZIH at {url}. Is VPN connected?") from e
@@ -327,17 +352,27 @@ class CezihFhirClient:
         if response.status_code == 401 and _attempt < max_attempts - 1:
             logger.warning("CEZIH 401, invalidating token and retrying")
             invalidate_token(oauth2_url)
-            await asyncio.sleep(1.0 * (2 ** _attempt))
+            await asyncio.sleep(1.0 * (2**_attempt))
             return await self.request(
-                method, path, params=params, json_body=json_body, timeout=timeout, _attempt=_attempt + 1,
+                method,
+                path,
+                params=params,
+                json_body=json_body,
+                timeout=timeout,
+                _attempt=_attempt + 1,
             )
 
         # 5xx — retry with exponential backoff
         if response.status_code >= 500 and _attempt < max_attempts - 1:
             logger.warning("CEZIH %d, retrying (attempt %d/%d)", response.status_code, _attempt + 1, max_attempts)
-            await asyncio.sleep(2.0 * (2 ** _attempt))
+            await asyncio.sleep(2.0 * (2**_attempt))
             return await self.request(
-                method, path, params=params, json_body=json_body, timeout=timeout, _attempt=_attempt + 1,
+                method,
+                path,
+                params=params,
+                json_body=json_body,
+                timeout=timeout,
+                _attempt=_attempt + 1,
             )
 
         # Parse response body
@@ -362,11 +397,39 @@ class CezihFhirClient:
 
         return body
 
-    async def get(self, path: str, *, params: dict | None = None, timeout: int | None = None, accept: str | None = None) -> dict | bytes:
+    @overload
+    async def get(
+        self,
+        path: str,
+        *,
+        params: dict | None = None,
+        timeout: int | None = None,
+        accept: Literal["*/*"],
+    ) -> dict | bytes: ...
+
+    @overload
+    async def get(
+        self,
+        path: str,
+        *,
+        params: dict | None = None,
+        timeout: int | None = None,
+        accept: None = None,
+    ) -> dict: ...
+
+    async def get(
+        self,
+        path: str,
+        *,
+        params: dict | None = None,
+        timeout: int | None = None,
+        accept: str | None = None,
+    ) -> dict | bytes:
         return await self.request("GET", path, params=params, timeout=timeout, accept=accept)
 
     async def post(self, path: str, *, json_body: dict | None = None) -> dict:
-        return await self.request("POST", path, json_body=json_body)
+        result = await self.request("POST", path, json_body=json_body)
+        return result  # type: ignore[return-value]
 
     async def process_message(self, service_path: str, bundle: dict) -> dict:
         """POST a FHIR message Bundle via $process-message operation.

@@ -11,6 +11,7 @@ New code should import directly from the appropriate module:
   - app.services.cezih.dispatchers.visits for visit management
   - app.services.cezih.dispatchers.registries for health/terminology
 """
+
 from __future__ import annotations
 
 # Re-export from new dispatchers package for back-compat during refactor

@@ -14,6 +14,7 @@ Import from domain modules:
   - app.services.cezih.dispatchers.visits for visit management
   - app.services.cezih.dispatchers.registries for health/terminology
 """
+
 from __future__ import annotations
 
 from app.services.cezih.dispatchers.cases import *  # noqa: F401,F403

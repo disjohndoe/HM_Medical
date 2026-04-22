@@ -1,4 +1,5 @@
 """Shared CEZIH FHIR constants and reference helpers."""
+
 # ruff: noqa: N815 — FHIR spec requires camelCase field names
 from __future__ import annotations
 
@@ -59,14 +60,27 @@ def _now_iso() -> str:
 
 __all__ = [
     "MESSAGE_TYPE_SYSTEM",
-    "ID_MBO", "ID_JEDINSTVENI", "ID_EHIC", "ID_PUTOVNICA",
-    "ID_ORG", "ID_PRACTITIONER",
-    "ID_CASE_GLOBAL", "ID_CASE_REF", "ID_CASE_LOCAL", "ID_ENCOUNTER",
-    "CS_ICD10_HR", "CS_ANNOTATION_TYPE",
-    "CS_CONDITION_VER_STATUS", "CS_CONDITION_CLINICAL",
-    "EXT_ANNOTATION_TYPE", "EXT_TROSKOVI_SUDJELovanje",
-    "CS_SUDJELOVANJE_U_TROSKOVIMA", "CS_SIFRA_OSLOBODJENJA",
-    "patient_ref", "org_ref", "practitioner_ref",
+    "ID_MBO",
+    "ID_JEDINSTVENI",
+    "ID_EHIC",
+    "ID_PUTOVNICA",
+    "ID_ORG",
+    "ID_PRACTITIONER",
+    "ID_CASE_GLOBAL",
+    "ID_CASE_REF",
+    "ID_CASE_LOCAL",
+    "ID_ENCOUNTER",
+    "CS_ICD10_HR",
+    "CS_ANNOTATION_TYPE",
+    "CS_CONDITION_VER_STATUS",
+    "CS_CONDITION_CLINICAL",
+    "EXT_ANNOTATION_TYPE",
+    "EXT_TROSKOVI_SUDJELovanje",
+    "CS_SUDJELOVANJE_U_TROSKOVIMA",
+    "CS_SIFRA_OSLOBODJENJA",
+    "patient_ref",
+    "org_ref",
+    "practitioner_ref",
     "_now_iso",
     "_TZ_ZAGREB",
 ]

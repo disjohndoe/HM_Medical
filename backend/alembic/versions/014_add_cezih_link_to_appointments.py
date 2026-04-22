@@ -5,6 +5,7 @@ Revises: 013_hzzo_contract
 Create Date: 2026-03-31
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -20,13 +21,15 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column(
         "appointments",
-        sa.Column("cezih_visit_id", sa.String(100), nullable=True,
-                  comment="CEZIH visit identifier linked to this appointment"),
+        sa.Column(
+            "cezih_visit_id", sa.String(100), nullable=True, comment="CEZIH visit identifier linked to this appointment"
+        ),
     )
     op.add_column(
         "appointments",
-        sa.Column("cezih_sync_status", sa.String(20), nullable=True,
-                  comment="CEZIH sync state: pending, synced, failed"),
+        sa.Column(
+            "cezih_sync_status", sa.String(20), nullable=True, comment="CEZIH sync state: pending, synced, failed"
+        ),
     )
     op.create_index("ix_appointments_cezih_visit_id", "appointments", ["cezih_visit_id"])
 

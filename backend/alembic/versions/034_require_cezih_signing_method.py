@@ -9,6 +9,7 @@ Removes the "Zadano (sustav)" option — every user must now explicitly be
 (the working default), then the column is made NOT NULL and the CHECK
 constraint tightened.
 """
+
 import sqlalchemy as sa
 
 from alembic import op
@@ -20,9 +21,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "UPDATE users SET cezih_signing_method = 'extsigner' WHERE cezih_signing_method IS NULL"
-    )
+    op.execute("UPDATE users SET cezih_signing_method = 'extsigner' WHERE cezih_signing_method IS NULL")
     op.alter_column(
         "users",
         "cezih_signing_method",

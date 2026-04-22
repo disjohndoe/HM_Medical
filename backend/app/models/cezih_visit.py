@@ -19,29 +19,36 @@ class CezihVisit(BaseTenantModel):
 
     __tablename__ = "cezih_visits"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     cezih_visit_id: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, index=True,
+        String(100),
+        nullable=True,
+        index=True,
         comment="CEZIH-assigned visit identifier",
     )
     patient_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True,
+        UUID(as_uuid=True),
+        ForeignKey("patients.id"),
+        nullable=False,
+        index=True,
     )
     patient_mbo: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="in-progress",
+        String(30),
+        nullable=False,
+        default="in-progress",
     )
     admission_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
     tip_posjete: Mapped[str | None] = mapped_column(String(10), nullable=True)
     vrsta_posjete: Mapped[str | None] = mapped_column(String(10), nullable=True)
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     period_start: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     period_end: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     diagnosis_case_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
@@ -53,5 +60,6 @@ class CezihVisit(BaseTenantModel):
     last_error_display: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_diagnostics: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )

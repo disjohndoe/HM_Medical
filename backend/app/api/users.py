@@ -18,8 +18,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 _CARD_CONFLICT_DETAIL = (
-    "Ova kartica je već povezana s drugim korisnikom. "
-    "Prethodni korisnik mora odspojiti karticu prije povezivanja."
+    "Ova kartica je već povezana s drugim korisnikom. Prethodni korisnik mora odspojiti karticu prije povezivanja."
 )
 
 
@@ -73,19 +72,18 @@ async def _assert_card_unique(
     if card_certificate_serial:
         conditions.append(User.card_certificate_serial == card_certificate_serial)
     if card_holder_name:
-        conditions.append(
-            func.upper(func.trim(User.card_holder_name))
-            == card_holder_name.strip().upper()
-        )
+        conditions.append(func.upper(func.trim(User.card_holder_name)) == card_holder_name.strip().upper())
     if not conditions:
         return
     result = await db.execute(
-        select(User.id).where(
+        select(User.id)
+        .where(
             or_(*conditions),
             User.id != user_id,
             User.tenant_id == tenant_id,
             User.is_active.is_(True),
-        ).limit(1)
+        )
+        .limit(1)
     )
     if result.first():
         raise HTTPException(
@@ -156,9 +154,7 @@ async def create_user(
 ):
     await check_user_limit(db, current_user.tenant_id)
 
-    existing = await db.execute(
-        select(User).where(User.email == data.email, User.tenant_id == current_user.tenant_id)
-    )
+    existing = await db.execute(select(User).where(User.email == data.email, User.tenant_id == current_user.tenant_id))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email vec postoji u ovoj klinici")
 

@@ -2,6 +2,7 @@
 
 Contains encounter builders and VISIT_ACTION_MAP for visit lifecycle operations.
 """
+
 from __future__ import annotations
 
 import logging
@@ -110,19 +111,25 @@ def build_encounter_create(
         "type": [],
     }
     if vrsta_posjete:
-        encounter["type"].append({
-            "coding": [{"system": CS_VRSTA_POSJETE, "code": vrsta_posjete}],
-        })
+        encounter["type"].append(
+            {
+                "coding": [{"system": CS_VRSTA_POSJETE, "code": vrsta_posjete}],
+            }
+        )
     if tip_posjete:
-        encounter["type"].append({
-            "coding": [{"system": CS_TIP_POSJETE, "code": tip_posjete}],
-        })
+        encounter["type"].append(
+            {
+                "coding": [{"system": CS_TIP_POSJETE, "code": tip_posjete}],
+            }
+        )
     if not encounter["type"]:
         del encounter["type"]
     if practitioner_id:
-        encounter["participant"] = [{
-            "individual": practitioner_ref(practitioner_id),
-        }]
+        encounter["participant"] = [
+            {
+                "individual": practitioner_ref(practitioner_id),
+            }
+        ]
     encounter["period"] = {"start": _now_iso()}
     if org_code:
         encounter["serviceProvider"] = org_ref(org_code)
@@ -174,13 +181,17 @@ def build_encounter_update(
         "period": {"start": period_start if period_start else _now_iso()},
     }
     if vrsta_posjete:
-        encounter["type"].append({
-            "coding": [{"system": CS_VRSTA_POSJETE, "code": vrsta_posjete}],
-        })
+        encounter["type"].append(
+            {
+                "coding": [{"system": CS_VRSTA_POSJETE, "code": vrsta_posjete}],
+            }
+        )
     if tip_posjete:
-        encounter["type"].append({
-            "coding": [{"system": CS_TIP_POSJETE, "code": tip_posjete}],
-        })
+        encounter["type"].append(
+            {
+                "coding": [{"system": CS_TIP_POSJETE, "code": tip_posjete}],
+            }
+        )
     if not encounter["type"]:
         del encounter["type"]
     if org_code:
@@ -193,12 +204,14 @@ def build_encounter_update(
     if reason:
         encounter["reasonCode"] = [{"text": reason}]
     if diagnosis_case_id:
-        encounter["diagnosis"] = [{
-            "condition": {
-                "type": "Condition",
-                "identifier": {"system": ID_CASE_REF, "value": diagnosis_case_id},
-            },
-        }]
+        encounter["diagnosis"] = [
+            {
+                "condition": {
+                    "type": "Condition",
+                    "identifier": {"system": ID_CASE_REF, "value": diagnosis_case_id},
+                },
+            }
+        ]
     return encounter
 
 
@@ -232,12 +245,14 @@ def build_encounter_close(
         "serviceProvider": org_ref(org_code) if org_code else {},
     }
     if diagnosis_case_id:
-        encounter["diagnosis"] = [{
-            "condition": {
-                "type": "Condition",
-                "identifier": {"system": ID_CASE_REF, "value": diagnosis_case_id},
-            },
-        }]
+        encounter["diagnosis"] = [
+            {
+                "condition": {
+                    "type": "Condition",
+                    "identifier": {"system": ID_CASE_REF, "value": diagnosis_case_id},
+                },
+            }
+        ]
     if not org_code:
         encounter.pop("serviceProvider", None)
     return encounter
@@ -274,12 +289,14 @@ def build_encounter_cancel(
     if org_code:
         encounter["serviceProvider"] = org_ref(org_code)
     if diagnosis_case_id:
-        encounter["diagnosis"] = [{
-            "condition": {
-                "type": "Condition",
-                "identifier": {"system": ID_CASE_REF, "value": diagnosis_case_id},
-            },
-        }]
+        encounter["diagnosis"] = [
+            {
+                "condition": {
+                    "type": "Condition",
+                    "identifier": {"system": ID_CASE_REF, "value": diagnosis_case_id},
+                },
+            }
+        ]
     return encounter
 
 

@@ -7,6 +7,7 @@ Create Date: 2026-04-16
 Links a medical record to its uploaded attachment so the e-Nalaz dispatcher
 can embed the file as a Binary resource in the ITI-65 bundle.
 """
+
 import sqlalchemy as sa
 
 from alembic import op

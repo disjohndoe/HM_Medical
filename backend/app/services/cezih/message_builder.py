@@ -12,6 +12,7 @@ New code should import directly from the appropriate module:
   - app.services.cezih.signing for digital signing
   - app.services.cezih.response_parsing for response parsing
 """
+
 from __future__ import annotations
 
 # Re-export for back-compat with existing imports.

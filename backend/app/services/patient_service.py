@@ -43,9 +43,7 @@ async def list_patients(
     count_q = select(func.count()).select_from(base.subquery())
     total = (await db.execute(count_q)).scalar_one()
 
-    result = await db.execute(
-        base.order_by(Patient.prezime, Patient.ime).offset(skip).limit(limit)
-    )
+    result = await db.execute(base.order_by(Patient.prezime, Patient.ime).offset(skip).limit(limit))
     patients = list(result.scalars().all())
 
     return patients, total

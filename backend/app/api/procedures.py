@@ -76,8 +76,15 @@ async def list_performed_procedures(
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await procedure_service.list_performed(
-        db, current_user.tenant_id, patient_id=patient_id, date_from=date_from, date_to=date_to,
-        appointment_id=appointment_id, medical_record_id=medical_record_id, skip=skip, limit=limit,
+        db,
+        current_user.tenant_id,
+        patient_id=patient_id,
+        date_from=date_from,
+        date_to=date_to,
+        appointment_id=appointment_id,
+        medical_record_id=medical_record_id,
+        skip=skip,
+        limit=limit,
     )
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 

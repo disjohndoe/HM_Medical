@@ -27,9 +27,7 @@ async def get_available_slots(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await appointment_service.get_available_slots(
-        db, current_user.tenant_id, doktor_id, date, trajanje_minuta
-    )
+    return await appointment_service.get_available_slots(db, current_user.tenant_id, doktor_id, date, trajanje_minuta)
 
 
 @router.get("/day/{day}", response_model=list[AppointmentRead])
@@ -39,9 +37,7 @@ async def get_day_appointments(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await appointment_service.get_day_appointments(
-        db, current_user.tenant_id, day, doktor_id
-    )
+    return await appointment_service.get_day_appointments(db, current_user.tenant_id, day, doktor_id)
 
 
 @router.get("", response_model=PaginatedResponse[AppointmentRead])
@@ -88,7 +84,10 @@ async def update_appointment(
     db: AsyncSession = Depends(get_db),
 ):
     return await appointment_service.update_appointment(
-        db, current_user.tenant_id, appointment_id, data,
+        db,
+        current_user.tenant_id,
+        appointment_id,
+        data,
         user_id=current_user.id,
         http_client=getattr(request.app.state, "http_client", None),
     )

@@ -6,6 +6,7 @@ Two methods, both producing Bundle.signature.data = base64(JWS_compact):
 
 Per-user preference via User.cezih_signing_method; no fallbacks.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,7 +46,9 @@ def _debug_dump_jws(source: str, jws_b64: str) -> None:
         if len(parts) != 3:
             logger.info(
                 "%s JWS DUMP: unexpected part count (%d), raw=%s",
-                source, len(parts), jws_raw[:500],
+                source,
+                len(parts),
+                jws_raw[:500],
             )
             return
         header_raw = _base64.urlsafe_b64decode(parts[0] + "==")
@@ -65,7 +68,8 @@ def _debug_dump_jws(source: str, jws_b64: str) -> None:
                 payload_json = json.loads(payload_raw)
                 logger.info(
                     "%s JWS DUMP payload_json_sorted=%s",
-                    source, json.dumps(payload_json, sort_keys=True, ensure_ascii=False),
+                    source,
+                    json.dumps(payload_json, sort_keys=True, ensure_ascii=False),
                 )
             except Exception:
                 logger.info("%s JWS DUMP payload_utf8=%s", source, payload_raw.decode("utf-8", errors="replace"))
@@ -103,21 +107,17 @@ async def _resolve_signing_method() -> str:
         raise CezihError("Baza podataka nije dostupna.")
 
     try:
-        method = await db.scalar(
-            select(User.cezih_signing_method).where(User.id == user_id)
-        )
+        method = await db.scalar(select(User.cezih_signing_method).where(User.id == user_id))
     except Exception as e:
         logger.error("DB lookup failed for signing method (user_id=%s): %s", user_id, e)
         raise CezihError(
-            "Potpis nije konfiguriran. Kontaktirajte administratora ili "
-            "odaberite način potpisa u Postavke."
+            "Potpis nije konfiguriran. Kontaktirajte administratora ili odaberite način potpisa u Postavke."
         ) from e
 
     if not method:
         logger.error("User has no signing method configured (user_id=%s)", user_id)
         raise CezihError(
-            "Korisnik nema konfiguriran način potpisa. "
-            "Odaberite 'AKD kartica' ili 'Certilia mobilni' u Postavke."
+            "Korisnik nema konfiguriran način potpisa. Odaberite 'AKD kartica' ili 'Certilia mobilni' u Postavke."
         )
 
     logger.info("Resolved signing method for user_id=%s: %s", user_id, method)
@@ -210,6 +210,7 @@ async def _add_signature_extsigner(
         doc = documents[0]
         if isinstance(doc, dict) and doc.get("base64Document"):
             import base64 as _base64
+
             signed_bundle_bytes = _base64.b64decode(doc["base64Document"])
             signed_bundle = json.loads(signed_bundle_bytes)
             logger.info("Extsigner returned signed bundle — using CEZIH-signed document")
@@ -226,16 +227,22 @@ async def _add_signature_extsigner(
                         logger.info(
                             "EXTSIGNER JWS DECODED: alg=%s kid=%s jwk_keys=%s x5c_count=%d "
                             "header_b64url=%d chars payload_b64url=%d chars sig_b64url=%d chars",
-                            _header_json.get("alg"), _header_json.get("kid", "?")[:16],
+                            _header_json.get("alg"),
+                            _header_json.get("kid", "?")[:16],
                             list(_header_json.get("jwk", {}).keys()) if "jwk" in _header_json else "none",
                             len(_header_json.get("x5c", [])),
-                            len(_parts[0]), len(_parts[1]), len(_parts[2]),
+                            len(_parts[0]),
+                            len(_parts[1]),
+                            len(_parts[2]),
                         )
                     elif len(_parts) == 2:
                         logger.info("EXTSIGNER JWS: appears to be 2-part (detached?) len=%d", len(_jws_raw))
                     else:
-                        logger.info("EXTSIGNER JWS: unexpected format (dot_count=%d, total=%d chars)",
-                                    _jws_raw.count("."), len(_jws_raw))
+                        logger.info(
+                            "EXTSIGNER JWS: unexpected format (dot_count=%d, total=%d chars)",
+                            _jws_raw.count("."),
+                            len(_jws_raw),
+                        )
                     _debug_dump_jws("EXTSIGNER", _sig_data)
             except Exception as _dbg_err:
                 logger.warning("Extsigner JWS decode debug failed: %s", _dbg_err)
@@ -259,6 +266,7 @@ async def _add_signature_extsigner(
         json.dumps(response, ensure_ascii=False)[:2000],
     )
     from app.services.cezih.exceptions import CezihSigningError
+
     raise CezihSigningError(
         "Certilia potpisivanje nije vratilo očekivani odgovor. "
         "Provjerite da je Certilia aplikacija aktivna na mobitelu i pokušajte ponovno."
@@ -308,6 +316,7 @@ async def _add_signature_smartcard(
     # JCS-canonicalize per RFC 8785. CEZIH verifier strips signature.data
     # then re-canonicalizes the Bundle — our signing input must match.
     import jcs as _jcs
+
     bundle_json_bytes = _jcs.canonicalize(bundle)
     logger.info("JCS canonical payload: %d bytes (signature.data excluded)", len(bundle_json_bytes))
 
@@ -322,8 +331,7 @@ async def _add_signature_smartcard(
                 json.dumps(_pre_json, sort_keys=True, ensure_ascii=False),
             )
         except Exception:
-            logger.info("SMARTCARD PRE-SIGN payload_bytes=%s",
-                        bundle_json_bytes.decode("utf-8", errors="replace"))
+            logger.info("SMARTCARD PRE-SIGN payload_bytes=%s", bundle_json_bytes.decode("utf-8", errors="replace"))
         logger.info(
             "SMARTCARD PRE-SIGN payload_b64url=%s",
             _base64.urlsafe_b64encode(bundle_json_bytes).decode().rstrip("="),
@@ -361,7 +369,10 @@ async def _add_signature_smartcard(
             logger.warning(
                 "DUMMY SIGNATURE INJECTED alg=%s — CEZIH_SMARTCARD_DUMMY_SIG=true. "
                 "NOT crypto-valid. header_b64url=%d chars payload_b64url=%d chars sig_b64url=%d chars",
-                dummy_alg, len(header_b64url), len(payload_b64url), len(sig_b64url),
+                dummy_alg,
+                len(header_b64url),
+                len(payload_b64url),
+                len(sig_b64url),
             )
         else:
             # Production: use agent's JWS signing (builds JOSE header with x5c + signs)
@@ -376,18 +387,22 @@ async def _add_signature_smartcard(
 
             if "error" in result:
                 from app.services.cezih.exceptions import CezihSigningError
-                logger.warning("Smartcard agent signing error: %s", result['error'])
-                raise CezihSigningError(
-                    f"Potpisivanje pametnom karticom nije uspjelo: {result['error']}"
-                )
+
+                logger.warning("Smartcard agent signing error: %s", result["error"])
+                raise CezihSigningError(f"Potpisivanje pametnom karticom nije uspjelo: {result['error']}")
 
             jws_base64 = result.get("jws_base64", "")
             if not jws_base64:
                 from app.services.cezih.exceptions import CezihSigningError
+
                 raise CezihSigningError("Kartica nije vratila potpis. Umetnite karticu i pokušajte ponovno.")
 
-            logger.info("JWS signature: kid=%s, alg=%s, data=%d chars",
-                         result.get("kid", "?"), result.get("algorithm", "?"), len(jws_base64))
+            logger.info(
+                "JWS signature: kid=%s, alg=%s, data=%d chars",
+                result.get("kid", "?"),
+                result.get("algorithm", "?"),
+                len(jws_base64),
+            )
 
             # ── DEBUG: decode and log full JWS structure for comparison ──
             try:
@@ -399,10 +414,13 @@ async def _add_signature_smartcard(
                     logger.info(
                         "SMARTCARD JWS DECODED: alg=%s kid=%s jwk_keys=%s x5c_count=%d "
                         "header_b64url=%d chars payload_b64url=%d chars sig_b64url=%d chars",
-                        _header_json.get("alg"), _header_json.get("kid", "?")[:16],
+                        _header_json.get("alg"),
+                        _header_json.get("kid", "?")[:16],
                         list(_header_json.get("jwk", {}).keys()) if "jwk" in _header_json else "none",
                         len(_header_json.get("x5c", [])),
-                        len(_parts[0]), len(_parts[1]), len(_parts[2]),
+                        len(_parts[0]),
+                        len(_parts[1]),
+                        len(_parts[2]),
                     )
                 _debug_dump_jws("SMARTCARD", jws_base64)
             except Exception as _dbg_err:

@@ -40,9 +40,7 @@ class AgentConnectionManager:
     def __init__(self) -> None:
         self._connections: dict[UUID, dict[str, AgentConnection]] = {}
 
-    async def register(
-        self, tenant_id: UUID, websocket: WebSocket, agent_id: str | None = None
-    ) -> AgentConnection:
+    async def register(self, tenant_id: UUID, websocket: WebSocket, agent_id: str | None = None) -> AgentConnection:
         """Register an already-accepted WebSocket connection (message-based auth)."""
         if agent_id is None:
             agent_id = str(_uuid.uuid4())
@@ -62,7 +60,9 @@ class AgentConnectionManager:
         tenant_agents[agent_id] = conn
         logger.info(
             "Agent %s connected for tenant %s (total: %d)",
-            agent_id[:8], tenant_id, len(tenant_agents),
+            agent_id[:8],
+            tenant_id,
+            len(tenant_agents),
         )
         return conn
 
@@ -106,9 +106,7 @@ class AgentConnectionManager:
             return []
         return list(tenant_agents.values())
 
-    def find_by_card_holder(
-        self, tenant_id: UUID, card_holder_name: str
-    ) -> AgentConnection | None:
+    def find_by_card_holder(self, tenant_id: UUID, card_holder_name: str) -> AgentConnection | None:
         tenant_agents = self._connections.get(tenant_id)
         if not tenant_agents:
             return None
@@ -183,7 +181,6 @@ class AgentConnectionManager:
             logger.warning("Failed to send to agent %s for tenant %s", agent_id[:8], tenant_id)
             await self.disconnect(tenant_id, agent_id)
             return False
-
 
     async def proxy_http_request(
         self,

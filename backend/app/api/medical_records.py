@@ -80,9 +80,7 @@ async def get_medical_record(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    record = await medical_record_service.get_record(
-        db, current_user.tenant_id, record_id, user_role=current_user.role
-    )
+    record = await medical_record_service.get_record(db, current_user.tenant_id, record_id, user_role=current_user.role)
     await audit_service.write_audit(
         db,
         tenant_id=current_user.tenant_id,
@@ -108,7 +106,10 @@ async def download_record_pdf(
     headers (X-Pdf-Digitally-Signed, X-Pdf-Unsigned-Reason) expose the outcome.
     """
     record = await medical_record_service.get_record(
-        db, current_user.tenant_id, record_id, user_role=current_user.role,
+        db,
+        current_user.tenant_id,
+        record_id,
+        user_role=current_user.role,
     )
 
     tenant = await db.get(Tenant, current_user.tenant_id)
@@ -184,11 +185,16 @@ async def download_record_pdf(
     def _to_ascii(s: str) -> str:
         """Convert Croatian characters to ASCII equivalents."""
         cro_to_ascii = {
-            'š': 's', 'Š': 'S',
-            'đ': 'dj', 'Đ': 'Dj',
-            'č': 'c', 'Č': 'C',
-            'ć': 'c', 'Ć': 'C',
-            'ž': 'z', 'Ž': 'Z',
+            "š": "s",
+            "Š": "S",
+            "đ": "dj",
+            "Đ": "Dj",
+            "č": "c",
+            "Č": "C",
+            "ć": "c",
+            "Ć": "C",
+            "ž": "z",
+            "Ž": "Z",
         }
         for cro, ascii_ch in cro_to_ascii.items():
             s = s.replace(cro, ascii_ch)
@@ -203,12 +209,12 @@ async def download_record_pdf(
     short_id = str(record_id)[:4]
     filename = f"{tip_slug}_{ime}_{prezime}_{datum}_{short_id}.pdf"
     # Properly encode filename for HTTP headers (RFC 5987)
-    encoded_filename = quote(filename.encode('utf-8'))
+    encoded_filename = quote(filename.encode("utf-8"))
     # Fallback ASCII filename (transliterated patient name included)
     ascii_fallback = f"{tip_slug}_{ime_ascii}_{prezime_ascii}_{datum}_{short_id}.pdf"
 
     headers = {
-        "Content-Disposition": f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded_filename}',
+        "Content-Disposition": f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}",
         "X-Pdf-Digitally-Signed": "true" if sign_result.signed else "false",
     }
     if not sign_result.signed and sign_result.reason:

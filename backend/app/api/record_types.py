@@ -18,9 +18,7 @@ async def list_record_types(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await record_type_service.list_record_types(
-        db, current_user.tenant_id, include_inactive=include_inactive
-    )
+    return await record_type_service.list_record_types(db, current_user.tenant_id, include_inactive=include_inactive)
 
 
 @router.post("/record-types", response_model=RecordTypeRead, status_code=status.HTTP_201_CREATED)

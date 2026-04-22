@@ -9,6 +9,7 @@ with a reason, leaving the e-Karton list showing blank rows. Persisting the
 reason locally so the merge layer can use it as a fallback when CEZIH returns
 nothing.
 """
+
 import sqlalchemy as sa
 
 from alembic import op

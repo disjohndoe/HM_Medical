@@ -35,4 +35,5 @@ class TimestampMixin:
 
 class BaseTenantModel(Base, TenantMixin, TimestampMixin):
     """Base for most models — includes tenant isolation and timestamps."""
+
     __abstract__ = True

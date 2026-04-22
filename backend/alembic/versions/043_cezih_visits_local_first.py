@@ -8,6 +8,7 @@ CEZIH response so the DB alone can drive the table. Composite unique index on
 Revision ID: 043_cezih_visits_local_first
 Revises: 042_cezih_row_error_columns
 """
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 

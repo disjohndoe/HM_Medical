@@ -17,8 +17,7 @@ class User(BaseTenantModel):
             name="ck_user_cezih_signing_method",
         ),
         CheckConstraint(
-            "role IN ('doctor','admin','nurse') OR "
-            "(practitioner_id IS NULL AND mbo_lijecnika IS NULL)",
+            "role IN ('doctor','admin','nurse') OR (practitioner_id IS NULL AND mbo_lijecnika IS NULL)",
             name="ck_user_role_can_hold_doctor_ids",
         ),
         Index(

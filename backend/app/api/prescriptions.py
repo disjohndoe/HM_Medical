@@ -34,8 +34,12 @@ async def list_prescriptions(
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await prescription_service.list_prescriptions(
-        db, current_user.tenant_id, patient_id,
-        status_filter=status_filter, skip=skip, limit=limit,
+        db,
+        current_user.tenant_id,
+        patient_id,
+        status_filter=status_filter,
+        skip=skip,
+        limit=limit,
     )
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 
@@ -47,7 +51,10 @@ async def create_prescription(
     db: AsyncSession = Depends(get_db),
 ):
     return await prescription_service.create_prescription(
-        db, current_user.tenant_id, data, current_user.id,
+        db,
+        current_user.tenant_id,
+        data,
+        current_user.id,
     )
 
 
@@ -58,7 +65,9 @@ async def get_prescription(
     db: AsyncSession = Depends(get_db),
 ):
     return await prescription_service.get_prescription(
-        db, current_user.tenant_id, prescription_id,
+        db,
+        current_user.tenant_id,
+        prescription_id,
     )
 
 
@@ -70,7 +79,11 @@ async def update_prescription(
     db: AsyncSession = Depends(get_db),
 ):
     return await prescription_service.update_prescription(
-        db, current_user.tenant_id, prescription_id, data, current_user.id,
+        db,
+        current_user.tenant_id,
+        prescription_id,
+        data,
+        current_user.id,
     )
 
 
@@ -81,7 +94,9 @@ async def delete_prescription(
     db: AsyncSession = Depends(get_db),
 ):
     await prescription_service.delete_prescription(
-        db, current_user.tenant_id, prescription_id,
+        db,
+        current_user.tenant_id,
+        prescription_id,
     )
 
 
@@ -95,8 +110,11 @@ async def send_prescription(
     await check_cezih_access(db, current_user.tenant_id)
     await check_hzzo_access(db, current_user.tenant_id)
     return await prescription_service.send_to_cezih(
-        db, current_user.tenant_id, prescription_id,
-        user_id=current_user.id, http_client=_http_client(request),
+        db,
+        current_user.tenant_id,
+        prescription_id,
+        user_id=current_user.id,
+        http_client=_http_client(request),
     )
 
 
@@ -110,6 +128,9 @@ async def storno_prescription(
     await check_cezih_access(db, current_user.tenant_id)
     await check_hzzo_access(db, current_user.tenant_id)
     return await prescription_service.storno_prescription(
-        db, current_user.tenant_id, prescription_id,
-        user_id=current_user.id, http_client=_http_client(request),
+        db,
+        current_user.tenant_id,
+        prescription_id,
+        user_id=current_user.id,
+        http_client=_http_client(request),
     )

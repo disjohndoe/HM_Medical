@@ -88,8 +88,18 @@ async def seed_default_procedures(db: AsyncSession, tenant_id: uuid.UUID) -> Non
 _PATIENTS: list[tuple[Any, ...]] = [
     # (ime, prezime, datum_rodjenja, spol, oib, mbo, adresa, grad, postanski_broj, telefon, mobitel, email)
     (
-        "GORAN", "PACPRIVATNICI19", "1980-01-01", "M", "99999900187", "999990260",
-        "Testna ulica 1", "Zagreb", "10000", None, None, None,
+        "GORAN",
+        "PACPRIVATNICI19",
+        "1980-01-01",
+        "M",
+        "99999900187",
+        "999990260",
+        "Testna ulica 1",
+        "Zagreb",
+        "10000",
+        None,
+        None,
+        None,
     ),
 ]
 
@@ -136,7 +146,16 @@ async def seed_demo_data(db: AsyncSession) -> None:
     users_data = [
         # (uuid, email, password, ime, prezime, titula, role, practitioner_id)
         (ADMIN_UUID, DEMO_EMAILS["admin"], DEMO_PASSWORD, "Admin", "HM Digital", None, "admin", None),
-        (DOCTOR_UUID, DEMO_EMAILS["doctor"], DEMO_PASSWORD, "TESTNI55", "TESTNIPREZIME55", "dr. med.", "doctor", "7659059"),
+        (
+            DOCTOR_UUID,
+            DEMO_EMAILS["doctor"],
+            DEMO_PASSWORD,
+            "TESTNI55",
+            "TESTNIPREZIME55",
+            "dr. med.",
+            "doctor",
+            "7659059",
+        ),
         (NURSE_UUID, DEMO_EMAILS["nurse"], DEMO_PASSWORD, "Sestra", "Test", None, "nurse", None),
     ]
     users = []
@@ -232,13 +251,19 @@ async def seed_demo_data(db: AsyncSession) -> None:
     records_data = [
         # (patient_idx, appt_idx, tip, mkb, dijagnoza_tekst, sadrzaj)
         (
-            0, 0, "specijalisticki_nalaz", "J06.9",
+            0,
+            0,
+            "specijalisticki_nalaz",
+            "J06.9",
             "Akutna infekcija gornjih dišnih putova",
             "Pacijent se javlja zbog kašlja i povišene temperature 3 dana. "
             "Faringijski zid hiperemičan. Preporučena terapija i mirovanje.",
         ),
         (
-            0, 1, "nalaz", "M54.5",
+            0,
+            1,
+            "nalaz",
+            "M54.5",
             "Bol u donjem dijelu leđa",
             "Akutni lumbalni sindrom. Propisana NSAID terapija, "
             "kineziterapija za 5 dana. Savjetovana promjena načina rada.",

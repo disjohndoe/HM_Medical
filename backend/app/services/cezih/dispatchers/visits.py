@@ -1,4 +1,5 @@
 """CEZIH visit dispatcher — visit management with local DB mirror sync."""
+
 from __future__ import annotations
 
 import logging
@@ -19,7 +20,9 @@ from app.services.cezih.exceptions import CezihError
 
 
 async def _lookup_local_visit_id(
-    db: AsyncSession | None, tenant_id: UUID | None, cezih_visit_id: str,
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    cezih_visit_id: str,
 ) -> UUID | None:
     """Resolve the CEZIH-side visit identifier to our local CezihVisit.id so
     per-row error persistence can mark the right row."""
@@ -27,6 +30,7 @@ async def _lookup_local_visit_id(
         return None
     try:
         from app.models.cezih_visit import CezihVisit
+
         res = await db.execute(
             select(CezihVisit.id).where(
                 CezihVisit.tenant_id == tenant_id,
@@ -37,6 +41,7 @@ async def _lookup_local_visit_id(
         return row[0] if row else None
     except SQLAlchemyError:
         return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -69,15 +74,22 @@ _ADMISSION_TYPE_LABELS = {
 # QEDm controls the lifecycle of these (status transitions, close time, which
 # practitioners and cases are linked, which org owns the encounter).
 _CEZIH_AUTHORITATIVE_FIELDS = (
-    "status", "period_end", "service_provider_code",
-    "practitioner_ids", "diagnosis_case_ids",
+    "status",
+    "period_end",
+    "service_provider_code",
+    "practitioner_ids",
+    "diagnosis_case_ids",
 )
 # Locally-authoritative fields — CEZIH QEDm strips or munges these on read-back,
 # so the user-entered value is more reliable. Only backfill if the local row is
 # NULL/empty AND CEZIH happens to return a value (covers legacy rows written
 # before these fields were populated on create).
 _LOCALLY_AUTHORITATIVE_FIELDS = (
-    "tip_posjete", "vrsta_posjete", "reason", "admission_type", "period_start",
+    "tip_posjete",
+    "vrsta_posjete",
+    "reason",
+    "admission_type",
+    "period_start",
 )
 
 
@@ -99,19 +111,22 @@ async def _persist_local_visit_by_patient_id(
         return
     try:
         from app.models.cezih_visit import CezihVisit
-        db.add(CezihVisit(
-            tenant_id=tenant_id,
-            patient_id=patient_id,
-            patient_mbo=identifier_value,
-            cezih_visit_id=cezih_visit_id or None,
-            status=status_str or "in-progress",
-            admission_type=admission_type,
-            tip_posjete=tip_posjete,
-            vrsta_posjete=vrsta_posjete,
-            reason=reason,
-            period_start=datetime.now(UTC),
-            service_provider_code=service_provider_code,
-        ))
+
+        db.add(
+            CezihVisit(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                patient_mbo=identifier_value,
+                cezih_visit_id=cezih_visit_id or None,
+                status=status_str or "in-progress",
+                admission_type=admission_type,
+                tip_posjete=tip_posjete,
+                vrsta_posjete=vrsta_posjete,
+                reason=reason,
+                period_start=datetime.now(UTC),
+                service_provider_code=service_provider_code,
+            )
+        )
         await db.flush()
     except (IntegrityError, OperationalError) as exc:
         logger.warning("Failed to persist local CezihVisit mirror: %s", exc)
@@ -151,6 +166,7 @@ async def _upsert_cezih_visit_from_response(
         return
     try:
         from app.models.cezih_visit import CezihVisit
+
         result = await db.execute(
             select(CezihVisit).where(
                 CezihVisit.tenant_id == tenant_id,
@@ -160,7 +176,7 @@ async def _upsert_cezih_visit_from_response(
         row = result.scalar_one_or_none()
         remote_status = remote.get("status") or ""
         remote_period_end = _parse_dt(remote.get("period_end"))
-        remote_sp_code = (remote.get("service_provider_code") or None)
+        remote_sp_code = remote.get("service_provider_code") or None
         remote_practitioner_ids = remote.get("practitioner_ids") or []
         remote_diagnosis_case_ids = remote.get("diagnosis_case_ids") or []
         if row is None:
@@ -221,11 +237,14 @@ async def _list_local_visits_as_dicts(
         return []
     try:
         from app.models.cezih_visit import CezihVisit
+
         result = await db.execute(
-            select(CezihVisit).where(
+            select(CezihVisit)
+            .where(
                 CezihVisit.tenant_id == tenant_id,
                 CezihVisit.patient_id == patient_id,
-            ).order_by(CezihVisit.period_start.desc().nullslast(), CezihVisit.created_at.desc())
+            )
+            .order_by(CezihVisit.period_start.desc().nullslast(), CezihVisit.created_at.desc())
         )
         rows = result.scalars().all()
         out: list[dict] = []
@@ -233,29 +252,31 @@ async def _list_local_visits_as_dicts(
             tip = row.tip_posjete or ""
             vrsta = row.vrsta_posjete or ""
             admission = row.admission_type or ""
-            out.append({
-                "visit_id": row.cezih_visit_id or "",
-                "patient_mbo": row.patient_mbo,
-                "status": row.status,
-                "visit_type": admission,
-                "visit_type_display": _ADMISSION_TYPE_LABELS.get(admission) if admission else None,
-                "vrsta_posjete": vrsta,
-                "vrsta_posjete_display": _VRSTA_POSJETE_LABELS.get(vrsta) if vrsta else None,
-                "tip_posjete": tip,
-                "tip_posjete_display": _TIP_POSJETE_LABELS.get(tip) if tip else None,
-                "reason": row.reason,
-                "period_start": row.period_start.isoformat() if row.period_start else None,
-                "period_end": row.period_end.isoformat() if row.period_end else None,
-                "service_provider_code": row.service_provider_code,
-                "practitioner_id": (row.practitioner_ids or [None])[0] if row.practitioner_ids else None,
-                "practitioner_ids": list(row.practitioner_ids) if row.practitioner_ids else [],
-                "diagnosis_case_ids": list(row.diagnosis_case_ids) if row.diagnosis_case_ids else [],
-                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-                "last_error_code": row.last_error_code,
-                "last_error_display": row.last_error_display,
-                "last_error_diagnostics": row.last_error_diagnostics,
-                "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
-            })
+            out.append(
+                {
+                    "visit_id": row.cezih_visit_id or "",
+                    "patient_mbo": row.patient_mbo,
+                    "status": row.status,
+                    "visit_type": admission,
+                    "visit_type_display": _ADMISSION_TYPE_LABELS.get(admission) if admission else None,
+                    "vrsta_posjete": vrsta,
+                    "vrsta_posjete_display": _VRSTA_POSJETE_LABELS.get(vrsta) if vrsta else None,
+                    "tip_posjete": tip,
+                    "tip_posjete_display": _TIP_POSJETE_LABELS.get(tip) if tip else None,
+                    "reason": row.reason,
+                    "period_start": row.period_start.isoformat() if row.period_start else None,
+                    "period_end": row.period_end.isoformat() if row.period_end else None,
+                    "service_provider_code": row.service_provider_code,
+                    "practitioner_id": (row.practitioner_ids or [""])[0] if row.practitioner_ids else None,
+                    "practitioner_ids": list(row.practitioner_ids) if row.practitioner_ids else [],
+                    "diagnosis_case_ids": list(row.diagnosis_case_ids) if row.diagnosis_case_ids else [],
+                    "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                    "last_error_code": row.last_error_code,
+                    "last_error_display": row.last_error_display,
+                    "last_error_diagnostics": row.last_error_diagnostics,
+                    "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
+                }
+            )
         return out
     except SQLAlchemyError as exc:
         logger.warning("Failed to read local CezihVisit mirror: %s", exc)
@@ -380,6 +401,7 @@ async def dispatch_create_visit(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -396,18 +418,27 @@ async def dispatch_create_visit(
             build_encounter_create,
             build_message_bundle,
         )
+
         fhir_client = CezihFhirClient(http_client)
         if not practitioner_id:
             raise CezihError("HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.")
         encounter = build_encounter_create(
-            patient_mbo=identifier_value, identifier_system=identifier_system,
+            patient_mbo=identifier_value,
+            identifier_system=identifier_system,
             nacin_prijema=nacin_prijema,
-            vrsta_posjete=vrsta_posjete, tip_posjete=tip_posjete,
-            reason=reason, practitioner_id=practitioner_id, org_code=org_code or "",
+            vrsta_posjete=vrsta_posjete,
+            tip_posjete=tip_posjete,
+            reason=reason,
+            practitioner_id=practitioner_id,
+            org_code=org_code or "",
         )
         bundle = await build_message_bundle(
-            "1.1", encounter, sender_org_code=org_code, author_practitioner_id=practitioner_id,
-            source_oid=source_oid, profile_urls=None,
+            "1.1",
+            encounter,
+            sender_org_code=org_code,
+            author_practitioner_id=practitioner_id,
+            source_oid=source_oid,
+            profile_urls=None,
         )
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
@@ -416,7 +447,10 @@ async def dispatch_create_visit(
         # Toast + dialog-stays-open is the signal to the user.
         _raise_cezih_error(e)
     await _write_audit(
-        db, tenant_id, user_id, action="visit_create",
+        db,
+        tenant_id,
+        user_id,
+        action="visit_create",
         details={"patient_id": str(patient_id), "nacin_prijema": nacin_prijema},
     )
     resp = _parse_visit_response(result)
@@ -424,7 +458,10 @@ async def dispatch_create_visit(
     resp["vrsta_posjete"] = vrsta_posjete
     resp["tip_posjete"] = tip_posjete
     await _persist_local_visit_by_patient_id(
-        db, tenant_id, patient_id, identifier_value,
+        db,
+        tenant_id,
+        patient_id,
+        identifier_value,
         cezih_visit_id=resp.get("visit_id") or "",
         status_str=resp.get("status") or "in-progress",
         admission_type=nacin_prijema,
@@ -459,6 +496,7 @@ async def dispatch_update_visit(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -476,6 +514,7 @@ async def dispatch_update_visit(
             build_encounter_update,
             build_message_bundle,
         )
+
         fhir_client = CezihFhirClient(http_client)
         if not practitioner_id:
             raise CezihError("HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.")
@@ -494,9 +533,12 @@ async def dispatch_update_visit(
             period_start=period_start,
         )
         bundle = await build_message_bundle(
-            "1.2", encounter,
-            sender_org_code=org_code, author_practitioner_id=practitioner_id,
-            source_oid=source_oid, profile_urls=None,
+            "1.2",
+            encounter,
+            sender_org_code=org_code,
+            author_practitioner_id=practitioner_id,
+            source_oid=source_oid,
+            profile_urls=None,
         )
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
@@ -505,7 +547,10 @@ async def dispatch_update_visit(
         _raise_cezih_error(e)
     await clear_cezih_error("visit", local_visit_id, tenant_id, session=db)
     await _write_audit(
-        db, tenant_id, user_id, action="visit_update",
+        db,
+        tenant_id,
+        user_id,
+        action="visit_update",
         details={"visit_id": visit_id, "patient_id": str(patient_id)},
     )
     resp = _parse_visit_response(result)
@@ -516,7 +561,9 @@ async def dispatch_update_visit(
     if tip_posjete:
         resp["tip_posjete"] = tip_posjete
     await _update_local_visit(
-        db, tenant_id, visit_id,
+        db,
+        tenant_id,
+        visit_id,
         patient_mbo=identifier_value,
         tip_posjete=tip_posjete,
         vrsta_posjete=vrsta_posjete,
@@ -546,6 +593,7 @@ async def dispatch_visit_action(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -569,6 +617,7 @@ async def dispatch_visit_action(
             build_encounter_reopen,
             build_message_bundle,
         )
+
         fhir_client = CezihFhirClient(http_client)
         if not practitioner_id:
             raise CezihError("HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.")
@@ -607,15 +656,22 @@ async def dispatch_visit_action(
                 period_start=period_start,
             )
         bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get(event_code)
-        profile_urls = {
-            "bundle": bundle_profile,
-            "header": PROFILE_ENCOUNTER_MSG_HEADER,
-            "resource": PROFILE_ENCOUNTER,
-        } if bundle_profile else None
+        profile_urls = (
+            {
+                "bundle": bundle_profile,
+                "header": PROFILE_ENCOUNTER_MSG_HEADER,
+                "resource": PROFILE_ENCOUNTER,
+            }
+            if bundle_profile
+            else None
+        )
         bundle = await build_message_bundle(
-            event_code, encounter,
-            sender_org_code=org_code, author_practitioner_id=practitioner_id,
-            source_oid=source_oid, profile_urls=profile_urls,
+            event_code,
+            encounter,
+            sender_org_code=org_code,
+            author_practitioner_id=practitioner_id,
+            source_oid=source_oid,
+            profile_urls=profile_urls,
         )
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
@@ -624,28 +680,39 @@ async def dispatch_visit_action(
         _raise_cezih_error(e)
     await clear_cezih_error("visit", local_visit_id, tenant_id, session=db)
     await _write_audit(
-        db, tenant_id, user_id, action=f"visit_{action}",
+        db,
+        tenant_id,
+        user_id,
+        action=f"visit_{action}",
         details={"visit_id": visit_id, "action": action},
     )
     parsed = _parse_visit_response(result)
     # Mirror the new state onto our local CezihVisit row
     if action == "close":
         await _update_local_visit(
-            db, tenant_id, visit_id,
+            db,
+            tenant_id,
+            visit_id,
             patient_mbo=identifier_value,
-            status_str="finished", set_period_end=True,
+            status_str="finished",
+            set_period_end=True,
             service_provider_code=org_code,
         )
     elif action == "reopen":
         await _update_local_visit(
-            db, tenant_id, visit_id,
+            db,
+            tenant_id,
+            visit_id,
             patient_mbo=identifier_value,
-            status_str="in-progress", clear_period_end=True,
+            status_str="in-progress",
+            clear_period_end=True,
             service_provider_code=org_code,
         )
     elif action == "storno":
         await _update_local_visit(
-            db, tenant_id, visit_id,
+            db,
+            tenant_id,
+            visit_id,
             patient_mbo=identifier_value,
             status_str="entered-in-error",
             service_provider_code=org_code,
@@ -672,6 +739,7 @@ async def dispatch_list_visits(
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
+
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
@@ -687,15 +755,23 @@ async def dispatch_list_visits(
     except CezihError as e:
         logger.warning(
             "CEZIH list_visits failed for patient %s — serving local mirror only: %s",
-            patient_id, e,
+            patient_id,
+            e,
         )
     await _write_audit(
-        db, tenant_id, user_id, action="visit_list",
+        db,
+        tenant_id,
+        user_id,
+        action="visit_list",
         details={"patient_id": str(patient_id), "identifier_system": system_uri},
     )
     for row in remote:
         await _upsert_cezih_visit_from_response(
-            db, tenant_id, patient_id, value, row,
+            db,
+            tenant_id,
+            patient_id,
+            value,
+            row,
         )
     try:
         await db.flush()

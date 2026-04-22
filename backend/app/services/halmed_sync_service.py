@@ -38,12 +38,10 @@ HZZO_LISTE_URL = "https://hzzo.hr/zdravstvena-zastita/objavljene-liste-lijekova"
 
 # Known direct URLs (fallback if page scrape fails)
 HZZO_OSNOVNA_URL = (
-    "https://hzzo.hr/sites/default/files/_web_OLL%20po%20dijelovima"
-    "_stupa%20na%20snagu%20_16_03_2026..xlsx"
+    "https://hzzo.hr/sites/default/files/_web_OLL%20po%20dijelovima_stupa%20na%20snagu%20_16_03_2026..xlsx"
 )
 HZZO_DOPUNSKA_URL = (
-    "https://hzzo.hr/sites/default/files/_web_DLL%20po%20dijelovima"
-    "_stupa%20na%20snagu%20_16_03_2026._0.xlsx"
+    "https://hzzo.hr/sites/default/files/_web_DLL%20po%20dijelovima_stupa%20na%20snagu%20_16_03_2026._0.xlsx"
 )
 
 # Fallback URL expiration check — prevents using outdated drug data
@@ -103,10 +101,10 @@ def _parse_drug_row(row: tuple, hzzo_lista: str, has_doplata: bool) -> dict | No
 
     atk, hzzo_sifra = _parse_atk(atk_raw)
     inn_name = _cell(row, 2)  # Nezaštićeni naziv (generic)
-    nacin = _cell(row, 3)     # Način primjene
+    nacin = _cell(row, 3)  # Način primjene
     nositelj = _cell(row, 4)  # Nositelj odobrenja
-    brand = _cell(row, 5)     # Zaštićeni naziv (brand)
-    oblik = _cell(row, 6)     # Oblik, jačina i pakiranje
+    brand = _cell(row, 5)  # Zaštićeni naziv (brand)
+    oblik = _cell(row, 6)  # Oblik, jačina i pakiranje
 
     # Determine R/RS and Doplata based on whether the sheet has doplata column
     doplata = ""
@@ -186,6 +184,7 @@ async def _discover_hzzo_urls() -> tuple[str, str]:
                 raise httpx.HTTPStatusError("non-200", request=resp.request, response=resp)
 
             import re
+
             html = resp.text
             # Find .xlsx links — Osnovna and Dopunska
             xlsx_links = re.findall(r'href="([^"]*\.xlsx[^"]*)"', html)
@@ -211,6 +210,7 @@ async def _discover_hzzo_urls() -> tuple[str, str]:
 
         if age_months > HZZO_FALLBACK_MAX_AGE_MONTHS:
             from app.services.cezih.exceptions import CezihError
+
             raise CezihError(
                 f"HZZO URL discovery failed i fallback URL-ovi su stari {age_months:.0f} mjeseci. "
                 f"Ažurirajte HZZO_OSNOVNA_URL i HZZO_DOPUNSKA_URL u halmed_sync_service.py. "

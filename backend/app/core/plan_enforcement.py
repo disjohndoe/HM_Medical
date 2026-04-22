@@ -106,15 +106,15 @@ async def get_current_usage(db: AsyncSession, tenant_id) -> dict:
     )
     # Admin sessions don't count toward the limit
     sessions_q = select(func.count()).select_from(
-        select(RefreshToken).where(
+        select(RefreshToken)
+        .where(
             RefreshToken.user_id.in_(
-                select(User.id).where(
-                    User.tenant_id == tenant_id, User.is_active.is_(True), User.role != "admin"
-                )
+                select(User.id).where(User.tenant_id == tenant_id, User.is_active.is_(True), User.role != "admin")
             ),
             RefreshToken.is_revoked.is_(False),
             RefreshToken.expires_at > datetime.now(UTC),
-        ).subquery()
+        )
+        .subquery()
     )
 
     users_count, patients_count, sessions_count = (

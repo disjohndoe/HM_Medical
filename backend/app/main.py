@@ -73,7 +73,10 @@ async def cezih_error_handler(request: Request, exc: CezihError) -> JSONResponse
     CezihApiError parser expects (detail.message + detail.cezih_error)."""
     logging.getLogger("app.cezih").warning(
         "CEZIH error on %s %s: %s (%s)",
-        request.method, request.url.path, exc.__class__.__name__, exc.message,
+        request.method,
+        request.url.path,
+        exc.__class__.__name__,
+        exc.message,
     )
     return JSONResponse(
         status_code=exc.http_status_code,
@@ -84,6 +87,7 @@ async def cezih_error_handler(request: Request, exc: CezihError) -> JSONResponse
             },
         },
     )
+
 
 app.add_middleware(RequestLoggerMiddleware)
 app.add_middleware(ErrorHandlerMiddleware)

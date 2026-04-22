@@ -1,4 +1,5 @@
 """CEZIH Condition (case) service — FHIR Messaging + QEDm (TC15-17)."""
+
 from __future__ import annotations
 
 import hashlib
@@ -39,7 +40,10 @@ def _log_bundle_identity(tag: str, bundle: dict) -> None:
         sha = hashlib.sha256(raw).hexdigest()[:16]
         logger.info(
             "Case POST bundle (%s): size=%d bytes, sha256-prefix=%s, compact=%s",
-            tag, len(raw), sha, raw.decode("utf-8", errors="replace")[:30000],
+            tag,
+            len(raw),
+            sha,
+            raw.decode("utf-8", errors="replace")[:30000],
         )
     except Exception as e:  # pragma: no cover — best-effort diagnostic
         logger.warning("Case POST bundle (%s): failed to log (%s)", tag, e)
@@ -121,16 +125,18 @@ async def retrieve_cases(
             # Extract note from Condition.note[0].text
             notes = cond.get("note", [])
             note_text = notes[0].get("text", "") if notes else ""
-            cases.append({
-                "case_id": case_id,
-                "icd_code": coding.get("code", ""),
-                "icd_display": coding.get("display", ""),
-                "clinical_status": cl_coding.get("code", ""),
-                "verification_status": ver_coding.get("code") or None,
-                "onset_date": cond.get("onsetDateTime", ""),
-                "abatement_date": cond.get("abatementDateTime") or None,
-                "note": note_text or None,
-            })
+            cases.append(
+                {
+                    "case_id": case_id,
+                    "icd_code": coding.get("code", ""),
+                    "icd_display": coding.get("display", ""),
+                    "clinical_status": cl_coding.get("code", ""),
+                    "verification_status": ver_coding.get("code") or None,
+                    "onset_date": cond.get("onsetDateTime", ""),
+                    "abatement_date": cond.get("abatementDateTime") or None,
+                    "note": note_text or None,
+                }
+            )
     return cases
 
 
@@ -159,14 +165,19 @@ async def create_case(
     condition = build_condition_create(
         patient_mbo=patient_mbo,
         identifier_system=identifier_system or ID_MBO,
-        icd_code=icd_code, icd_display=icd_display,
-        onset_date=onset_date, practitioner_id=practitioner_id,
-        verification_status=verification_status, note_text=note_text,
+        icd_code=icd_code,
+        icd_display=icd_display,
+        onset_date=onset_date,
+        practitioner_id=practitioner_id,
+        verification_status=verification_status,
+        note_text=note_text,
     )
     local_case_id = condition["identifier"][0]["value"]
     bundle = await build_message_bundle(
-        "2.1", condition,
-        sender_org_code=org_code, author_practitioner_id=practitioner_id,
+        "2.1",
+        condition,
+        sender_org_code=org_code,
+        author_practitioner_id=practitioner_id,
         source_oid=source_oid,
         profile_urls={
             "bundle": PROFILE_HI_CREATE_BUNDLE,
@@ -211,27 +222,29 @@ async def create_recurring_case(
     condition = build_condition_create(
         patient_mbo=patient_mbo,
         identifier_system=identifier_system or ID_MBO,
-        icd_code=icd_code, icd_display=icd_display,
-        onset_date=onset_date, practitioner_id=practitioner_id,
-        verification_status=verification_status, note_text=note_text,
+        icd_code=icd_code,
+        icd_display=icd_display,
+        onset_date=onset_date,
+        practitioner_id=practitioner_id,
+        verification_status=verification_status,
+        note_text=note_text,
     )
     local_case_id = condition["identifier"][0]["value"]
     # 2.2 profile (hr-create-health-issue-recurrence-message): only
     # identifier:globalni-identifikator is max=0. lokalni-identifikator
     # inherits from hr-condition base with max=*, so we keep our local
     # ID (system = ID_CASE_LOCAL). Strip any global-slice entry defensively.
-    condition["identifier"] = [
-        i for i in condition.get("identifier", [])
-        if i.get("system") != ID_CASE_GLOBAL
-    ]
+    condition["identifier"] = [i for i in condition.get("identifier", []) if i.get("system") != ID_CASE_GLOBAL]
     # H1 (2026-04-21): asserter dropped for 2.2 to match 2.6 state-machine fix.
     # Working lifecycle ops (2.4/2.9) never emit asserter; 2.6 fixed by dropping
     # it (commit 5cb984c). Mirror here — state machine is stricter than profile,
     # which allows asserter max=1 mustSupport.
     condition.pop("asserter", None)
     bundle = await build_message_bundle(
-        "2.2", condition,
-        sender_org_code=org_code, author_practitioner_id=practitioner_id,
+        "2.2",
+        condition,
+        sender_org_code=org_code,
+        author_practitioner_id=practitioner_id,
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
@@ -277,19 +290,19 @@ async def update_case(
         raise CezihError(f"No CASE_EVENT_PROFILE rules for event code {event_code}")
 
     condition = build_condition_status_update(
-        case_identifier=case_identifier, patient_mbo=patient_mbo,
+        case_identifier=case_identifier,
+        patient_mbo=patient_mbo,
         identifier_system=identifier_system or ID_MBO,
         clinical_status=rules["cs_value"] if rules["cs"] else None,
-        abatement_date=(
-            datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-            if rules["abatement"] else None
-        ),
+        abatement_date=(datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00") if rules["abatement"] else None),
     )
 
     fhir_client = CezihFhirClient(client)
     bundle = await build_message_bundle(
-        event_code, condition,
-        sender_org_code=org_code, author_practitioner_id=practitioner_id,
+        event_code,
+        condition,
+        sender_org_code=org_code,
+        author_practitioner_id=practitioner_id,
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
@@ -330,13 +343,18 @@ async def update_case_data(
         identifier_system=identifier_system or ID_MBO,
         current_clinical_status=current_clinical_status,
         verification_status=verification_status,
-        icd_code=icd_code, icd_display=icd_display,
-        onset_date=onset_date, abatement_date=abatement_date,
-        practitioner_id=practitioner_id, note_text=note_text,
+        icd_code=icd_code,
+        icd_display=icd_display,
+        onset_date=onset_date,
+        abatement_date=abatement_date,
+        practitioner_id=practitioner_id,
+        note_text=note_text,
     )
     bundle = await build_message_bundle(
-        "2.6", condition,
-        sender_org_code=org_code, author_practitioner_id=practitioner_id,
+        "2.6",
+        condition,
+        sender_org_code=org_code,
+        author_practitioner_id=practitioner_id,
         source_oid=source_oid,
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)

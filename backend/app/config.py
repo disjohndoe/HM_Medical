@@ -63,14 +63,22 @@ class Settings(BaseSettings):
     CEZIH_FHIR_PUB_AUX_URL: str = ""  # e.g. https://certpubws.cezih.hr:9443 (terminology, no VPN)
     CEZIH_SIGNING_URL: str = ""  # Remote signing endpoint (certpubws.cezih.hr)
     CEZIH_SIGNING_OAUTH2_URL: str = ""  # Public Keycloak for signing (certpubsso.cezih.hr)
-    CEZIH_SIGNING_METHOD: str = "extsigner"  # "extsigner" (Certilia remote, working) or "smartcard" (NCrypt JWS, broken)
+    CEZIH_SIGNING_METHOD: str = (
+        "extsigner"  # "extsigner" (Certilia remote, working) or "smartcard" (NCrypt JWS, broken)
+    )
     CEZIH_SIGNER_OIB: str = ""  # OIB of the signer (required for extsigner)
     CEZIH_TIMEOUT: int = 30
     CEZIH_RETRY_ATTEMPTS: int = 3
-    CEZIH_SMARTCARD_DUMMY_SIG: bool = False  # DEBUG: bypass real signing, inject dummy JWS to test if CEZIH verifies crypto
+    CEZIH_SMARTCARD_DUMMY_SIG: bool = (
+        False  # DEBUG: bypass real signing, inject dummy JWS to test if CEZIH verifies crypto
+    )
     CEZIH_SMARTCARD_DUMMY_ALG: str = "RS256"  # DEBUG: algorithm for dummy JWS — "RS256" or "ES384"
-    CEZIH_SMARTCARD_INCLUDE_DATA: bool = True  # DEBUG: include data="" in JWS payload (True=match extsigner, False=per spec)
-    CEZIH_SIGNING_DEBUG: bool = False  # DEBUG: dump full JWS header + payload + sig for byte-diff between smartcard and extsigner
+    CEZIH_SMARTCARD_INCLUDE_DATA: bool = (
+        True  # DEBUG: include data="" in JWS payload (True=match extsigner, False=per spec)
+    )
+    CEZIH_SIGNING_DEBUG: bool = (
+        False  # DEBUG: dump full JWS header + payload + sig for byte-diff between smartcard and extsigner
+    )
     RATE_LIMIT_ENABLED: bool = True
     CEZIH_ORG_CODE: str = ""  # HZZO sifra zdravstvene organizacije
     CEZIH_OID: str = ""  # FHIR system OID (auto-generated via TC6 generateOIDBatch, NOT from HZZO)
@@ -101,8 +109,7 @@ def _validate_jwt_secret(secret: str) -> None:
             sys.exit(1)
     if len(secret) < 32:
         print(
-            "FATAL: JWT_SECRET_KEY must be at least 32 characters. "
-            "Generate with: openssl rand -hex 32",
+            "FATAL: JWT_SECRET_KEY must be at least 32 characters. Generate with: openssl rand -hex 32",
             file=sys.stderr,
         )
         sys.exit(1)
