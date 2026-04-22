@@ -83,6 +83,12 @@ What needs to be done next...
 | [TC11-PMIR-auth-blocker.md](TC11-PMIR-auth-blocker.md) | 2026-04-13 | resolved | TC11 PMIR VERIFIED (Patient/1348216) — 4 stacked fixes: session establishment, extsigner-only signing, urn:uuid: refs, cezih_id extraction |
 | [2026-04-21-foreigner-visit-needs-pmir-first.md](2026-04-21-foreigner-visit-needs-pmir-first.md) | 2026-04-21 | active | Visit/case/nalaz on a local-only foreign patient → CEZIH returns `Reference_REF_CantResolve` (400) that surfaces as generic "retry in a few minutes" transient. Register flow is on `/cezih → Stranci` only; `/pacijenti → Uredi` passport does not trigger PMIR. TC11 itself verified 2026-04-21 (PMIR ID 1405304). |
 
+### E2E Sweeps
+
+| File | Date | Status | Summary |
+|------|------|--------|---------|
+| [2026-04-22-certilia-mobile-sweep-green.md](2026-04-22-certilia-mobile-sweep-green.md) | 2026-04-22 | active | **Full Certilia-mobile sweep — 22/22 TC matrix GREEN.** Croatian GORAN full lifecycle incl. TC17 round-trip (2.1→2.3→2.5→2.4→2.9→2.6), TC18/19/20 on Refs 1415834→1415861→Storniran. Foreign ROGER ROG (EHIC) TC11/12/13/18 (Ref 1415986). |
+
 ### Terminology
 
 | File | Date | Status | Summary |

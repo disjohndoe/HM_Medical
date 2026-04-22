@@ -225,6 +225,7 @@ Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
 | Phase 17 | DONE | TC20 cancel document — VERIFIED via ITI-65 replace with OID lookup (2026-04-13) |
 | Phase 18 | DONE | E2E production test — all 16 TCs verified on app.hmdigital.hr against real CEZIH (2026-04-13) |
 | Phase 19 | DONE | TC11 PMIR foreigner registration — VERIFIED (Patient/1348216, 4 stacked fixes) (2026-04-13) |
+| Phase 20 | BLOCKED | Structured logging — branch `feat/structured-logging`, merge after HZZO exam (2026-04-23) |
 
 ### Key CEZIH Technical Findings (from live testing)
 
