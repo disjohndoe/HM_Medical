@@ -42,6 +42,7 @@ What needs to be done next...
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
+| [2026-04-21-extsigner-akd-epotpis-down.md](2026-04-21-extsigner-akd-epotpis-down.md) | 2026-04-21 | active | CEZIH extsigner returns `ERROR_CODE_0020` "404 from POST http://lb-ifwproxy-akd:9170/api/v2/epotpis" — their internal AKD e-potpis proxy is down. Blocks ALL mobile-signed TCs. Not our code. |
 | [smartcard-jws-format-fix.md](smartcard-jws-format-fix.md) | 2026-04-16 | resolved | **ROOT CAUSE FOUND** — two bugs: compact JSON (must be JCS) + attached JWS (must be detached + jwk with EC coords). VERIFIED working. |
 | [ERR_DS_1002-signature-debugging.md](ERR_DS_1002-signature-debugging.md) | 2026-04-09 | resolved | Full history of signature debugging attempts — root cause was POST→GET redirect |
 | [ERR_DS_1002-post-redirect-fix.md](ERR_DS_1002-post-redirect-fix.md) | 2026-04-08 | resolved | POST→GET redirect was the real cause of ERR_DS_1002 |
@@ -80,11 +81,13 @@ What needs to be done next...
 | File | Date | Status | Summary |
 |------|------|--------|---------|
 | [TC11-PMIR-auth-blocker.md](TC11-PMIR-auth-blocker.md) | 2026-04-13 | resolved | TC11 PMIR VERIFIED (Patient/1348216) — 4 stacked fixes: session establishment, extsigner-only signing, urn:uuid: refs, cezih_id extraction |
+| [2026-04-21-foreigner-visit-needs-pmir-first.md](2026-04-21-foreigner-visit-needs-pmir-first.md) | 2026-04-21 | active | Visit/case/nalaz on a local-only foreign patient → CEZIH returns `Reference_REF_CantResolve` (400) that surfaces as generic "retry in a few minutes" transient. Register flow is on `/cezih → Stranci` only; `/pacijenti → Uredi` passport does not trigger PMIR. TC11 itself verified 2026-04-21 (PMIR ID 1405304). |
 
 ### Terminology
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
+| [2026-04-22-valueset-expand-fallback.md](2026-04-22-valueset-expand-fallback.md) | 2026-04-22 | active | TC8 ValueSet/$expand → 404 across all CodeSystems on test env; backend falls back to plain `ValueSet?url=` → 200 empty. Integration correct, data gap test-env only. |
 | [icd10-search-limitation.md](icd10-search-limitation.md) | 2026-04-13 | active | ICD-10 ValueSet/$expand returns empty in test env — manual fallback works, ValueSet URL confirmed correct |
 
 ### Case Lifecycle (health-issue-services)
