@@ -1,5 +1,4 @@
 "use client"
-/* eslint-disable react-hooks/refs -- react-hook-form handleSubmit is a standard pattern that accesses refs internally */
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useForm, Controller } from "react-hook-form"

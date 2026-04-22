@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useMemo, useState } from "react"
 import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe } from "lucide-react"
 import { toast } from "sonner"
 
@@ -65,7 +64,6 @@ export function PatientCezihTab({
   const insuranceCheck = useInsuranceCheck()
   const cancelDocument = useCancelDocument()
   const replaceWithEdit = useReplaceDocumentWithEdit()
-  const queryClient = useQueryClient()
   const { canUseHzzo } = usePermissions()
   const { tipLabelMap } = useRecordTypeMaps()
   const [internalSubTab, setInternalSubTab] = useState("posjete")
@@ -111,14 +109,14 @@ export function PatientCezihTab({
   })
 
   const [nalaziPage, setNalaziPage] = useState(0)
-  const pagedENalazi = useMemo(
-    () => sortedENalazi.slice(nalaziPage * PAGE_SIZE, (nalaziPage + 1) * PAGE_SIZE),
-    [sortedENalazi, nalaziPage],
-  )
-  useEffect(() => {
+  const clampedNalaziPage = useMemo(() => {
     const maxPage = Math.max(0, Math.ceil(sortedENalazi.length / PAGE_SIZE) - 1)
-    if (nalaziPage > maxPage) setNalaziPage(maxPage)
+    return Math.min(nalaziPage, maxPage)
   }, [sortedENalazi.length, nalaziPage])
+  const pagedENalazi = useMemo(
+    () => sortedENalazi.slice(clampedNalaziPage * PAGE_SIZE, (clampedNalaziPage + 1) * PAGE_SIZE),
+    [sortedENalazi, clampedNalaziPage],
+  )
 
   function handleCheckInsurance() {
     if (isForeign) return

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo } from "react"
-import { useForm, Controller } from "react-hook-form"
+import { useForm, Controller, useWatch } from "react-hook-form"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
 import { z } from "zod"
 import { Save, Loader2, CreditCard, X } from "lucide-react"
@@ -128,7 +128,6 @@ export function UserFormDialog({
     handleSubmit,
     reset,
     control,
-    watch,
     setValue,
     formState: { errors },
   } = useForm<UserFormData>({
@@ -136,7 +135,7 @@ export function UserFormDialog({
     defaultValues: defaultFormValues,
   })
 
-  const selectedRole = watch("role")
+  const selectedRole = useWatch({ control, name: "role" })
   const canHoldDoctorIds = (ROLES_CAN_HOLD_DOCTOR_IDS as readonly string[]).includes(
     selectedRole
   )

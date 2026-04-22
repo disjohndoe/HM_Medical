@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Plus, Loader2, Building2, ExternalLink, Pencil, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
@@ -170,14 +170,14 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   })
 
   const [visitsPage, setVisitsPage] = useState(0)
-  const pagedVisits = useMemo(
-    () => sortedVisits.slice(visitsPage * PAGE_SIZE, (visitsPage + 1) * PAGE_SIZE),
-    [sortedVisits, visitsPage],
-  )
-  useEffect(() => {
+  const clampedVisitsPage = useMemo(() => {
     const maxPage = Math.max(0, Math.ceil(sortedVisits.length / PAGE_SIZE) - 1)
-    if (visitsPage > maxPage) setVisitsPage(maxPage)
+    return Math.min(visitsPage, maxPage)
   }, [sortedVisits.length, visitsPage])
+  const pagedVisits = useMemo(
+    () => sortedVisits.slice(clampedVisitsPage * PAGE_SIZE, (clampedVisitsPage + 1) * PAGE_SIZE),
+    [sortedVisits, clampedVisitsPage],
+  )
 
   const handleCreate = () => {
     // Close dialog and reset form BEFORE firing the mutation. The optimistic

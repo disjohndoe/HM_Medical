@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { FileText, Plus, Loader2, Pencil, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
@@ -276,14 +276,14 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
   })
 
   const [casesPage, setCasesPage] = useState(0)
-  const pagedCases = useMemo(
-    () => sortedCases.slice(casesPage * PAGE_SIZE, (casesPage + 1) * PAGE_SIZE),
-    [sortedCases, casesPage],
-  )
-  useEffect(() => {
+  const clampedCasesPage = useMemo(() => {
     const maxPage = Math.max(0, Math.ceil(sortedCases.length / PAGE_SIZE) - 1)
-    if (casesPage > maxPage) setCasesPage(maxPage)
+    return Math.min(casesPage, maxPage)
   }, [sortedCases.length, casesPage])
+  const pagedCases = useMemo(
+    () => sortedCases.slice(clampedCasesPage * PAGE_SIZE, (clampedCasesPage + 1) * PAGE_SIZE),
+    [sortedCases, clampedCasesPage],
+  )
 
   return (
     <Card>
