@@ -290,7 +290,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     if (v.status === "entered-in-error" || v.status === "cancelled") return []
     if (isExternalVisit(v)) return []
     if (v.status === "in-progress") return VISIT_ACTIONS.filter((a) => a.value === "close" || a.value === "storno")
-    if (v.status === "finished") return VISIT_ACTIONS.filter((a) => a.value === "reopen" || a.value === "storno")
+    if (v.status === "finished") return VISIT_ACTIONS.filter((a) => a.value === "reopen")
     return []
   }
 
