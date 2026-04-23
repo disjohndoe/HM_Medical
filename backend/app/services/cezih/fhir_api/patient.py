@@ -15,6 +15,7 @@ from app.services.cezih.fhir_api.identifiers import (
     _IDENTIFIER_SYSTEM_MAP,
     SYS_JEDINSTVENI,
     SYS_MBO,
+    SYS_OIB,
 )
 from app.services.cezih.models import FHIRPatient
 
@@ -183,7 +184,7 @@ async def fetch_patient_demographics(client: httpx.AsyncClient, mbo: str) -> dic
 
     oib = ""
     for ident in patient.identifier:
-        if ident.system and "OIB" in (ident.system or "").upper() and ident.value:
+        if ident.system == SYS_OIB and ident.value:
             oib = ident.value
 
     spol_map = {"male": "M", "female": "Z"}
@@ -237,9 +238,12 @@ async def check_insurance(
         family, given = _extract_name(patient)
 
         oib = ""
+        mbo_from_cezih = ""
         for ident in patient.identifier:
-            if ident.system and ident.system.endswith("/OIB") and ident.value:
+            if ident.system == SYS_OIB and ident.value:
                 oib = ident.value
+            elif ident.system == SYS_MBO and ident.value:
+                mbo_from_cezih = ident.value
 
         spol_map = {"male": "M", "female": "Ž", "other": "Ostalo", "unknown": "Nepoznato"}
         spol = spol_map.get(patient.gender or "", "")
@@ -249,7 +253,7 @@ async def check_insurance(
             status_osiguranja = "Preminuo"
 
         return {
-            "mbo": queried_value,
+            "mbo": mbo_from_cezih or queried_value,
             "ime": given,
             "prezime": family,
             "datum_rodjenja": patient.birthDate or "",

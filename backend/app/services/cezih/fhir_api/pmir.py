@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 
+from app.services.cezih.builders.common import ID_EHIC, ID_PUTOVNICA
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
 from app.services.cezih.message_builder import (
@@ -52,14 +53,14 @@ async def register_foreigner(
     if patient_data.get("broj_putovnice"):
         identifiers.append(
             {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica",
+                "system": ID_PUTOVNICA,
                 "value": patient_data["broj_putovnice"],
             }
         )
     if patient_data.get("ehic_broj"):
         identifiers.append(
             {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica",
+                "system": ID_EHIC,
                 "value": patient_data["ehic_broj"],
             }
         )

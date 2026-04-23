@@ -88,6 +88,9 @@ What needs to be done next...
 | File | Date | Status | Summary |
 |------|------|--------|---------|
 | [2026-04-22-certilia-mobile-sweep-green.md](2026-04-22-certilia-mobile-sweep-green.md) | 2026-04-22 | active | **Full Certilia-mobile sweep — 22/22 TC matrix GREEN.** Croatian GORAN full lifecycle incl. TC17 round-trip (2.1→2.3→2.5→2.4→2.9→2.6), TC18/19/20 on Refs 1415834→1415861→Storniran. Foreign ROGER ROG (EHIC) TC11/12/13/18 (Ref 1415986). |
+| [2026-04-22-certilia-mobile-afternoon-reverify.md](2026-04-22-certilia-mobile-afternoon-reverify.md) | 2026-04-22 | active | Afternoon Certilia-mobile re-verification — Croatian GORAN full case lifecycle on `cmo9wpy1z02cshb85hi1hp2gz` (2.1→2.3→2.5→2.4→2.9→2.6, PUT 200). **Plus foreign ROGER ROG (EHIC) TC18→TC19→TC20 round-trip on Refs 1418944→1418960→Storniran** — closes same-day gap for foreign-storno-via-mobile evidence. Exam-ready, no gaps. |
+| [2026-04-23-smartcard-sweep-green.md](2026-04-23-smartcard-sweep-green.md) | 2026-04-23 | active | **Pre-exam smart-card sweep — 22/22 TC matrix GREEN, second day running.** Croatian GORAN TC17 2.3→2.5→2.4→2.9→2.6 on J06.9 case `cmob5rm47…` + TC18/19/20 on Refs 1432176→1432212→Storniran. **Foreign ROGER ROG EHIC full TC12/13/18/19/20 on Refs 1432434→1432774→Storniran** — closes yesterday's foreign-storno-on-card gap. TC11 Passport path also re-verified. |
+| [2026-04-22-smartcard-sweep-green.md](2026-04-22-smartcard-sweep-green.md) | 2026-04-22 | active | **Full smart-card sweep — 22/22 TC matrix GREEN.** Card #558299 JWS ES384. Croatian GORAN full lifecycle + TC17 round-trip + TC18/19/20 on Refs 1417551→1417628→Storniran. Foreign ROGER ROG (EHIC) TC11/12/13/18 (Ref 1418373, Potpis=Da). Dual-signing independence verified. |
 
 ### Terminology
 

@@ -14,7 +14,13 @@ import httpx
 
 from app.constants import get_cezih_document_coding
 from app.services.cezih.builders.bundles import build_iti65_transaction_bundle
-from app.services.cezih.builders.common import _now_iso
+from app.services.cezih.builders.common import (
+    ID_CASE_GLOBAL,
+    ID_ENCOUNTER,
+    ID_ORG,
+    ID_PRACTITIONER,
+    _now_iso,
+)
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
 from app.services.cezih.fhir_api.identifiers import _require_identifier_system, _require_identifier_value
@@ -146,7 +152,7 @@ async def _build_document_bundle(
         author_practitioner: dict = {
             "type": "Practitioner",
             "identifier": {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika",
+                "system": ID_PRACTITIONER,
                 "value": practitioner_id,
             },
         }
@@ -160,7 +166,7 @@ async def _build_document_bundle(
             {
                 "type": "Organization",
                 "identifier": {
-                    "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije",
+                    "system": ID_ORG,
                     "value": org_code,
                 },
             }
@@ -171,7 +177,7 @@ async def _build_document_bundle(
         doc_ref_dict["authenticator"] = {
             "type": "Practitioner",
             "identifier": {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZJZ-broj-zdravstvenog-djelatnika",
+                "system": ID_PRACTITIONER,
                 "value": practitioner_id,
             },
             "display": practitioner_name or practitioner_id,
@@ -181,7 +187,7 @@ async def _build_document_bundle(
     if org_code:
         doc_ref_dict["custodian"] = {
             "identifier": {
-                "system": "http://fhir.cezih.hr/specifikacije/identifikatori/HZZO-sifra-zdravstvene-organizacije",
+                "system": ID_ORG,
                 "value": org_code,
             },
             "display": f"Ustanova {org_code}",
@@ -208,7 +214,7 @@ async def _build_document_bundle(
             {
                 "type": "Encounter",
                 "identifier": {
-                    "system": "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-posjete",
+                    "system": ID_ENCOUNTER,
                     "value": encounter_id,
                 },
             }
@@ -218,7 +224,7 @@ async def _build_document_bundle(
             {
                 "type": "Condition",
                 "identifier": {
-                    "system": "http://fhir.cezih.hr/specifikacije/identifikatori/identifikator-slucaja",
+                    "system": ID_CASE_GLOBAL,
                     "value": case_id,
                 },
             }

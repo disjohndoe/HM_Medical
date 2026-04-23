@@ -396,12 +396,15 @@ async def insurance_check_by_identifier(
         status_osiguranja = "Preminuo"
 
     oib = ""
+    mbo_from_cezih = ""
     for ident in cezih_data.get("identifikatori") or []:
-        if ident.get("system", "").endswith("/OIB") and ident.get("value"):
+        if ident.get("system") == real_service.SYS_OIB and ident.get("value"):
             oib = ident["value"]
+        elif ident.get("system") == real_service.SYS_MBO and ident.get("value"):
+            mbo_from_cezih = ident["value"]
 
     result = {
-        "mbo": identifier_value,
+        "mbo": mbo_from_cezih or identifier_value,
         "ime": cezih_data.get("ime", ""),
         "prezime": cezih_data.get("prezime", ""),
         "datum_rodjenja": cezih_data.get("datum_rodjenja", ""),
