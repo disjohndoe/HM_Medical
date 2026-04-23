@@ -13,6 +13,7 @@ SYS_JEDINSTVENI = "http://fhir.cezih.hr/specifikacije/identifikatori/jedinstveni
 
 _IDENTIFIER_SYSTEM_MAP = {
     "mbo": SYS_MBO,
+    "oib": SYS_OIB,
     "putovnica": SYS_PUTOVNICA,
     "ehic": SYS_EUROPSKA,
 }
@@ -56,17 +57,20 @@ def resolve_cezih_identifier(patient) -> tuple[str, str]:
     """Return (system_uri, value) for CEZIH FHIR identifier queries.
 
     Priority: MBO (Croatian insured) > jedinstveni-id (PMIR-registered foreigner)
-    > EHIC > putovnica. Raises CezihError if the patient carries none of these.
+    > OIB (Croatian resident without MBO on hand) > EHIC > putovnica.
+    Raises CezihError if the patient carries none of these.
     """
     if patient.mbo:
         return (SYS_MBO, patient.mbo)
     if getattr(patient, "cezih_patient_id", None):
         return (SYS_JEDINSTVENI, patient.cezih_patient_id)
+    if getattr(patient, "oib", None):
+        return (SYS_OIB, patient.oib)
     if getattr(patient, "ehic_broj", None):
         return (SYS_EUROPSKA, patient.ehic_broj)
     if getattr(patient, "broj_putovnice", None):
         return (SYS_PUTOVNICA, patient.broj_putovnice)
-    raise CezihError("Pacijent nema CEZIH identifikator (MBO, CEZIH ID, EHIC ili putovnica)")
+    raise CezihError("Pacijent nema CEZIH identifikator (MBO, CEZIH ID, OIB, EHIC ili putovnica)")
 
 
 __all__ = [

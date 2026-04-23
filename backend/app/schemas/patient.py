@@ -107,6 +107,20 @@ class PatientUpdate(BaseModel):
             raise ValueError("Spol mora biti M ili Z")
         return v.upper() if v else None
 
+    @field_validator("oib")
+    @classmethod
+    def validate_oib_field(cls, v: str | None) -> str | None:
+        if v is not None and v != "" and not validate_oib(v):
+            raise ValueError("Neispravan OIB")
+        return v
+
+    @field_validator("mbo")
+    @classmethod
+    def validate_mbo_field(cls, v: str | None) -> str | None:
+        if v is not None and v != "" and not validate_mbo(v):
+            raise ValueError("Neispravan MBO")
+        return v
+
     @field_validator("broj_putovnice")
     @classmethod
     def validate_putovnica(cls, v: str | None) -> str | None:

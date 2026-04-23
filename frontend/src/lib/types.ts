@@ -116,8 +116,8 @@ export interface Patient {
   cezih_insurance_checked_at: string | null;
 }
 
-export function hasCezihIdentifier(p: Pick<Patient, "mbo" | "cezih_patient_id" | "ehic_broj" | "broj_putovnice">): boolean {
-  return Boolean(p.mbo || p.cezih_patient_id || p.ehic_broj || p.broj_putovnice);
+export function hasCezihIdentifier(p: Pick<Patient, "mbo" | "oib" | "cezih_patient_id" | "ehic_broj" | "broj_putovnice">): boolean {
+  return Boolean(p.mbo || p.oib || p.cezih_patient_id || p.ehic_broj || p.broj_putovnice);
 }
 
 export function isForeignPatient(p: Pick<Patient, "mbo" | "broj_putovnice" | "ehic_broj">): boolean {

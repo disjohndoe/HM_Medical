@@ -32,9 +32,9 @@ async def search_patient_by_identifier(
     value: str,
     tenant_id: uuid.UUID,
 ) -> dict:
-    """Search CEZIH patient registry by identifier (MBO, passport, or EHIC).
+    """Search CEZIH patient registry by identifier (MBO, OIB, passport, or EHIC).
 
-    identifier_system must be one of: 'mbo', 'putovnica', 'ehic'.
+    identifier_system must be one of: 'mbo', 'oib', 'putovnica', 'ehic'.
     Uses ITI-78 PDQm — same transaction as fetch_patient_demographics / check_insurance.
     Results are cached for 5 minutes so subsequent import skips the CEZIH call.
     """
@@ -68,7 +68,7 @@ async def search_patient_by_identifier(
 
     entries = response.get("entry", [])
     if not entries:
-        id_label = {"mbo": "MBO", "putovnica": "putovnica", "ehic": "EHIC broj"}.get(
+        id_label = {"mbo": "MBO", "oib": "OIB", "putovnica": "putovnica", "ehic": "EHIC broj"}.get(
             identifier_system, identifier_system
         )
         raise CezihError(f"Pacijent s {id_label} '{value}' nije pronađen u CEZIH registru")

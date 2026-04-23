@@ -168,9 +168,9 @@ export function useInsuranceCheckByMbo() {
   })
 }
 
-export type AdhocIdentifierType = "mbo" | "ehic" | "putovnica"
+export type AdhocIdentifierType = "mbo" | "oib" | "ehic" | "putovnica"
 
-/** Ad-hoc insurance check by any CEZIH identifier type (MBO, EHIC, passport). */
+/** Ad-hoc insurance check by any CEZIH identifier type (MBO, OIB, EHIC, passport). */
 export function useInsuranceCheckByIdentifier() {
   const queryClient = useQueryClient()
   return useMutation({

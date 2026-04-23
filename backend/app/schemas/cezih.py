@@ -10,7 +10,7 @@ class CezihImportRequest(BaseModel):
 
 
 class CezihImportByIdentifierRequest(BaseModel):
-    identifier_type: Literal["mbo", "ehic", "putovnica"]
+    identifier_type: Literal["mbo", "oib", "ehic", "putovnica"]
     identifier_value: str
 
 
@@ -21,7 +21,7 @@ class InsuranceCheckRequest(BaseModel):
     # - identifier_type + identifier_value: ad-hoc lookup by any identifier type
     patient_id: UUID | None = None
     mbo: str | None = None
-    identifier_type: Literal["mbo", "ehic", "putovnica"] | None = None
+    identifier_type: Literal["mbo", "oib", "ehic", "putovnica"] | None = None
     identifier_value: str | None = None
 
     @model_validator(mode="after")

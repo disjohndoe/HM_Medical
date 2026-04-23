@@ -38,6 +38,7 @@ import type { Patient } from "@/lib/types"
 const PAGE_SIZE = 20
 
 const MBO_REGEX = /^\d{9}$/
+const OIB_REGEX = /^\d{11}$/
 const PASSPORT_REGEX = /^[A-Za-z0-9]{5,50}$/
 const EHIC_REGEX = /^[0-9A-Za-z]{20}$/
 
@@ -69,6 +70,10 @@ export default function PacijentiPage() {
     const value = importValue.trim()
     if (importType === "mbo" && !MBO_REGEX.test(value)) {
       toast.error("MBO mora imati točno 9 znamenki")
+      return
+    }
+    if (importType === "oib" && !OIB_REGEX.test(value)) {
+      toast.error("OIB mora imati točno 11 znamenki")
       return
     }
     if (importType === "putovnica" && !PASSPORT_REGEX.test(value)) {
@@ -197,6 +202,7 @@ export default function PacijentiPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="mbo">MBO</SelectItem>
+                  <SelectItem value="oib">OIB</SelectItem>
                   <SelectItem value="putovnica">Putovnica</SelectItem>
                   <SelectItem value="ehic">EHIC kartica</SelectItem>
                 </SelectContent>
@@ -206,27 +212,38 @@ export default function PacijentiPage() {
               <Label>
                 {importType === "mbo"
                   ? "MBO"
-                  : importType === "putovnica"
-                    ? "Broj putovnice"
-                    : "EHIC broj"}
+                  : importType === "oib"
+                    ? "OIB"
+                    : importType === "putovnica"
+                      ? "Broj putovnice"
+                      : "EHIC broj"}
               </Label>
               <Input
                 placeholder={
                   importType === "mbo"
                     ? "MBO (9 znamenki)"
-                    : importType === "putovnica"
-                      ? "AB1234567"
-                      : "20 znakova, npr. HR123..."
+                    : importType === "oib"
+                      ? "OIB (11 znamenki)"
+                      : importType === "putovnica"
+                        ? "AB1234567"
+                        : "20 znakova, npr. HR123..."
                 }
                 value={importValue}
                 onChange={(e) => {
                   const raw = e.target.value
-                  setImportValue(importType === "mbo" ? raw : raw.toUpperCase())
+                  const isDigitsOnly = importType === "mbo" || importType === "oib"
+                  setImportValue(isDigitsOnly ? raw.replace(/\D/g, "") : raw.toUpperCase())
                 }}
                 maxLength={
-                  importType === "mbo" ? 9 : importType === "ehic" ? 20 : 50
+                  importType === "mbo"
+                    ? 9
+                    : importType === "oib"
+                      ? 11
+                      : importType === "ehic"
+                        ? 20
+                        : 50
                 }
-                inputMode={importType === "mbo" ? "numeric" : undefined}
+                inputMode={importType === "mbo" || importType === "oib" ? "numeric" : undefined}
                 onKeyDown={(e) => { if (e.key === "Enter") handleImportFromCezih() }}
               />
             </div>

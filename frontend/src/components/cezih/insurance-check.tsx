@@ -40,6 +40,13 @@ const ID_CONFIG: Record<IdType, {
     errorMsg: "MBO mora imati točno 9 znamenki",
     sanitize: (v) => v.replace(/\D/g, "").slice(0, 9),
   },
+  oib: {
+    label: "OIB",
+    placeholder: "OIB (11 znamenki)",
+    validate: (v) => /^\d{11}$/.test(v),
+    errorMsg: "OIB mora imati točno 11 znamenki",
+    sanitize: (v) => v.replace(/\D/g, "").slice(0, 11),
+  },
   ehic: {
     label: "EHIC",
     placeholder: "EHIC broj (20 znakova)",
@@ -124,6 +131,7 @@ export function InsuranceCheck() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="mbo">MBO</SelectItem>
+              <SelectItem value="oib">OIB</SelectItem>
               <SelectItem value="ehic">EHIC</SelectItem>
               <SelectItem value="putovnica">Putovnica</SelectItem>
             </SelectContent>
