@@ -81,10 +81,9 @@ export function PatientCezihTab({
   const { data: editRecord } = useMedicalRecord(editTarget?.recordId ?? "")
 
   const enalazRows = (summary?.e_nalaz_history ?? []).map((item) => {
-    const sentMs = item.cezih_sent_at ? new Date(item.cezih_sent_at).getTime() : 0
-    const updatedMs = item.updated_at ? new Date(item.updated_at).getTime() : 0
-    const wasEdited = sentMs > 0 && updatedMs > sentMs + 60_000
-    return { ...item, _wasEdited: wasEdited, _editedMs: wasEdited ? updatedMs : 0 }
+    const replacedMs = item.cezih_last_replaced_at ? new Date(item.cezih_last_replaced_at).getTime() : 0
+    const wasReplaced = replacedMs > 0
+    return { ...item, _wasReplaced: wasReplaced, _replacedMs: replacedMs }
   })
 
   const {
@@ -97,7 +96,7 @@ export function PatientCezihTab({
     defaultDir: "desc",
     keyAccessors: {
       datum_slanja: (r) => (r.cezih_sent_at ? new Date(r.cezih_sent_at).getTime() : null),
-      datum_izmjene: (r) => (r._wasEdited ? r._editedMs : null),
+      datum_izmjene: (r) => (r._wasReplaced ? r._replacedMs : null),
       tip: (r) => tipLabelMap[r.tip] || r.tip,
       referenca: (r) => {
         const n = Number(r.reference_id)
@@ -335,16 +334,14 @@ export function PatientCezihTab({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pagedENalazi.map((item) => {
-                      const wasEdited = item._wasEdited
-                      return (
+                    {pagedENalazi.map((item) => (
                       <TableRow key={item.record_id}>
                         <TableCell className="text-sm">{formatDateTimeHR(item.datum)}</TableCell>
                         <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                           {item.cezih_sent_at ? formatDateTimeHR(item.cezih_sent_at) : "—"}
                         </TableCell>
                         <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                          {wasEdited && item.updated_at ? formatDateTimeHR(item.updated_at) : "—"}
+                          {item.cezih_last_replaced_at ? formatDateTimeHR(item.cezih_last_replaced_at) : "—"}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">
@@ -376,8 +373,7 @@ export function PatientCezihTab({
                           onStorno={(referenceId) => setNalazStornoTarget(referenceId)}
                         />
                       </TableRow>
-                    )
-                    })}
+                    ))}
                   </TableBody>
                 </Table>
               )}
@@ -481,15 +477,25 @@ function ENalazStatusCell({
     reference_id: string | null
     cezih_sent_at: string | null
     cezih_storno: boolean
+    cezih_last_replaced_at: string | null
   }
 }) {
   const isSent = !!item.cezih_sent_at
-  const label = item.cezih_storno ? "Storniran" : isSent ? "Poslan" : "Neposlan"
+  const isReplaced = !!item.cezih_last_replaced_at
+  const label = item.cezih_storno
+    ? "Storniran"
+    : isReplaced
+      ? "Zamijenjen"
+      : isSent
+        ? "Poslan"
+        : "Neposlan"
   const cls = item.cezih_storno
     ? "bg-red-100 text-red-800 border-red-200"
-    : isSent
-      ? "bg-green-100 text-green-800 border-green-200"
-      : "bg-amber-100 text-amber-800 border-amber-200"
+    : isReplaced
+      ? "bg-blue-100 text-blue-800 border-blue-200"
+      : isSent
+        ? "bg-green-100 text-green-800 border-green-200"
+        : "bg-amber-100 text-amber-800 border-amber-200"
 
   return (
     <TableCell>

@@ -641,6 +641,7 @@ export interface PatientCezihENalaz {
   cezih_storno: boolean;
   cezih_signed: boolean;
   cezih_signed_at: string | null;
+  cezih_last_replaced_at: string | null;
   updated_at: string | null;
   cezih_last_error_code: string | null;
   cezih_last_error_display: string | null;

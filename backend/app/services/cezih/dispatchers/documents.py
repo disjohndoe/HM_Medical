@@ -426,6 +426,7 @@ async def dispatch_replace_document(
             record.cezih_reference_id = new_ref
             if new_oid:
                 record.cezih_document_oid = new_oid
+            record.cezih_last_replaced_at = datetime.now(UTC)
             await db.flush()
 
     await _write_audit(
@@ -559,6 +560,7 @@ async def dispatch_replace_document_with_edit(
         record.cezih_reference_id = new_ref
     if new_oid:
         record.cezih_document_oid = new_oid
+    record.cezih_last_replaced_at = datetime.now(UTC)
     await db.flush()
 
     await clear_cezih_error("medical_record", record_id, tenant_id, session=db)

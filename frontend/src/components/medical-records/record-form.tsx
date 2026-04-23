@@ -122,36 +122,46 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   }, [onOpenChange])
 
   useEffect(() => {
-    if (open) {
-      setAttachedFile(null)
-      setDrugSearchQuery("")
-      setDrugSearchOpen(false)
-      setSelectedIcd(null)
-      setManualCode("")
-      setManualDisplay("")
-      if (record) {
-        setTherapy(record.preporucena_terapija ?? [])
-        setIcdQuery(record.dijagnoza_mkb ?? "")
-        reset({
-          datum: record.datum.split("T")[0],
-          tip: record.tip,
-          dijagnoza_mkb: record.dijagnoza_mkb ?? undefined,
-          dijagnoza_tekst: record.dijagnoza_tekst ?? undefined,
-          sadrzaj: record.sadrzaj,
-        })
+    if (!open) return
+    setAttachedFile(null)
+    setDrugSearchQuery("")
+    setDrugSearchOpen(false)
+    setManualCode("")
+    setManualDisplay("")
+    if (record) {
+      setTherapy(record.preporucena_terapija ?? [])
+      if (record.dijagnoza_mkb) {
+        const display = record.dijagnoza_tekst || record.dijagnoza_mkb
+        setSelectedIcd({ code: record.dijagnoza_mkb, display })
+        setIcdQuery(`${record.dijagnoza_mkb} — ${display}`)
       } else {
-        setTherapy([])
+        setSelectedIcd(null)
         setIcdQuery("")
-        reset({
-          datum: new Date().toISOString().split("T")[0],
-          tip: "",
-          dijagnoza_mkb: undefined,
-          dijagnoza_tekst: undefined,
-          sadrzaj: "",
-        })
       }
+      reset({
+        datum: record.datum.split("T")[0],
+        tip: record.tip,
+        dijagnoza_mkb: record.dijagnoza_mkb ?? undefined,
+        dijagnoza_tekst: record.dijagnoza_tekst ?? undefined,
+        sadrzaj: record.sadrzaj,
+      })
+    } else {
+      setTherapy([])
+      setSelectedIcd(null)
+      setIcdQuery("")
+      reset({
+        datum: new Date().toISOString().split("T")[0],
+        tip: "",
+        dijagnoza_mkb: undefined,
+        dijagnoza_tekst: undefined,
+        sadrzaj: "",
+      })
     }
-  }, [open, record, reset])
+    // Depending on `record` (object) wipes the user's picker selection on any
+    // parent refetch. Keying on `record?.id` only re-initializes when the
+    // target record actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, record?.id, reset])
 
   const handleAddTherapyDrug = (drug: LijekItem) => {
     if (therapy.some((t) => t.atk === drug.atk && t.naziv === drug.naziv && t.oblik === drug.oblik && t.jacina === drug.jacina)) {

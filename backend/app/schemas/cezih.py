@@ -166,6 +166,7 @@ class PatientCezihENalaz(BaseModel):
     cezih_storno: bool = False
     cezih_signed: bool = False
     cezih_signed_at: datetime | None = None
+    cezih_last_replaced_at: datetime | None = None
     updated_at: datetime | None = None
     cezih_last_error_code: str | None = None
     cezih_last_error_display: str | None = None
