@@ -188,10 +188,6 @@ export function InsuranceCheck() {
                   <span className="text-muted-foreground">Spol:</span>{" "}
                   {result.spol}
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Osiguravatelj:</span>{" "}
-                  {result.osiguravatelj}
-                </div>
                 {isDeceased && (
                   <div>
                     <span className="text-muted-foreground">Datum smrti:</span>{" "}
