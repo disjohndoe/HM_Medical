@@ -6,7 +6,7 @@ from app.services.cezih.exceptions import CezihError
 
 # CEZIH identifier systems
 SYS_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
-SYS_OIB = "http://fhir.cezih.hr/specifikacije/identifikatori/oib"
+SYS_OIB = "http://fhir.cezih.hr/specifikacije/identifikatori/OIB"
 SYS_PUTOVNICA = "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica"
 SYS_EUROPSKA = "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica"
 SYS_JEDINSTVENI = "http://fhir.cezih.hr/specifikacije/identifikatori/jedinstveni-identifikator-pacijenta"
