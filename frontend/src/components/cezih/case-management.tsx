@@ -362,7 +362,10 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                   </div>
                 )}
                 {selectedIcd && (
-                  <Badge className="mt-1" variant="secondary">
+                  <Badge
+                    className="mt-1 h-auto max-w-full whitespace-normal py-0.5 leading-snug"
+                    variant="secondary"
+                  >
                     {selectedIcd.code} — {selectedIcd.display}
                   </Badge>
                 )}
@@ -596,7 +599,10 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                 </div>
               )}
               {editSelectedIcd && (
-                <Badge className="mt-1" variant="secondary">
+                <Badge
+                  className="mt-1 h-auto max-w-full whitespace-normal py-0.5 leading-snug"
+                  variant="secondary"
+                >
                   {editSelectedIcd.code} — {editSelectedIcd.display}
                 </Badge>
               )}
