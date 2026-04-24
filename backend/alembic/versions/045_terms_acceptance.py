@@ -4,7 +4,7 @@ Records consent to Terms of Service / Privacy Policy. Nullable so existing users
 are flagged as not-yet-consented; login response prompts them with a blocking
 modal until they accept.
 
-Revision ID: 045_add_terms_acceptance_to_users
+Revision ID: 045_terms_acceptance
 Revises: 044_add_cezih_last_replaced_at
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "045_add_terms_acceptance_to_users"
+revision = "045_terms_acceptance"
 down_revision = "044_add_cezih_last_replaced_at"
 
 
