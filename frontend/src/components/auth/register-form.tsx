@@ -7,11 +7,13 @@ import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { useAuth } from "@/lib/auth";
+import { TERMS_URL, PRIVACY_URL } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const registerSchema = z
   .object({
@@ -27,6 +29,9 @@ const registerSchema = z
       .regex(/\d/, "Lozinka mora sadržavati barem jedan broj")
       .regex(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]/, "Lozinka mora sadržavati barem jedan posebni znak"),
     confirmPassword: z.string().min(1, "Potvrda lozinke je obavezna"),
+    terms_accepted: z.literal(true, {
+      error: "Morate prihvatiti Uvjete korištenja i Pravila privatnosti",
+    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Lozinke se ne podudaraju",
@@ -47,7 +52,7 @@ export function RegisterForm() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterForm>({
     resolver: standardSchemaResolver(registerSchema),
-    defaultValues: { vrsta: "ordinacija" },
+    defaultValues: { vrsta: "ordinacija", terms_accepted: false as unknown as true },
   });
 
   const onSubmit = async (data: RegisterForm) => {
@@ -133,6 +138,46 @@ export function RegisterForm() {
             <Input id="confirmPassword" type="password" {...register("confirmPassword")} />
             {errors.confirmPassword && (
               <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-start gap-2">
+              <Controller
+                name="terms_accepted"
+                control={control}
+                render={({ field }) => (
+                  <Checkbox
+                    id="terms_accepted"
+                    checked={field.value === true}
+                    onCheckedChange={(checked) => field.onChange(checked)}
+                    className="mt-0.5"
+                  />
+                )}
+              />
+              <Label htmlFor="terms_accepted" className="text-sm leading-relaxed font-normal cursor-pointer">
+                Prihvaćam{" "}
+                <a
+                  href={TERMS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline underline-offset-4 hover:text-primary/80"
+                >
+                  Uvjete korištenja
+                </a>{" "}
+                i{" "}
+                <a
+                  href={PRIVACY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline underline-offset-4 hover:text-primary/80"
+                >
+                  Pravila privatnosti
+                </a>
+                .
+              </Label>
+            </div>
+            {errors.terms_accepted && (
+              <p className="text-sm text-destructive">{errors.terms_accepted.message}</p>
             )}
           </div>
         </CardContent>

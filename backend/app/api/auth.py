@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.terms import CURRENT_TERMS_VERSION, requires_terms_acceptance
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.tenant import Tenant
@@ -89,6 +92,39 @@ async def get_me(current_user: User = Depends(get_current_user), db: AsyncSessio
     user_data = UserRead.model_validate(current_user).model_dump()
     user_data["tenant"] = TenantRead.model_validate(tenant)
     return user_data
+
+
+@router.get("/terms-status")
+async def get_terms_status(current_user: User = Depends(get_current_user)):
+    """Returns whether the current user needs to (re-)accept the Terms of Service.
+
+    Frontend polls this after login and renders a blocking modal when
+    `requires_terms_acceptance` is true. Also returned inline on login,
+    but exposed here so the auth context can recover it without re-login.
+    """
+    return {
+        "requires_terms_acceptance": requires_terms_acceptance(current_user),
+        "current_version": CURRENT_TERMS_VERSION,
+        "accepted_version": current_user.terms_version,
+        "accepted_at": current_user.terms_accepted_at.isoformat() if current_user.terms_accepted_at else None,
+    }
+
+
+@router.post("/accept-terms", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("10/hour")
+async def accept_terms(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record the current user's acceptance of the latest Terms + Privacy Policy.
+
+    Called by the blocking consent modal on next login for users whose
+    stored terms_version is older than CURRENT_TERMS_VERSION.
+    """
+    current_user.terms_accepted_at = datetime.now(UTC)
+    current_user.terms_version = CURRENT_TERMS_VERSION
+    await db.flush()
 
 
 @router.post("/change-password")

@@ -55,3 +55,5 @@ class User(BaseTenantModel):
     cezih_signing_method: Mapped[str] = mapped_column(String(20), nullable=False, server_default="extsigner")
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_version: Mapped[str | None] = mapped_column(String(16), nullable=True)

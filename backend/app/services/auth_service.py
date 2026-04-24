@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.plan_enforcement import check_trial_expiry
 from app.core.plan_limits import get_plan_limits
+from app.core.terms import CURRENT_TERMS_VERSION, requires_terms_acceptance
 from app.models.refresh_token import RefreshToken
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -54,6 +55,8 @@ async def register(db: AsyncSession, data: RegisterRequest) -> TokenResponse:
         ime=data.ime,
         prezime=data.prezime,
         role="admin",
+        terms_accepted_at=datetime.now(UTC),
+        terms_version=CURRENT_TERMS_VERSION,
     )
     db.add(user)
     await db.flush()
@@ -374,4 +377,5 @@ async def _create_token_pair(db: AsyncSession, user: User) -> TokenResponse:
         refresh_token=raw_refresh,
         expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         user=user_read,
+        requires_terms_acceptance=requires_terms_acceptance(user),
     )

@@ -10,10 +10,12 @@ interface AuthContextType {
   tenant: User["tenant"] | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  requiresTermsAcceptance: boolean;
   login: (data: LoginRequest) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  acceptTerms: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -28,10 +30,18 @@ function setSessionCookie(active: boolean) {
   }
 }
 
+interface TermsStatus {
+  requires_terms_acceptance: boolean;
+  current_version: string;
+  accepted_version: string | null;
+  accepted_at: string | null;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [requiresTermsAcceptance, setRequiresTermsAcceptance] = useState(false);
 
   const handleAuthSuccess = useCallback((res: TokenResponse) => {
     setSessionCookie(true);
@@ -41,11 +51,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (res.user) {
       setUser(res.user);
     }
+    setRequiresTermsAcceptance(res.requires_terms_acceptance === true);
   }, []);
 
   const clearAuth = useCallback(() => {
     setSessionCookie(false);
     setUser(null);
+    setRequiresTermsAcceptance(false);
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -61,9 +73,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check session via /auth/me — cookies are sent automatically with credentials: 'include'
     api
       .get<User>("/auth/me")
-      .then((u) => {
+      .then(async (u) => {
         setUser(u);
         setSessionCookie(true);
+        // Re-check terms status for this session (in case CURRENT_TERMS_VERSION bumped since last login)
+        try {
+          const status = await api.get<TermsStatus>("/auth/terms-status");
+          setRequiresTermsAcceptance(status.requires_terms_acceptance);
+        } catch {
+          // non-fatal — leave requiresTermsAcceptance at its current value
+        }
       })
       .catch(() => clearAuth())
       .finally(() => setIsLoading(false));
@@ -98,6 +117,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryClient.clear();
   };
 
+  const acceptTerms = useCallback(async () => {
+    await api.post("/auth/accept-terms", {});
+    setRequiresTermsAcceptance(false);
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -105,10 +129,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         tenant: user?.tenant ?? null,
         isAuthenticated: !!user,
         isLoading,
+        requiresTermsAcceptance,
         login,
         register,
         logout,
         refreshUser,
+        acceptTerms,
       }}
     >
       {children}

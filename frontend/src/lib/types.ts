@@ -49,6 +49,7 @@ export interface TokenResponse {
   token_type: string;
   expires_in: number;
   user: User | null;
+  requires_terms_acceptance?: boolean;
 }
 
 export interface LoginRequest {
@@ -63,6 +64,7 @@ export interface RegisterRequest {
   password: string;
   ime: string;
   prezime: string;
+  terms_accepted: boolean;
 }
 
 export interface UserCreate {

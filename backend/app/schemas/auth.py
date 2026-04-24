@@ -27,11 +27,19 @@ class RegisterRequest(BaseModel):
     password: str
     ime: str
     prezime: str
+    terms_accepted: bool
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
         return _validate_password_strength(v)
+
+    @field_validator("terms_accepted")
+    @classmethod
+    def validate_terms_accepted(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("Morate prihvatiti Uvjete korištenja i Pravila privatnosti")
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -45,6 +53,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: UserReadWithTenant | None = None
+    requires_terms_acceptance: bool = False
 
 
 class RefreshRequest(BaseModel):

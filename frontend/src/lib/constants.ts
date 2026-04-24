@@ -455,3 +455,8 @@ export const DOCUMENT_KATEGORIJA_COLORS: Record<string, string> = {
   dokument: "bg-green-100 text-green-800",
   ostalo: "bg-gray-100 text-gray-800",
 };
+
+// --- Legal documents (published on hmdigital.hr, noindex + not linked from public nav) ---
+
+export const TERMS_URL = "https://hmdigital.hr/medical/uvjeti-koristenja/";
+export const PRIVACY_URL = "https://hmdigital.hr/medical/pravila-privatnosti/";
