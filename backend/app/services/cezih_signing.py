@@ -532,7 +532,13 @@ async def sign_bundle_via_extsigner(
     }
 
     # Step 1: Submit document for signing
-    # Auth: mTLS via agent session — NO Bearer token (adding one causes 401).
+    # EXP-3 (2026-04-28): CEZIH started rejecting unauthenticated extsigner
+    # requests around 2026-04-23 (401 / 500 ERROR_CODE_0018 Presign Unauthorized).
+    # Acquire Bearer via existing OAuth2 client_credentials flow against
+    # certpubsso (probed working). Reused for step-2 polling below.
+    async with httpx.AsyncClient() as _bearer_client:
+        bearer_token = await _get_signing_token(_bearer_client)
+
     logger.info(
         "CEZIH extsigner step 1: submitting for signing (OIB=%.6s..., bundle=%d bytes)",
         signer_oib,
@@ -545,6 +551,7 @@ async def sign_bundle_via_extsigner(
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "Authorization": f"Bearer {bearer_token}",
         },
         form_data=None,
         json_body=payload,
@@ -582,7 +589,10 @@ async def sign_bundle_via_extsigner(
             retrieve_result = await _request_via_agent(
                 method="GET",
                 url=get_url,
-                headers={"Accept": "application/json"},
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {bearer_token}",
+                },
                 form_data=None,
                 json_body=None,
                 timeout=30,
