@@ -234,7 +234,7 @@ Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
   - 22/22 TC matrix verified GREEN on smart card 2026-04-22 + 2026-04-23
   - 22/22 TC matrix verified GREEN on Certilia mobile 2026-04-22 (afternoon reverify)
   - Certilia (extsigner) regressed 2026-04-23–04-28 (CEZIH unilaterally tightened auth on `extsigner/api/sign` to require Bearer token); fixed in commit `960cf3e`. See `docs/CEZIH/findings/2026-04-28-extsigner-bearer-token-required.md`.
-  - Both methods re-verified working 2026-04-28 after fix
+  - Certilia mobile path re-verified end-to-end 2026-04-28 on Croatian GORAN: full Posjeta lifecycle, full case lifecycle (2.1 -> 2.3 -> 2.5 -> 2.4 -> 2.9 -> 2.6), and e-Nalaz TC18 -> 19 -> 20 chain (Refs 1493569 -> 1493573 -> Storniran). See `docs/CEZIH/findings/2026-04-28-certilia-mobile-post-bearer-fix-sweep.md`.
 - Earlier ERR_DS_1002 on PMIR was caused by bundle structure issues, not signing method
 
 **ITI-65 document bundles:**
