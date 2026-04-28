@@ -12,7 +12,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { PerformedList } from "@/components/procedures/performed-list"
-import { RecordList } from "@/components/medical-records/record-list"
 import { BiljeskaList } from "@/components/biljeske/biljeska-list"
 import { DocumentList } from "@/components/documents/document-list"
 import { UploadDialog } from "@/components/documents/upload-dialog"
@@ -23,6 +22,7 @@ import { RecordForm } from "@/components/medical-records/record-form"
 import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { useQueryClient } from "@tanstack/react-query"
 import { usePatient } from "@/lib/hooks/use-patients"
+import { useMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { hasCezihIdentifier } from "@/lib/types"
 import { useExportPatientData } from "@/lib/hooks/use-patient-rights"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -39,29 +39,30 @@ export default function PacijentDetailPage() {
   const [ekartonOpen, setEkartonOpen] = useState(false)
   const [sendNalazOpen, setSendNalazOpen] = useState(false)
   const [newRecordOpen, setNewRecordOpen] = useState(false)
-  const initialTab = searchParams.get("tab") || "pregled"
-  const initialHighlightRecord = searchParams.get("record")
+  const tabParam = searchParams.get("tab")
+  const initialTab = tabParam && tabParam !== "nalazi" ? tabParam : "pregled"
+  const initialEditRecord = searchParams.get("record")
   const [activeTab, setActiveTab] = useState(initialTab)
-  const [highlightRecordId, setHighlightRecordId] = useState<string | null>(initialHighlightRecord)
+  const [localEditRecordId, setLocalEditRecordId] = useState<string | null>(initialEditRecord)
+  const { data: localEditRecord } = useMedicalRecord(localEditRecordId ?? "")
   const [cezihSubTab, setCezihSubTab] = useState("posjete")
   const [visitCreateOpen, setVisitCreateOpen] = useState(false)
   const [caseCreateOpen, setCaseCreateOpen] = useState(false)
 
-  // Clear ?record once consumed so refresh/back doesn't re-open the modal forever
+  // Clear ?record / stale ?tab=nalazi once consumed so refresh/back doesn't re-open the modal forever
   useEffect(() => {
-    if (initialHighlightRecord) {
+    if (initialEditRecord || tabParam === "nalazi") {
       const url = new URL(window.location.href)
       url.searchParams.delete("record")
       url.searchParams.delete("tab")
       router.replace(url.pathname + (url.search || ""), { scroll: false })
     }
-    // initialHighlightRecord captured on mount — intentional single-shot effect
+    // captured on mount — intentional single-shot effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleOpenNalaz = (recordId: string) => {
-    setHighlightRecordId(recordId)
-    setActiveTab("nalazi")
+    setLocalEditRecordId(recordId)
   }
   const { canViewMedicalRecords, canViewCezih, canViewDocuments, canUploadDocuments, canEditMedicalRecord, canPerformCezihOps } = usePermissions()
   const exportMutation = useExportPatientData()
@@ -219,7 +220,6 @@ export default function PacijentDetailPage() {
         <TabsList className="flex h-auto w-full flex-wrap gap-x-4 gap-y-2 bg-transparent p-0 group-data-horizontal/tabs:h-auto sm:inline-flex sm:h-8 sm:w-fit sm:flex-nowrap sm:gap-0 sm:bg-muted sm:p-[3px] sm:group-data-horizontal/tabs:h-8">
           <TabsTrigger value="pregled" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Pregled</TabsTrigger>
           <TabsTrigger value="postupci" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Postupci</TabsTrigger>
-          {canViewMedicalRecords && <TabsTrigger value="nalazi" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Nalazi</TabsTrigger>}
           {canViewMedicalRecords && <TabsTrigger value="biljeske" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Bilješke</TabsTrigger>}
           {canPerformCezihOps && <TabsTrigger value="recepti" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Recepti</TabsTrigger>}
           {canViewDocuments && <TabsTrigger value="dokumenti" className="h-9 flex-auto rounded-md bg-muted sm:h-[calc(100%-1px)] sm:flex-1 sm:bg-transparent">Dokumenti</TabsTrigger>}
@@ -356,17 +356,6 @@ export default function PacijentDetailPage() {
         </TabsContent>
 
         {canViewMedicalRecords && (
-          <TabsContent value="nalazi">
-            <RecordList
-              patientId={id}
-              hasCezihIdentifier={hasCezihIdentifier(patient)}
-              highlightRecordId={highlightRecordId}
-              onHighlightConsumed={() => setHighlightRecordId(null)}
-            />
-          </TabsContent>
-        )}
-
-        {canViewMedicalRecords && (
           <TabsContent value="biljeske">
             <BiljeskaList patientId={id} />
           </TabsContent>
@@ -425,6 +414,14 @@ export default function PacijentDetailPage() {
         onOpenChange={setSendNalazOpen}
         patientId={id}
         hasCezihIdentifier={hasCezihIdentifier(patient)}
+      />
+
+      <RecordForm
+        open={!!localEditRecordId && !!localEditRecord}
+        onOpenChange={(open) => !open && setLocalEditRecordId(null)}
+        patientId={id}
+        record={localEditRecord ?? null}
+        onSaved={() => setLocalEditRecordId(null)}
       />
     </div>
   )

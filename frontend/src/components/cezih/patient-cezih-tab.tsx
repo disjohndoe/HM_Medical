@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe } from "lucide-react"
+import { useMemo, useRef, useState } from "react"
+import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe, Download } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -27,10 +27,11 @@ import { RecordForm } from "@/components/medical-records/record-form"
 import { CaseManagement } from "@/components/cezih/case-management"
 import { VisitManagement } from "@/components/cezih/visit-management"
 import { SendNalazDialog } from "@/components/cezih/send-nalaz-dialog"
+import { api } from "@/lib/api-client"
 import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocumentWithEdit } from "@/lib/hooks/use-cezih"
 import { useMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { OSIGURANJE_STATUS, COUNTRY_HR } from "@/lib/constants"
+import { OSIGURANJE_STATUS, COUNTRY_HR, RECORD_SENSITIVITY, RECORD_SENSITIVITY_COLORS } from "@/lib/constants"
 import { isForeignPatient, type Patient } from "@/lib/types"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateTimeHR } from "@/lib/utils"
@@ -80,6 +81,38 @@ export function PatientCezihTab({
   const [sendTargetRecordId, setSendTargetRecordId] = useState<string | null>(null)
   const { data: localEditRecord } = useMedicalRecord(localEditRecordId ?? "")
   const { data: editRecord } = useMedicalRecord(editTarget?.recordId ?? "")
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const downloadingRef = useRef<Set<string>>(new Set())
+
+  const handleDownloadPdf = async (recordId: string, datum: string) => {
+    if (downloadingRef.current.has(recordId)) return
+    downloadingRef.current.add(recordId)
+    setDownloadingId(recordId)
+    try {
+      const res = await api.fetchRaw(`/medical-records/${recordId}/pdf`)
+      const blob = await res.blob()
+      const disposition = res.headers.get("content-disposition") || ""
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : `nalaz_${datum.slice(0, 10)}_${recordId.slice(0, 4)}.pdf`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      const digitallySigned = res.headers.get("x-pdf-digitally-signed") === "true"
+      if (digitallySigned) {
+        toast.success("PDF preuzet i digitalno potpisan.")
+      } else {
+        toast.warning("PDF preuzet bez digitalnog potpisa.")
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Greška pri preuzimanju PDF-a")
+    } finally {
+      downloadingRef.current.delete(recordId)
+      setDownloadingId(null)
+    }
+  }
 
   const enalazRows = (summary?.e_nalaz_history ?? []).map((item) => {
     const replacedMs = item.cezih_last_replaced_at ? new Date(item.cezih_last_replaced_at).getTime() : 0
@@ -99,6 +132,8 @@ export function PatientCezihTab({
       datum_slanja: (r) => (r.cezih_sent_at ? new Date(r.cezih_sent_at).getTime() : null),
       datum_izmjene: (r) => (r._wasReplaced ? r._replacedMs : null),
       tip: (r) => tipLabelMap[r.tip] || r.tip,
+      dijagnoza: (r) => r.dijagnoza_tekst || r.dijagnoza_mkb || "",
+      doktor: (r) => `${r.doktor_prezime ?? ""} ${r.doktor_ime ?? ""}`.trim(),
       referenca: (r) => {
         const n = Number(r.reference_id)
         return Number.isFinite(n) ? n : r.reference_id || null
@@ -329,6 +364,8 @@ export function PatientCezihTab({
                       <SortableTableHead columnKey="datum_slanja" label="Datum slanja" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
                       <SortableTableHead columnKey="datum_izmjene" label="Datum izmjene" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
                       <SortableTableHead columnKey="tip" label="Tip" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
+                      <SortableTableHead columnKey="dijagnoza" label="Dijagnoza" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden md:table-cell" />
+                      <SortableTableHead columnKey="doktor" label="Doktor" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden lg:table-cell" />
                       <SortableTableHead columnKey="referenca" label="Referenca" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
                       <SortableTableHead columnKey="potpis" label="Potpis" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden md:table-cell" />
                       <SortableTableHead columnKey="status" label="Status" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
@@ -346,9 +383,29 @@ export function PatientCezihTab({
                           {item.cezih_last_replaced_at ? formatDateTimeHR(item.cezih_last_replaced_at) : "—"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {tipLabelMap[item.tip] || item.tip}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge variant="outline" className="text-xs">
+                              {tipLabelMap[item.tip] || item.tip}
+                            </Badge>
+                            {item.sensitivity && item.sensitivity !== "standard" && (
+                              <Badge
+                                variant="secondary"
+                                className={`text-xs ${RECORD_SENSITIVITY_COLORS[item.sensitivity] || ""}`}
+                              >
+                                {RECORD_SENSITIVITY[item.sensitivity] || item.sensitivity}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-sm">
+                          {item.dijagnoza_tekst
+                            ? `${item.dijagnoza_mkb ? `${item.dijagnoza_mkb} - ` : ""}${item.dijagnoza_tekst}`
+                            : item.dijagnoza_mkb || "—"}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell text-sm">
+                          {item.doktor_prezime
+                            ? `${item.doktor_ime ?? ""} ${item.doktor_prezime}`.trim()
+                            : "—"}
                         </TableCell>
                         <TableCell className="hidden sm:table-cell font-mono text-xs">
                           {item.reference_id || "—"}
@@ -369,6 +426,8 @@ export function PatientCezihTab({
                         <ENalazStatusCell item={item} />
                         <ENalazActionsCell
                           item={item}
+                          downloading={downloadingId === item.record_id}
+                          onDownloadPdf={(id) => handleDownloadPdf(id, item.datum)}
                           onLocalEdit={(id) => setLocalEditRecordId(id)}
                           onSend={(id) => setSendTargetRecordId(id)}
                           onReplaceEdit={(recordId, referenceId) => setEditTarget({ recordId, referenceId })}
@@ -508,6 +567,8 @@ function ENalazStatusCell({
 
 function ENalazActionsCell({
   item,
+  downloading,
+  onDownloadPdf,
   onLocalEdit,
   onSend,
   onReplaceEdit,
@@ -519,6 +580,8 @@ function ENalazActionsCell({
     cezih_sent_at: string | null
     cezih_storno: boolean
   }
+  downloading: boolean
+  onDownloadPdf: (id: string) => void
   onLocalEdit: (id: string) => void
   onSend: (id: string) => void
   onReplaceEdit: (recordId: string, referenceId: string) => void
@@ -529,6 +592,20 @@ function ENalazActionsCell({
   return (
     <TableCell className="text-right">
       <div className="flex justify-end gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={() => onDownloadPdf(item.record_id)}
+          disabled={downloading}
+          title="Preuzmi PDF"
+        >
+          {downloading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Download className="h-3.5 w-3.5" />
+          )}
+        </Button>
         {isUnsent && (
           <>
             <Button

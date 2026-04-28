@@ -160,6 +160,11 @@ class PatientCezihENalaz(BaseModel):
     record_id: str
     datum: datetime
     tip: str
+    dijagnoza_mkb: str | None = None
+    dijagnoza_tekst: str | None = None
+    doktor_ime: str | None = None
+    doktor_prezime: str | None = None
+    sensitivity: str | None = None
     reference_id: str | None = None
     document_oid: str | None = None
     cezih_sent_at: datetime | None = None

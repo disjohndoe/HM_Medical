@@ -324,7 +324,12 @@ async def get_patient_cezih_summary(
     # e-Nalaz table: all CEZIH-eligible medical records for this patient
     # (sent + unsent). Status is derived on the frontend from cezih_sent_at / cezih_storno.
     records_result = await db.execute(
-        select(MedicalRecord)
+        select(
+            MedicalRecord,
+            User.ime.label("doktor_ime"),
+            User.prezime.label("doktor_prezime"),
+        )
+        .outerjoin(User, MedicalRecord.doktor_id == User.id)
         .where(
             MedicalRecord.tenant_id == current_user.tenant_id,
             MedicalRecord.patient_id == patient_id,
@@ -332,26 +337,31 @@ async def get_patient_cezih_summary(
         )
         .order_by(func.coalesce(MedicalRecord.cezih_sent_at, MedicalRecord.created_at).desc())
     )
-    records = records_result.scalars().all()
+    records = records_result.all()
 
     e_nalaz_history = [
         PatientCezihENalaz(
-            record_id=str(r.id),
-            datum=r.created_at,
-            tip=r.tip,
-            reference_id=r.cezih_reference_id,
-            document_oid=r.cezih_document_oid,
-            cezih_sent_at=r.cezih_sent_at,
-            cezih_storno=r.cezih_storno,
-            cezih_signed=bool(r.cezih_signature_data),
-            cezih_signed_at=r.cezih_signed_at,
-            cezih_last_replaced_at=r.cezih_last_replaced_at,
-            updated_at=r.updated_at,
-            cezih_last_error_code=r.cezih_last_error_code,
-            cezih_last_error_display=r.cezih_last_error_display,
-            cezih_last_error_diagnostics=r.cezih_last_error_diagnostics,
+            record_id=str(row[0].id),
+            datum=row[0].created_at,
+            tip=row[0].tip,
+            dijagnoza_mkb=row[0].dijagnoza_mkb,
+            dijagnoza_tekst=row[0].dijagnoza_tekst,
+            doktor_ime=row.doktor_ime,
+            doktor_prezime=row.doktor_prezime,
+            sensitivity=row[0].sensitivity,
+            reference_id=row[0].cezih_reference_id,
+            document_oid=row[0].cezih_document_oid,
+            cezih_sent_at=row[0].cezih_sent_at,
+            cezih_storno=row[0].cezih_storno,
+            cezih_signed=bool(row[0].cezih_signature_data),
+            cezih_signed_at=row[0].cezih_signed_at,
+            cezih_last_replaced_at=row[0].cezih_last_replaced_at,
+            updated_at=row[0].updated_at,
+            cezih_last_error_code=row[0].cezih_last_error_code,
+            cezih_last_error_display=row[0].cezih_last_error_display,
+            cezih_last_error_diagnostics=row[0].cezih_last_error_diagnostics,
         )
-        for r in records
+        for row in records
     ]
 
     # e-Recept history from audit log

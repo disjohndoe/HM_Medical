@@ -637,6 +637,11 @@ export interface PatientCezihENalaz {
   record_id: string;
   datum: string;
   tip: string;
+  dijagnoza_mkb: string | null;
+  dijagnoza_tekst: string | null;
+  doktor_ime: string | null;
+  doktor_prezime: string | null;
+  sensitivity: string | null;
   reference_id: string | null;
   document_oid: string | null;
   cezih_sent_at: string | null;
