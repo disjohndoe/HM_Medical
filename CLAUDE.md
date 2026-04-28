@@ -90,21 +90,19 @@ docker compose up --build -d                                                 # p
 
 ## What This Is
 
-Cloud-based patient management system for Croatian private polyclinics and medical practices, with native CEZIH integration. Competes with Toscana (UX) and AdriaSoft (compliance).
+Cloud-based patient management system for Croatian private polyclinics and medical practices, with native CEZIH integration.
 
 **Hard deadline:** 1 May 2026 (Zakon o podacima i informacijama u zdravstvu, NN 14/2019, čl. 28 — mandatory CEZIH for all providers)
-**Market:** 2,488 private healthcare institutions in Croatia
-**Model:** Cloud SaaS — 14-day free trial → Solo €49/mo promo until 1.5. then €79/mo | Poliklinika €199/mo | Poliklinika+ po dogovoru
+**Market:** 2,488 private healthcare institutions in Croatia.
 
-**User limits:**
+**User limits (must stay aligned with `plan_limits.py`):**
 | Plan | Website (live marketing) | Code (plan_limits.py) | Status |
 |------|--------------------------|----------------------|--------|
 | Solo | 1-2 korisnika | max_users=2 | ✅ aligned |
 | Poliklinika | 3-5 korisnika | max_users=5 | ✅ aligned |
 | Poliklinika+ | 6-15+ korisnika | max_users=15 | ✅ aligned |
 
-**Onboarding:** Solo €490 (€290 promo), Poliklinika €1,490 | On-site: Slavonija €190, Zagreb €350, Dalmacija/Istra €490
-**Lead list:** docs/medical_leads.csv (4,986 clinics, 2,884 with phone numbers)
+For pricing, onboarding fees, lead lists, sales channels and competitive positioning see `klijenti/CLAUDE.md` - those are out of scope for programming work.
 
 ## Project Structure
 
@@ -140,27 +138,33 @@ MEDICAL_MVP/
 
 ### Dual Signing — Both Methods Work Independently
 
-**Every CEZIH action MUST work with EITHER signing method. No fallbacks. No "preferred" method. A user with only a smart card can do everything. A user with only Certilia mobile can do everything.**
+**Every CEZIH action MUST work with EITHER signing method. No fallbacks. No "preferred" method.**
 
-| Method | How | What's Needed |
-|--------|-----|---------------|
-| **AKD Smart Card** | Local Agent reads card → JWS signature → VPN + mTLS + signing | AKD kartica + USB čitač + VPN klijent + Local Agent |
-| **Certilia Mobile/Cloud** | Remote signing via certpubws.cezih.hr → push notification to phone | Certilia račun + mobitel (no card, no VPN, no local agent) |
+**Both methods share the same infrastructure baseline:** AKD card + reader + CEZIH VPN + local agent. Clinical FHIR endpoints (`certws2.cezih.hr:8443`) live on the CEZIH internal network and require VPN + mTLS regardless of signing method. Only the signing step differs.
+
+| Method | Signing step |
+|--------|--------------|
+| **AKD Smart Card** | Local agent reads card → JWS signed locally |
+| **Certilia Mobile/Cloud** | Document hash sent to certpubws.cezih.hr → push to mobile → user approves → signed bundle returned |
 
 ```
-Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
-                REST API
-                    ↕
-            ┌───────┴────────┐
-            │                │
-    Local Agent (Tauri)   Certilia Remote Signing
-    AKD smart card        certpubws.cezih.hr
-    VPN + mTLS + JWS      OAuth2 + push approval
+Browser ←→ Cloud Backend (FastAPI)
+                ↕
+        Local Agent (Tauri)              ← always on path (VPN + mTLS)
+                ↕
+   ┌────────────┴────────────┐
+   │   signing step only     │
+   ↓                         ↓
+AKD card (local JWS)   Certilia (push to mobile)
+   │                         │
+   └────────────┬────────────┘
+                ↓
+   CEZIH FHIR API (certws2.cezih.hr:8443, via VPN)
 ```
 
 **Per-user preference:** Each user chooses their signing method in Postavke → Korisnici (`cezih_signing_method`: `smartcard` or `extsigner`). System default configurable via `CEZIH_SIGNING_METHOD` env var.
 
-**⚠️ HARD RULE:** Never treat one method as a fallback for the other. Both must be independently tested and verified for ALL 22 test cases. If one method breaks, it's a P0 bug — not a "use the other method" situation.
+**⚠️ HARD RULE:** Never treat one method as a fallback for the other. Both must be independently tested and verified for ALL 22 test cases. If one method breaks, it's a P0 bug — not a "use the other method" situation. Both methods share the same VPN + agent + card baseline; choosing Certilia replaces the local signing step, not the network stack.
 
 ## Key CEZIH Modules (Unified Private Provider Certification)
 
@@ -386,19 +390,6 @@ Push to `main` triggers two workflows:
 
 Required GitHub secrets: `PROD_HOST`, `PROD_USER`, `PROD_SSH_KEY`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
-## Competitive Position
+## Sales / market context
 
-Nobody combines modern cloud UX + CEZIH G9 + specialty-agnostic design.
-
-- 12 CEZIH-certified vendors (all legacy desktop UI)
-- 5 modern cloud vendors (zero CEZIH)
-- Closest competitor: Aplikacija d.o.o. (cloud + CEZIH but older UX)
-- See docs/competitors.md for full analysis
-
-## Go-To-Market
-
-Primary channel: HKDM, HLN, and professional associations — many haven't informed members about CEZIH yet. We position as CEZIH education experts.
-
-Key events: Medical conferences (ongoing, leading up to May deadline).
-
-See docs/go-to-market.md for full strategy.
+Out of scope for programming work. Pricing, onboarding fees, lead list, go-to-market, competitive analysis: see `klijenti/CLAUDE.md` and `docs/competitors.md` / `docs/go-to-market.md`.

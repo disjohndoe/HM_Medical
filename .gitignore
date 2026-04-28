@@ -80,4 +80,5 @@ caddy_config/
 
 # Corrupted paths
 backend/C*/
-bug-report-email.txt
+bug-report-email*.txt
+klijenti/
