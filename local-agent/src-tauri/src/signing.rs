@@ -684,13 +684,9 @@ unsafe fn sign_raw_inner(data: &[u8], algorithm: &str) -> Result<RawSignResult, 
 
         info!("RawSign: signing {} bytes with {} (hash={} bytes)", data.len(), algorithm, hash_bytes.len());
 
-        // Sign the hash with P1363 format for ECDSA (raw r||s, not DER).
-        // JWS (RFC 7515) requires P1363 format. RSA keys use flags=0.
-        let sign_flags: u32 = if algorithm.starts_with("ES") {
-            NCRYPT_ECDSA_P1363_FORMAT_FLAG
-        } else {
-            0
-        };
+        // Pass flags=0: AKD card CSPs reject NCRYPT_ECDSA_P1363_FORMAT_FLAG (0x80090009)
+        // and return P1363 natively. For CSPs that return DER, we detect and convert below.
+        let sign_flags: u32 = 0;
         let mut sig_buf = vec![0u8; sig_len as usize];
         let mut actual_len = sig_len;
         let status = NCryptSignHash(
@@ -712,6 +708,23 @@ unsafe fn sign_raw_inner(data: &[u8], algorithm: &str) -> Result<RawSignResult, 
         }
 
         sig_buf.truncate(actual_len as usize);
+
+        // Normalize EC signature to P1363. Most CSPs return P1363 by default with flags=0.
+        // If the card returned DER-encoded ECDSA (starts with 0x30), convert it.
+        if algorithm.starts_with("ES") && sig_buf.first() == Some(&0x30) {
+            let coord_size: usize = match algorithm { "ES256" => 32, "ES384" => 48, _ => 66 };
+            match der_ecdsa_to_p1363(&sig_buf, coord_size) {
+                Some(p1363) => {
+                    info!("RawSign: DER→P1363 conversion OK, sig={} bytes", p1363.len());
+                    sig_buf = p1363;
+                }
+                None => {
+                    warn!("RawSign: DER→P1363 failed for {}", cert_label);
+                    continue;
+                }
+            }
+        }
+
         info!("RawSign: OK — {} bytes, kid={:.16}, alg={}", sig_buf.len(), kid, algorithm);
 
         // Cleanup
