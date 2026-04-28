@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { CezihWaitOverlay } from "@/components/cezih/cezih-wait-overlay"
 import {
   Dialog,
   DialogContent,
@@ -404,7 +405,8 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
           </DialogContent>
         </Dialog>
       </CardHeader>
-      <CardContent>
+      <CardContent className="relative">
+        <CezihWaitOverlay isOpen={updateStatus.isPending || updateData.isPending} />
         <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
           <p className="font-medium">Kako koristiti:</p>
           <ul className="list-disc list-inside space-y-0.5">
@@ -499,7 +501,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                             {actions.length > 0 && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger
-                                  disabled={updateStatus.isPending}
+                                  disabled={isOptimistic(c)}
                                   className="flex h-6 w-[120px] items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 data-[popup-open]:bg-accent"
                                 >
                                   <span>Akcija...</span>

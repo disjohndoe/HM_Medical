@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CezihWaitOverlay } from "@/components/cezih/cezih-wait-overlay"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -240,7 +241,8 @@ export function DocumentSearch() {
               Osvježi
             </Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
+            <CezihWaitOverlay isOpen={replaceDoc.isPending || cancelDoc.isPending} />
             <Table>
               <TableHeader>
                 <TableRow>

@@ -574,9 +574,17 @@ export function useVisitAction() {
     mutationFn: ({ visitId, action, patientId, periodStart }: { visitId: string; action: string; patientId: string; periodStart?: string | null }) =>
       api.post<VisitResponse>(`/cezih/visits/${visitId}/action?patient_id=${encodeURIComponent(patientId)}`, { action, period_start: periodStart || undefined }),
     onMutate: async (vars) => {
+      // Cancel inflight refetches so the eventual onSuccess invalidation wins,
+      // but DO NOT flip status optimistically - we wait for CEZIH to confirm
+      // (overlay covers the card during the round-trip).
       const queryKey = ["cezih", "visits", vars.patientId]
       await qc.cancelQueries({ queryKey })
       const prev = qc.getQueryData<VisitsListResponse>(queryKey)
+      return { prev, queryKey }
+    },
+    onSuccess: (_resp, vars) => {
+      clearError(vars.visitId)
+      // Server accepted - now safe to reflect the new status in cache.
       const newStatus =
         vars.action === "close" ? "finished"
         : vars.action === "reopen" ? "in-progress"
@@ -584,7 +592,7 @@ export function useVisitAction() {
         : null
       if (newStatus) {
         const nowIso = new Date().toISOString()
-        qc.setQueryData<VisitsListResponse>(queryKey, (old) => {
+        qc.setQueryData<VisitsListResponse>(["cezih", "visits", vars.patientId], (old) => {
           if (!old) return old
           return {
             visits: old.visits.map((v) =>
@@ -598,16 +606,11 @@ export function useVisitAction() {
                       : vars.action === "reopen" ? null
                       : v.period_end,
                     updated_at: nowIso,
-                    _local: true,
                   },
             ),
           }
         })
       }
-      return { prev, queryKey }
-    },
-    onSuccess: (_resp, vars) => {
-      clearError(vars.visitId)
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
     },
@@ -708,15 +711,21 @@ export function useUpdateCaseStatus() {
     mutationFn: ({ caseId, patientId, action }: { caseId: string; patientId: string; action: string }) =>
       api.put<CaseActionResponse>(`/cezih/cases/${caseId}/status?patient_id=${encodeURIComponent(patientId)}`, { action }),
     onMutate: async (vars) => {
+      // Cancel inflight refetches; do NOT flip status optimistically (overlay
+      // covers the card while CEZIH signs+responds). Status is written into
+      // cache in onSuccess once the server has confirmed.
       const queryKey = ["cezih", "cases", vars.patientId]
       await qc.cancelQueries({ queryKey })
       const prev = qc.getQueryData<CasesListResponse>(queryKey)
-      if (vars.action === "create_recurring") {
-        // Will be handled in onSuccess with real case ID
-        return { prev, queryKey }
-      }
+      return { prev, queryKey }
+    },
+    onSuccess: (resp, vars, ctx) => {
+      const queryKey = ctx?.queryKey ?? ["cezih", "cases", vars.patientId]
       const newStatus = CASE_ACTION_TO_STATUS[vars.action]
       if (newStatus) {
+        // Server accepted - reflect the new status in cache so the case stays
+        // visible even though QEDm eventual consistency may hide it for a
+        // few seconds on the next refetch.
         const today = new Date().toISOString().split("T")[0]
         qc.setQueryData<CasesListResponse>(queryKey, (old) => {
           if (!old) return old
@@ -733,9 +742,6 @@ export function useUpdateCaseStatus() {
           }
         })
       }
-      return { prev, queryKey }
-    },
-    onSuccess: (resp, vars, ctx) => {
       if (vars.action === "create_recurring" && ctx) {
         qc.setQueryData<CasesListResponse>(ctx.queryKey, (old) => {
           if (!old) return old
@@ -779,9 +785,19 @@ export function useUpdateCaseData() {
     }) =>
       api.put<CaseActionResponse>(`/cezih/cases/${caseId}/data?patient_id=${encodeURIComponent(patientId)}`, data),
     onMutate: async (vars) => {
+      // Cancel inflight refetches; do NOT apply field updates optimistically
+      // (overlay covers the card while CEZIH responds). Fields are written
+      // into cache in onSuccess once the server has confirmed.
       const queryKey = ["cezih", "cases", vars.patientId]
       await qc.cancelQueries({ queryKey })
       const prev = qc.getQueryData<CasesListResponse>(queryKey)
+      return { prev, queryKey }
+    },
+    onSuccess: (_resp, vars, ctx) => {
+      clearError(vars.caseId)
+      const queryKey = ctx?.queryKey ?? ["cezih", "cases", vars.patientId]
+      // Server accepted - apply field updates so the case keeps the right
+      // values even though QEDm refetch may be briefly out of sync.
       qc.setQueryData<CasesListResponse>(queryKey, (old) => {
         if (!old) return old
         return {
@@ -800,10 +816,6 @@ export function useUpdateCaseData() {
           ),
         }
       })
-      return { prev, queryKey }
-    },
-    onSuccess: (_resp, vars) => {
-      clearError(vars.caseId)
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
     },
     onError: (err, vars, ctx) => {
@@ -906,22 +918,28 @@ export function useReplaceDocument() {
   return useMutation({
     mutationFn: ({ referenceId, record_id }: { referenceId: string; record_id?: string }) =>
       api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}`, record_id ? { record_id } : {}),
-    onMutate: async (vars) => {
+    onMutate: async () => {
+      // Cancel inflight document refetches; do NOT flip status optimistically
+      // (overlay covers the document card while CEZIH responds).
       const queryFilter = { queryKey: ["cezih", "documents"], exact: false }
       await qc.cancelQueries(queryFilter)
       const prev = qc.getQueriesData<DocumentSearchItem[]>(queryFilter)
-      qc.setQueriesData<DocumentSearchItem[]>(queryFilter, (old) => {
-        if (!old) return old
-        return old.map((d) =>
-          d.id === vars.referenceId ? { ...d, status: "Zatvorena", _local: true } : d,
-        )
-      })
       return { prev }
     },
     onSuccess: (_resp, vars) => {
       clearError(vars.referenceId)
+      // Server confirmed - now flip status to Zatvorena. Subsequent
+      // invalidations refetch from CEZIH for the canonical state.
+      const queryFilter = { queryKey: ["cezih", "documents"], exact: false }
+      qc.setQueriesData<DocumentSearchItem[]>(queryFilter, (old) => {
+        if (!old) return old
+        return old.map((d) =>
+          d.id === vars.referenceId ? { ...d, status: "Zatvorena" } : d,
+        )
+      })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
+      qc.invalidateQueries({ queryKey: ["cezih", "documents"], exact: false })
       qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
     onError: (err, vars, ctx) => {

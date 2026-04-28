@@ -460,3 +460,9 @@ export const DOCUMENT_KATEGORIJA_COLORS: Record<string, string> = {
 
 export const TERMS_URL = "https://hmdigital.hr/medical/uvjeti-koristenja/";
 export const PRIVACY_URL = "https://hmdigital.hr/medical/pravila-privatnosti/";
+
+// --- CEZIH wait overlay copy ---
+
+export const CEZIH_WAIT_TITLE = "Šalje se na CEZIH...";
+export const CEZIH_WAIT_SUBTITLE =
+  "Čeka se potpis i potvrda. Postupak može potrajati do 30 sekundi.";

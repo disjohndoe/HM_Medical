@@ -143,3 +143,20 @@ dialog[open]::backdrop {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+
+/* CEZIH wait overlay - ECG line sweep */
+@keyframes ekg-sweep {
+  0%   { stroke-dasharray: 0 260; stroke-dashoffset: 0; }
+  45%  { stroke-dasharray: 130 130; stroke-dashoffset: -10; }
+  100% { stroke-dasharray: 260 0; stroke-dashoffset: -260; }
+}
+.ekg-trace {
+  animation: ekg-sweep 1.6s ease-in-out infinite;
+}
+@keyframes ekg-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
+}
+.ekg-glow {
+  animation: ekg-pulse 1.6s ease-in-out infinite;
+}

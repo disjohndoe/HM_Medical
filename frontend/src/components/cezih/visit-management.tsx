@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { CezihWaitOverlay } from "@/components/cezih/cezih-wait-overlay"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -313,7 +314,8 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
           Nova posjeta
         </Button>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="relative space-y-3">
+        <CezihWaitOverlay isOpen={visitAction.isPending} />
         <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
           <p className="font-medium">Kako koristiti:</p>
           <ul className="list-disc list-inside space-y-0.5">
@@ -492,7 +494,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                             {actions.length > 0 && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger
-                                  disabled={visitAction.isPending}
+                                  disabled={isOptimistic(v)}
                                   className="flex h-6 w-[120px] items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 data-[popup-open]:bg-accent"
                                 >
                                   <span>Akcija...</span>

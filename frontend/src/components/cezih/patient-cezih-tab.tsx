@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CezihWaitOverlay } from "@/components/cezih/cezih-wait-overlay"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
@@ -314,7 +315,8 @@ export function PatientCezihTab({
                 <CardTitle className="text-sm font-medium">e-Nalaz povijest</CardTitle>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative">
+              <CezihWaitOverlay isOpen={cancelDocument.isPending || replaceWithEdit.isPending} />
               {!summary?.e_nalaz_history.length ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   Nema e-Nalaza za ovog pacijenta
