@@ -339,6 +339,9 @@ export function PatientCezihTab({
                 <strong><Trash2 className="inline h-3 w-3" /> Storno</strong> — stornira e-Nalaz na CEZIH. <strong>Radnja se ne može poništiti.</strong>
               </li>
               <li>
+                <strong><Download className="inline h-3 w-3" /> Preuzmi</strong> — preuzima PDF nalaza na računalo. Radi i bez CEZIH potpisa.
+              </li>
+              <li>
                 Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
               </li>
             </ul>
