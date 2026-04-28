@@ -101,7 +101,7 @@ Same flow but `CryptCreateHash + CryptHashData + CryptSignHashA`, RS256, byte-re
 
 ```
 POST https://certws2.cezih.hr:8443/services-router/gateway/extsigner/api/sign
-Auth: mTLS session cookie (AKD card) OR Bearer token (service account)
+Auth: mTLS session (via agent) AND Authorization: Bearer <token> from certpubsso (since 2026-04-23 — both required)
 Content-Type: application/json
 
 {
@@ -123,12 +123,14 @@ Content-Type: application/json
 5. Response contains `signedDocuments[0].base64Document` = signed Bundle with `signature.data` populated by CEZIH
 6. Backend uses the returned signed Bundle directly (CEZIH signed it — no local signing)
 
-### Extsigner Auth
+### Extsigner Auth (current as of 2026-04-28)
 
-- `certpubws.cezih.hr` (public, no VPN): needs **Bearer token** from `certpubsso.cezih.hr`
-- `certws2.cezih.hr:8443` (VPN): needs **mTLS session** (same as other clinical endpoints)
-- **DO NOT mix mTLS + Bearer** on same request — auth conflict (HTML 401)
-- `ERROR_CODE_0025 code 31` = user cannot sign on mobile → Certilia mobile app not configured for that OIB
+- `certws2.cezih.hr:8443` endpoint requires **BOTH** mTLS session (via agent) **AND** `Authorization: Bearer <token>` from `certpubsso.cezih.hr/auth/realms/CEZIH/protocol/openid-connect/token` (OAuth2 client_credentials, `CEZIH_CLIENT_ID` + `CEZIH_CLIENT_SECRET`, env var `CEZIH_SIGNING_OAUTH2_URL`).
+- Token TTL: 300s. Reuse across step 1 POST + step 2 GET poll within the same signing operation.
+- Implementation: `_get_signing_token(client)` in `backend/app/services/cezih_signing.py`, called from `sign_bundle_via_extsigner` (commit `960cf3e`).
+- **Historical note:** before 2026-04-23, mTLS-only worked and adding Bearer caused 401. CEZIH flipped this without notice. See `docs/CEZIH/findings/2026-04-28-extsigner-bearer-token-required.md`.
+- `certpubws.cezih.hr:8443` was historically referenced as a "public, no VPN" alternative — confirmed unreachable from our test-env agent's network in 2026-04-28 EXP-1. Do not target without verifying TCP connectivity from the agent first.
+- `ERROR_CODE_0025 code 31` = user cannot sign on mobile → Certilia mobile app not configured for that OIB.
 
 ### Extsigner Wire Format (confirmed from logs)
 

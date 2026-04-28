@@ -72,6 +72,8 @@ So smart card ES384 works for encounters (just needs to exist) but fails for PMI
 
 **How to diagnose in future:** If `ERR_DS_1002` persists after confirming bundle structure matches the official example, the issue is the **signing method**, not the bundle. Switch to extsigner. If extsigner returns 401, check that NO Bearer/Authorization header is being sent — it uses mTLS only.
 
+> **Update 2026-04-28** — CEZIH reversed the extsigner auth requirement on/around 2026-04-23. `Authorization: Bearer <token>` from `certpubsso.cezih.hr` is now **required** on both `extsigner/api/sign` (POST) and `getSignedDocuments` (GET). The "no Bearer / mTLS only" guidance above was correct on 2026-04-13 and went stale on 2026-04-23. See `2026-04-28-extsigner-bearer-token-required.md`.
+
 ---
 
 ### Issue 3: Reference Resolution (Reference_REF_CantResolve)
@@ -196,6 +198,8 @@ Working encounters use `urn:uuid:` prefix for ALL fullUrls and references.
 3. **Encounters don't verify signatures; PMIR does.** Smart card ES384 works for encounters (presence check only) but fails for PMIR (cryptographic verification). Use extsigner for anything that requires real signature verification.
 
 4. **Extsigner needs NO Bearer token.** Auth is mTLS via agent session cookie. Adding any Authorization header causes 401.
+
+   > **Update 2026-04-28** — Lesson #4 inverted: extsigner now requires Bearer. Inline code comments asserting current vendor behavior should carry a verified-against date.
 
 5. **Always use `urn:uuid:` in CEZIH bundles.** Even if official examples use plain UUIDs. HAPI resolves plain UUIDs as literal references.
 

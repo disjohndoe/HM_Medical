@@ -61,7 +61,7 @@ docker compose up --build -d                                                 # p
 - **`database.py`** — async SQLAlchemy engine, session with auto-commit/rollback.
 - **`config.py`** — Pydantic Settings from env vars.
 
-**Auth flow:** JWT access_token in httpOnly cookie + refresh_token. Roles: `admin`, `doktor`, `sestra`. Session revocation via refresh token invalidation.
+**Auth flow:** JWT access_token in httpOnly cookie + refresh_token. Roles: `admin`, `doctor`, `nurse`, `receptionist`. Session revocation via refresh token invalidation.
 
 **Multi-tenancy:** Every tenant-scoped model has `tenant_id`. `get_current_user()` verifies token tenant matches user tenant. Queries filter by tenant.
 
@@ -230,7 +230,11 @@ Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
 ### Key CEZIH Technical Findings (from live testing)
 
 **Signing:**
-- Both smart card AND Certilia work for ALL actions including PMIR (verified 2026-04-18)
+- Both smart card AND Certilia work for ALL actions including PMIR
+  - 22/22 TC matrix verified GREEN on smart card 2026-04-22 + 2026-04-23
+  - 22/22 TC matrix verified GREEN on Certilia mobile 2026-04-22 (afternoon reverify)
+  - Certilia (extsigner) regressed 2026-04-23–04-28 (CEZIH unilaterally tightened auth on `extsigner/api/sign` to require Bearer token); fixed in commit `960cf3e`. See `docs/CEZIH/findings/2026-04-28-extsigner-bearer-token-required.md`.
+  - Both methods re-verified working 2026-04-28 after fix
 - Earlier ERR_DS_1002 on PMIR was caused by bundle structure issues, not signing method
 
 **ITI-65 document bundles:**
@@ -265,7 +269,7 @@ Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
 - Agent returns `body_bytes` (base64) for binary, `body` (text) for JSON
 - `Accept: */*` required (406 with `application/fhir+json`)
 
-**Agent (v0.9.0):**
+**Agent (v0.13.0):**
 - Binary detection + base64 encoding for PDF content
 - PUT method: `custom_request("PUT")` — do NOT chain `.post(true)` (overrides method)
 
@@ -285,8 +289,8 @@ Browser ←→ Cloud Backend (FastAPI) ←→ CEZIH
 - **Certilia Cloud cert:** ACTIVE (signing only, valid until 26.03.2028, NOT for VPN)
 - **Certilia card certs:** Active (valid until 26.03.2029, waiting for physical card delivery)
 - **OAuth2:** WORKING (client_credentials via certsso2, needs `/auth/` prefix)
-- **17/22 TCs VERIFIED** against real CEZIH (TC3-6, TC9-22). TC1/2/4 exercised implicitly. TC7/8 return empty (test data limitation).
-- **Next step:** On-site exam at HZZO Zagreb (2026-04-16) — exam-ready
+- **22/22 TCs VERIFIED** against real CEZIH (smart card sweep 2026-04-22 + 2026-04-23; Certilia mobile sweep 2026-04-22 afternoon reverify). Certilia path subsequently outaged 2026-04-23–04-28 due to CEZIH Bearer requirement, re-verified after fix on 2026-04-28.
+- **Certification:** in flight — exam date pending. Both signing paths verified working as of 2026-04-28; ready when scheduling resumes.
 
 ## Deployment
 
