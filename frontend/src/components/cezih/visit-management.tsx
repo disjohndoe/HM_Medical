@@ -329,6 +329,12 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
             <li>
               Izmjena podataka dostupna samo za posjete u tijeku.
             </li>
+            <li>
+              <strong>Storno</strong> — stornira Posjetu na CEZIH. Radnja se ne može poništiti.
+            </li>
+            <li>
+              Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
+            </li>
           </ul>
         </div>
         <Dialog open={showCreate} onOpenChange={setShowCreate}>
