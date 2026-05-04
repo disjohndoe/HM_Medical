@@ -407,6 +407,7 @@ export default function PacijentDetailPage() {
         open={newRecordOpen}
         onOpenChange={setNewRecordOpen}
         patientId={id}
+        hasCezihIdentifier={hasCezihIdentifier(patient)}
       />
 
       <SendNalazDialog

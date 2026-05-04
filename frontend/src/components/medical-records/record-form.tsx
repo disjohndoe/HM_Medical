@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { Upload, X, Plus, Trash2, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -16,13 +17,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { useRecordTypes } from "@/lib/hooks/use-record-types"
+import { useRecordTypes, useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import {
   useCreateMedicalRecord,
   useUpdateMedicalRecord,
 } from "@/lib/hooks/use-medical-records"
 import { useUploadDocument } from "@/lib/hooks/use-documents"
-import { useDrugSearch, useIcd10Search } from "@/lib/hooks/use-cezih"
+import { useDrugSearch, useIcd10Search, useSendENalaz, useListVisits, useRetrieveCases } from "@/lib/hooks/use-cezih"
+import { formatDateHR } from "@/lib/utils"
 import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem } from "@/lib/types"
 
 const recordSchema = z.object({
@@ -54,12 +56,15 @@ interface RecordFormProps {
   title?: string
   /** Optional subtitle override. */
   subtitle?: string
+  /** Whether the patient has a CEZIH identifier. When true AND record type is
+   *  CEZIH-eligible in create mode, shows inline "Posalji na CEZIH" toggle. */
+  hasCezihIdentifier?: boolean
 }
 
 const ACCEPTED_TYPES = ".jpeg,.jpg,.png,.pdf"
 const MAX_SIZE_MB = 10
 
-export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel, submitOverride, mode, title, subtitle }: RecordFormProps) {
+export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel, submitOverride, mode, title, subtitle, hasCezihIdentifier }: RecordFormProps) {
   const isEdit = mode === "edit" || (mode === undefined && !!record)
   const createMutation = useCreateMedicalRecord()
   const updateMutation = useUpdateMedicalRecord()
@@ -85,10 +90,56 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     reset,
     control,
     setValue,
+    watch,
     formState: { errors },
   } = useForm<RecordFormData>({
     resolver: standardSchemaResolver(recordSchema),
   })
+
+  // CEZIH inline send (create mode only)
+  const [sendToCezih, setSendToCezih] = useState(false)
+  const [selectedEncounterId, setSelectedEncounterId] = useState("")
+  const [selectedCaseId, setSelectedCaseId] = useState("")
+  const [cezihSending, setCezihSending] = useState(false)
+  const sendENalaz = useSendENalaz()
+  const { isCezihEligible } = useRecordTypeMaps()
+  const { data: visitsData } = useListVisits(sendToCezih ? patientId : "")
+  const { data: casesData } = useRetrieveCases(sendToCezih ? patientId : "")
+
+  const watchedTip = watch("tip")
+  const showCezihToggle = !isEdit && hasCezihIdentifier
+  const isEligibleType = isCezihEligible.has(watchedTip ?? "")
+  const showCezihSection = showCezihToggle && isEligibleType
+
+  type VisitItem = { visit_id: string; status: string; period_start?: string; visit_type_display?: string }
+  type CaseItem = { case_id: string; clinical_status: string; icd_code?: string; icd_display?: string }
+  const visits = ((visitsData as { visits?: VisitItem[] })?.visits ?? []) as VisitItem[]
+  const cases = ((casesData as { cases?: CaseItem[] })?.cases ?? []) as CaseItem[]
+  const TERMINAL_VISIT_STATUSES = new Set(["finished", "cancelled", "entered-in-error"])
+  const TERMINAL_CASE_STATUSES = new Set(["resolved", "inactive", "entered-in-error"])
+  const activeVisits = visits.filter((v) => !TERMINAL_VISIT_STATUSES.has(v.status))
+  const activeCases = cases.filter((c) => !TERMINAL_CASE_STATUSES.has(c.clinical_status))
+
+  // Auto-select first visit/case when data loads
+  useEffect(() => {
+    if (sendToCezih && activeVisits.length > 0 && !selectedEncounterId) {
+      setSelectedEncounterId(activeVisits[0].visit_id)
+    }
+    if (sendToCezih && activeCases.length > 0 && !selectedCaseId) {
+      setSelectedCaseId(activeCases[0].case_id)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendToCezih, activeVisits.length, activeCases.length])
+
+  // Reset toggle when record type becomes non-eligible
+  useEffect(() => {
+    if (sendToCezih && !isEligibleType) {
+      setSendToCezih(false)
+      setSelectedEncounterId("")
+      setSelectedCaseId("")
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEligibleType])
 
   // Sync open prop with native <dialog>
   useEffect(() => {
@@ -128,6 +179,10 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     setDrugSearchOpen(false)
     setManualCode("")
     setManualDisplay("")
+    setSendToCezih(false)
+    setSelectedEncounterId("")
+    setSelectedCaseId("")
+    setCezihSending(false)
     if (record) {
       setTherapy(record.preporucena_terapija ?? [])
       if (record.dijagnoza_mkb) {
@@ -227,15 +282,32 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             toast.error("Zapis kreiran, ali prilog nije uploadan")
           }
         }
-        // When a caller wires onSaved it owns the success UX (e.g. the CEZIH
-        // "recreate locked nalaz" flow chains straight into the send dialog).
-        // Await so any state transitions / refetches finish before the dialog
-        // closes below — avoids a flicker where the send dialog briefly opens
-        // with an empty list.
+
+        // Inline CEZIH send: save succeeded, now send if toggle is on
+        if (sendToCezih && created.id) {
+          setCezihSending(true)
+          try {
+            await sendENalaz.mutateAsync({
+              patient_id: patientId,
+              record_id: created.id,
+              encounter_id: selectedEncounterId,
+              case_id: selectedCaseId,
+            })
+            toast.success("Zapis kreiran i poslan na CEZIH")
+          } catch (cezihErr) {
+            toast.error(
+              `Zapis spremljen, ali slanje na CEZIH nije uspjelo: ${cezihErr instanceof Error ? cezihErr.message : "Nepoznata greška"}`,
+              { duration: 8000 },
+            )
+          } finally {
+            setCezihSending(false)
+          }
+        } else if (!onSaved) {
+          toast.success("Zapis kreiran")
+        }
+
         if (onSaved) {
           await onSaved(created)
-        } else {
-          toast.success("Zapis kreiran")
         }
       }
       onOpenChange(false)
@@ -251,7 +323,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   }
 
   const [overrideSubmitting, setOverrideSubmitting] = useState(false)
-  const isSubmitting = createMutation.isPending || updateMutation.isPending || uploadDoc.isPending || overrideSubmitting
+  const isSubmitting = createMutation.isPending || updateMutation.isPending || uploadDoc.isPending || overrideSubmitting || cezihSending
 
   const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -511,6 +583,75 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             )}
           </div>
 
+          {showCezihSection && (
+            <div className="space-y-3 rounded-lg border bg-sky-50/50 dark:bg-sky-950/20 p-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={sendToCezih}
+                  onCheckedChange={(checked) => {
+                    setSendToCezih(!!checked)
+                    if (!checked) {
+                      setSelectedEncounterId("")
+                      setSelectedCaseId("")
+                    }
+                  }}
+                />
+                <span className="text-sm font-medium">Pošalji na CEZIH</span>
+              </label>
+
+              {sendToCezih && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Zapis će biti spremljen i poslan na CEZIH u jednom koraku.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Posjeta</label>
+                      <select
+                        value={selectedEncounterId}
+                        onChange={(e) => setSelectedEncounterId(e.target.value)}
+                        className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                        disabled={cezihSending}
+                      >
+                        <option value="">— Odaberi posjetu —</option>
+                        {activeVisits.map((v) => (
+                          <option key={v.visit_id} value={v.visit_id}>
+                            {v.period_start ? formatDateHR(v.period_start) : v.visit_id.slice(0, 12)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Slučaj</label>
+                      <select
+                        value={selectedCaseId}
+                        onChange={(e) => setSelectedCaseId(e.target.value)}
+                        className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                        disabled={cezihSending}
+                      >
+                        <option value="">— Odaberi slučaj —</option>
+                        {activeCases.map((c) => (
+                          <option key={c.case_id} value={c.case_id}>
+                            {c.icd_code ? `${c.icd_code} ${c.icd_display || ""}`.trim() : c.case_id.slice(0, 12)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {(!selectedEncounterId || !selectedCaseId) && (
+                    <p className="text-xs text-amber-600">
+                      {!selectedEncounterId && !selectedCaseId
+                        ? "Potrebno je odabrati posjetu i slučaj"
+                        : !selectedEncounterId
+                          ? "Potrebno je odabrati posjetu"
+                          : "Potrebno je odabrati slučaj"}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {!isEdit && (
             <div className="space-y-2">
               <Label>Prilog (opcionalno)</Label>
@@ -552,14 +693,18 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             <Button type="button" variant="outline" onClick={handleClose}>
               Odustani
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || (sendToCezih && (!selectedEncounterId || !selectedCaseId))}>
               {isSubmitting
-                ? "Spremanje..."
-                : submitLabel
-                  ? submitLabel
-                  : isEdit
-                    ? "Ažuriraj"
-                    : "Kreiraj"}
+                ? cezihSending
+                  ? "Slanje na CEZIH..."
+                  : "Spremanje..."
+                : sendToCezih
+                  ? "Kreiraj i pošalji na CEZIH"
+                  : submitLabel
+                    ? submitLabel
+                    : isEdit
+                      ? "Ažuriraj"
+                      : "Kreiraj"}
             </Button>
           </div>
         </form>
