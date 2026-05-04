@@ -631,11 +631,17 @@ async def dispatch_cancel_document(
             case_id = record.cezih_case_id or ""
             if not practitioner_id and record.doktor_id:
                 practitioner_id = str(record.doktor_id)
+            # Storno carries the same clinical content as the document being
+            # storno'd - the storno semantic is on relatesTo, not on anamneza.
+            # Synthesizing "Storno dokumenta X" as Observation.valueString
+            # would put a placeholder string into a signed HRDocument that
+            # claims to be a clinical finding.
             record_data = {
                 "tip": record.tip,
                 "dijagnoza_mkb": record.dijagnoza_mkb,
                 "dijagnoza_tekst": record.dijagnoza_tekst,
-                "sadrzaj": f"Storno dokumenta {reference_id}",
+                "sadrzaj": record.sadrzaj or "",
+                "preporucena_terapija": record.preporucena_terapija,
                 "created_at": record.created_at.isoformat() if record.created_at else None,
             }
 

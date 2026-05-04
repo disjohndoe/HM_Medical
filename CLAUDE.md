@@ -104,6 +104,10 @@ Cloud-based patient management system for Croatian private polyclinics and medic
 
 For pricing, onboarding fees, lead lists, sales channels and competitive positioning see `klijenti/CLAUDE.md` - those are out of scope for programming work.
 
+## Core Design Principles
+
+**No fallbacks.** If something fails, error out with a clear, specific message. Do not silently try an alternative, degrade behavior, or substitute a default. Applies to all API calls, CEZIH operations, signing methods, data lookups, and external dependencies. A visible failure the user can act on is always better than silent wrong behavior.
+
 ## Project Structure
 
 ```

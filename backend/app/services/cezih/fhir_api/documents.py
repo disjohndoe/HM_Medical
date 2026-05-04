@@ -14,6 +14,7 @@ import httpx
 
 from app.constants import get_cezih_document_coding
 from app.services.cezih.builders.bundles import build_iti65_transaction_bundle
+from app.services.cezih.builders.clinical_document_bundle import build_clinical_document_bundle
 from app.services.cezih.builders.common import (
     ID_CASE_GLOBAL,
     ID_ENCOUNTER,
@@ -24,7 +25,7 @@ from app.services.cezih.builders.common import (
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
 from app.services.cezih.fhir_api.identifiers import _require_identifier_system, _require_identifier_value
-from app.services.cezih.signing import add_signature
+from app.services.cezih.signing import sign_document_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ async def _build_document_bundle(
     practitioner_name: str = "",
     relates_to: dict | None = None,
     use_external_profile: bool = False,
+    doc_status: str = "current",
 ) -> tuple[dict, str]:
     """Build a complete ITI-65 transaction bundle for document submission/replace.
 
@@ -52,34 +54,6 @@ async def _build_document_bundle(
         encounter_id,
         case_id,
     )
-
-    # Build clinical content text
-    content_parts: list[str] = []
-    if record_data.get("dijagnoza_mkb") or record_data.get("dijagnoza_tekst"):
-        dx_parts = []
-        if record_data.get("dijagnoza_mkb"):
-            dx_parts.append(record_data["dijagnoza_mkb"])
-        if record_data.get("dijagnoza_tekst"):
-            dx_parts.append(record_data["dijagnoza_tekst"])
-        content_parts.append("Dijagnoza: " + " — ".join(dx_parts))
-    if record_data.get("sadrzaj"):
-        content_parts.append(record_data["sadrzaj"])
-    therapy = record_data.get("preporucena_terapija")
-    if therapy:
-        content_parts.append("\nPreporučena terapija:")
-        for t in therapy:
-            line = f"- {t.get('naziv', '')}"
-            if t.get("jacina"):
-                line += f" {t['jacina']}"
-            if t.get("doziranje"):
-                line += f", {t['doziranje']}"
-            if t.get("napomena"):
-                line += f". {t['napomena']}"
-            content_parts.append(line)
-        content_parts.append("(Preporuka specijalista — obiteljski liječnik izdaje e-Recept s RS oznakom)")
-
-    clinical_text = "\n".join(content_parts)
-    clinical_b64 = base64.b64encode(clinical_text.encode("utf-8")).decode("ascii") if clinical_text else None
 
     doc_uuid = str(uuid.uuid4())
     coding = get_cezih_document_coding(record_data.get("tip", "nalaz"))
@@ -103,6 +77,35 @@ async def _build_document_bundle(
     doc_oid = oids[0]
     logger.info("Generated document OID: %s", doc_oid)
 
+    # Build inner FHIR Document Bundle (HRDocument profile) per
+    # cezih.hr.klinicki-dokumenti#0.3 IG. HZZO certification rejected plain
+    # text/PDF Binary on 2026-05-04 - clinical content must be a signed
+    # Bundle.type=document with Composition + supporting resources.
+    inner_bundle, attester_practitioner_url = build_clinical_document_bundle(
+        patient_data=patient_data,
+        record_data=record_data,
+        practitioner_id=practitioner_id or "",
+        practitioner_name=practitioner_name,
+        org_code=org_code,
+        org_name=record_data.get("org_name", "") or f"Ustanova {org_code}",
+        encounter_id=encounter_id,
+        case_id=case_id,
+        document_oid=doc_oid,
+        document_type_code=coding["code"],
+        document_type_display=coding["display"],
+    )
+    signed_inner_bundle = await sign_document_bundle(inner_bundle, attester_practitioner_url)
+    inner_json_bytes = json.dumps(
+        signed_inner_bundle, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")
+    clinical_b64 = base64.b64encode(inner_json_bytes).decode("ascii")
+    logger.info(
+        "Inner Document Bundle: signed signature.data=%d chars, json=%d bytes, base64=%d chars",
+        len(signed_inner_bundle.get("signature", {}).get("data", "")),
+        len(inner_json_bytes),
+        len(clinical_b64),
+    )
+
     _doc_ref_profile = (
         "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternaltMinimalDocumentReference"
         if use_external_profile
@@ -125,7 +128,7 @@ async def _build_document_bundle(
                 "value": f"urn:uuid:{doc_uuid}",
             }
         ],
-        "status": "current",
+        "status": doc_status,
         "type": {
             "coding": [
                 {
@@ -235,24 +238,20 @@ async def _build_document_bundle(
     if relates_to:
         doc_ref_dict["relatesTo"] = [relates_to]
 
-    # Content: Binary resource referenced via URL (inline data is forbidden, max=0)
+    # Content: Binary resource holding the signed inner FHIR Document Bundle
+    # (Bundle.type=document) as base64-encoded application/fhir+json. Per
+    # IHE MHD inline data is forbidden on attachment (max=0); content lives
+    # in a separate Binary resource referenced via urn:uuid URL.
     binary_uuid = str(uuid.uuid4())
-    if clinical_b64:
-        binary_resource: dict = {
-            "resourceType": "Binary",
-            "contentType": "text/plain",
-            "data": clinical_b64,
-        }
-    else:
-        binary_resource = {
-            "resourceType": "Binary",
-            "contentType": "text/plain",
-            "data": "",
-        }
+    binary_resource: dict = {
+        "resourceType": "Binary",
+        "contentType": "application/json",
+        "data": clinical_b64,
+    }
     doc_ref_dict["content"] = [
         {
             "attachment": {
-                "contentType": "text/plain",
+                "contentType": "application/fhir+json",
                 "language": "hr-HR",
                 "url": f"urn:uuid:{binary_uuid}",
             }
@@ -324,6 +323,8 @@ async def send_enalaz(
     """Send clinical document / finding (ITI-65 MHD)."""
     fhir_client = CezihFhirClient(client)
 
+    # Outer ITI-65 transaction bundle (HRMinimalProvideDocumentBundle) is NOT
+    # signed - signing happens on the inner HRDocument Bundle inside the Binary.
     bundle_dict, doc_oid = await _build_document_bundle(
         fhir_client,
         patient_data,
@@ -334,8 +335,6 @@ async def send_enalaz(
         case_id=case_id,
         practitioner_name=practitioner_name,
     )
-
-    bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
 
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
@@ -349,16 +348,11 @@ async def send_enalaz(
         ref_id = f"FHIR-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
     logger.info("Extracted document reference ID: %s", ref_id)
 
-    signature_data = bundle_dict.get("signature", {})
-    signature_base64 = signature_data.get("data", "") if signature_data else ""
-
     return {
         "success": True,
         "reference_id": ref_id,
         "document_oid": doc_oid,
         "sent_at": datetime.now(UTC).isoformat(),
-        "signature_data": signature_base64,
-        "signed_at": signature_data.get("when") if signature_data else None,
     }
 
 
@@ -524,8 +518,7 @@ async def replace_document(
         use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
     )
 
-    bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
-
+    # Outer ITI-65 transaction is not signed; signing is on the inner Document Bundle.
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
         json_body=bundle_dict,
@@ -608,49 +601,49 @@ async def cancel_document(
 ) -> dict:
     """Cancel/storno a clinical document (TC20).
 
-    Strategy: ITI-65 transaction bundle (same as TC19 replace) but with
-    status=entered-in-error. Posts a new DocumentReference that replaces the
-    original with entered-in-error status — standard IHE MHD document deprecation.
+    Storno is an ITI-65 transaction bundle with `relatesTo.code=replaces`
+    pointing at the original document by OID (masterIdentifier). CEZIH
+    resolves relatesTo by OID, not by server-assigned numeric ID.
 
-    CEZIH resolves relatesTo.target by OID (masterIdentifier), NOT by server-assigned
-    numeric ID. We look up the OID via ITI-67 search if not provided.
+    DocumentReference.status stays `current` (the default for `_build_document_bundle`).
+    The Klinicki Dokumenti vodič suggests `entered-in-error`, but the live
+    CEZIH test environment rejects that with `ERR_DOM_10057` (verified
+    2026-04-13, see `docs/CEZIH/findings/TC20-cancel-document-blocker.md`)
+    and HZZO's 2026-05-04 rejection email did not raise storno as an issue,
+    so we keep the verified-green mechanism unchanged.
     """
     fhir_client = CezihFhirClient(client)
 
-    # Look up document OID from CEZIH if not provided — CEZIH needs OID for relatesTo
-    if not original_document_oid and _require_identifier_value(patient_data):
+    # Look up document OID from CEZIH - relatesTo target needs OID, not numeric ID.
+    if not original_document_oid:
         original_document_oid = await _lookup_document_oid(
             fhir_client,
             reference_id,
             _require_identifier_value(patient_data),
             identifier_system=_require_identifier_system(patient_data),
         )
-
-    # Build relatesTo with logical OID reference (CEZIH requires OID, not numeric ID)
-    if original_document_oid:
-        oid_value = (
-            original_document_oid
-            if original_document_oid.startswith("urn:oid:")
-            else f"urn:oid:{original_document_oid}"
+    if not original_document_oid:
+        raise CezihError(
+            f"TC20 cancel: nije moguće pronaći OID dokumenta {reference_id} u CEZIH-u "
+            "(ITI-67 search nije vratio masterIdentifier). Storno se ne može poslati "
+            "bez OID-a originalnog dokumenta."
         )
-        relates_to = {
-            "code": "replaces",
-            "target": {
-                "type": "DocumentReference",
-                "identifier": {
-                    "system": "urn:ietf:rfc:3986",
-                    "value": oid_value,
-                },
+
+    oid_value = (
+        original_document_oid
+        if original_document_oid.startswith("urn:oid:")
+        else f"urn:oid:{original_document_oid}"
+    )
+    relates_to = {
+        "code": "replaces",
+        "target": {
+            "type": "DocumentReference",
+            "identifier": {
+                "system": "urn:ietf:rfc:3986",
+                "value": oid_value,
             },
-        }
-    else:
-        logger.warning("TC20: No OID found for document %s — falling back to literal reference", reference_id)
-        relates_to = {
-            "code": "replaces",
-            "target": {
-                "reference": f"DocumentReference/{reference_id}",
-            },
-        }
+        },
+    }
 
     bundle_dict, new_oid = await _build_document_bundle(
         fhir_client,
@@ -665,11 +658,7 @@ async def cancel_document(
         use_external_profile=False,
     )
 
-    bundle_dict = await add_signature(bundle_dict, practitioner_id or "")
-
-    # CEZIH rejects entered-in-error status in ITI-65 bundles (ERR_DOM_10057).
-    # Cancel works as a "replace" — the new doc supersedes the original.
-
+    # Outer ITI-65 transaction is not signed (signing is on the inner Document Bundle).
     response = await fhir_client.post(
         "doc-mhd-svc/api/v1/iti-65-service",
         json_body=bundle_dict,
@@ -683,7 +672,8 @@ async def cancel_document(
         "success": True,
         "reference_id": reference_id,
         "new_reference_id": ref_id,
-        "status": "entered-in-error",
+        "new_document_oid": new_oid,
+        "status": "current",
     }
 
 

@@ -151,9 +151,11 @@ def _detect_bundle_type(bundle_json_bytes: bytes) -> str:
         logger.error("Bundle missing 'type' field: resourceType=%s", resource_type)
         raise CezihSigningError("FHIR bundle nema obavezno 'type' polje. Kontaktirajte tehničku podršku.")
 
-    if bundle_type not in ("transaction", "message"):
+    if bundle_type not in ("transaction", "message", "document"):
         logger.warning("Unknown bundle type: %s", bundle_type)
-        raise CezihSigningError(f"Nepoznat tip bundla: {bundle_type}. Dozvoljeni: transaction, message.")
+        raise CezihSigningError(
+            f"Nepoznat tip bundla: {bundle_type}. Dozvoljeni: transaction, message, document."
+        )
 
     logger.debug("Detected bundle type: %s", bundle_type)
     return bundle_type
@@ -512,10 +514,12 @@ async def sign_bundle_via_extsigner(
     # Encode bundle as base64
     bundle_b64 = base64.b64encode(bundle_json_bytes).decode("ascii")
 
-    # Detect bundle type: transaction bundles (ITI-65) use FHIR_DOCUMENT,
-    # message bundles (visits/cases) use FHIR_MESSAGE
+    # Map FHIR Bundle.type to extsigner documentType:
+    # - document (clinical FHIR Document Bundle) - FHIR_DOCUMENT
+    # - transaction (ITI-65 outer wrapper, currently not signed via extsigner) - FHIR_DOCUMENT
+    # - message ($process-message for visits/cases) - FHIR_MESSAGE
     bundle_type = _detect_bundle_type(bundle_json_bytes)
-    doc_type = "FHIR_DOCUMENT" if bundle_type == "transaction" else "FHIR_MESSAGE"
+    doc_type = "FHIR_MESSAGE" if bundle_type == "message" else "FHIR_DOCUMENT"
 
     payload = {
         "oib": signer_oib,

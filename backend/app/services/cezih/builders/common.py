@@ -11,6 +11,7 @@ MESSAGE_TYPE_SYSTEM = "http://ent.hr/fhir/CodeSystem/ehe-message-types"
 
 # --- Identifier systems ---
 ID_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
+ID_OIB = "http://fhir.cezih.hr/specifikacije/identifikatori/OIB"
 ID_JEDINSTVENI = "http://fhir.cezih.hr/specifikacije/identifikatori/jedinstveni-identifikator-pacijenta"
 ID_EHIC = "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica"
 ID_PUTOVNICA = "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica"
@@ -61,6 +62,7 @@ def _now_iso() -> str:
 __all__ = [
     "MESSAGE_TYPE_SYSTEM",
     "ID_MBO",
+    "ID_OIB",
     "ID_JEDINSTVENI",
     "ID_EHIC",
     "ID_PUTOVNICA",

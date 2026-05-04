@@ -434,6 +434,175 @@ async def _add_signature_smartcard(
     return bundle
 
 
+async def sign_document_bundle(
+    bundle: dict[str, Any],
+    practitioner_full_url: str,
+) -> dict[str, Any]:
+    """Sign an inner FHIR Document Bundle (Bundle.type=document) per HRDocument profile.
+
+    Differs from add_signature() (used for $process-message) in two ways:
+    1. signature.who is a LITERAL urn:uuid reference (HRDocument DOC-3),
+       not a Practitioner identifier reference.
+    2. For doc types 011/012/013 the signer must be the attester:professional
+       Practitioner (HRDocument DOC-4). Caller passes that Practitioner's
+       urn:uuid via practitioner_full_url.
+
+    Resolves user signing method (smartcard|extsigner) and dispatches without
+    fallback. If the chosen method fails, raises CezihSigningError with full
+    context - we do NOT silently switch methods.
+    """
+    if not practitioner_full_url.startswith("urn:uuid:"):
+        raise CezihError(
+            f"sign_document_bundle: practitioner_full_url must be 'urn:uuid:...' "
+            f"per HRDocument DOC-3, got {practitioner_full_url!r}"
+        )
+
+    signing_method = await _resolve_signing_method()
+    logger.info(
+        "Inner Document Bundle signing: method=%s signer=%s",
+        signing_method,
+        practitioner_full_url,
+    )
+
+    if signing_method == "extsigner":
+        return await _sign_document_bundle_extsigner(bundle, practitioner_full_url)
+    return await _sign_document_bundle_smartcard(bundle, practitioner_full_url)
+
+
+def _set_document_signature_skeleton(bundle: dict[str, Any], practitioner_full_url: str) -> None:
+    """Set Bundle.signature with literal urn:uuid who.reference per HRDocument profile.
+
+    HRDocument constraints:
+    - signature.who.reference 1..1 matching ^urn:uuid:.*  (DOC-3)
+    - signature.who.type max=0
+    - signature.who.identifier max=0
+    - signature.onBehalfOf max=0
+    - signature.targetFormat max=0
+    - signature.sigFormat max=0
+    - signature.type fixed=urn:iso-astm:E1762-95:2013 / 1.2.840.10065.1.12.1.1
+    """
+    bundle["signature"] = {
+        "type": [
+            {
+                "system": SIGNATURE_TYPE_SYSTEM,
+                "code": SIGNATURE_TYPE_CODE,
+            }
+        ],
+        "when": _now_iso(),
+        "who": {"reference": practitioner_full_url},
+        "data": "",
+    }
+
+
+async def _sign_document_bundle_smartcard(
+    bundle: dict[str, Any],
+    practitioner_full_url: str,
+) -> dict[str, Any]:
+    """Sign inner Document Bundle locally via agent (NCrypt + AKD smart card)."""
+    import base64 as _base64
+
+    import jcs as _jcs
+
+    from app.services.agent_connection_manager import agent_manager
+    from app.services.cezih.client import current_tenant_id
+    from app.services.cezih.exceptions import CezihSigningError
+
+    _set_document_signature_skeleton(bundle, practitioner_full_url)
+
+    # JCS canonicalize per RFC 8785 - same approach as $process-message smartcard path.
+    # CEZIH verifier strips signature.data and re-canonicalizes; signing input
+    # must match what verifier sees byte-for-byte.
+    bundle_json_bytes = _jcs.canonicalize(bundle)
+    logger.info(
+        "Inner Document Bundle JCS canonical payload: %d bytes (signature.data excluded)",
+        len(bundle_json_bytes),
+    )
+
+    tenant_id = current_tenant_id.get()
+    data_b64 = _base64.b64encode(bundle_json_bytes).decode("ascii")
+
+    result = await agent_manager.sign_jws(
+        tenant_id,
+        data_base64=data_b64,
+        timeout=300.0,
+    )
+
+    if "error" in result:
+        logger.warning("Smartcard agent signing error (document bundle): %s", result["error"])
+        raise CezihSigningError(
+            f"Potpisivanje pametnom karticom nije uspjelo: {result['error']}"
+        )
+
+    jws_base64 = result.get("jws_base64", "")
+    if not jws_base64:
+        raise CezihSigningError(
+            "Kartica nije vratila potpis kliničkog dokumenta. "
+            "Umetnite karticu i pokušajte ponovno."
+        )
+
+    logger.info(
+        "Inner Document Bundle JWS signature: kid=%s alg=%s data=%d chars",
+        result.get("kid", "?"),
+        result.get("algorithm", "?"),
+        len(jws_base64),
+    )
+    bundle["signature"]["data"] = jws_base64
+    return bundle
+
+
+async def _sign_document_bundle_extsigner(
+    bundle: dict[str, Any],
+    practitioner_full_url: str,
+) -> dict[str, Any]:
+    """Sign inner Document Bundle remotely via Certilia (extsigner API).
+
+    Sends the bundle (with signature skeleton) to extsigner as
+    documentType=FHIR_DOCUMENT. CEZIH signs with user's Certilia cloud cert
+    and returns the signed bundle. We extract and apply the signature.
+    """
+    import base64 as _base64
+
+    from app.services.cezih.exceptions import CezihSigningError
+    from app.services.cezih_signing import sign_bundle_via_extsigner
+
+    _set_document_signature_skeleton(bundle, practitioner_full_url)
+
+    bundle_json_bytes = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+    message_id = bundle.get("id")  # Document bundles typically have no id, that's fine
+    result = await sign_bundle_via_extsigner(bundle_json_bytes, message_id=message_id)
+    response = result.get("response", {})
+
+    documents = response.get("signedDocuments") or response.get("documents")
+    if isinstance(documents, list) and documents:
+        doc = documents[0]
+        if isinstance(doc, dict) and doc.get("base64Document"):
+            signed_bundle_bytes = _base64.b64decode(doc["base64Document"])
+            signed_bundle = json.loads(signed_bundle_bytes)
+            logger.info(
+                "Inner Document Bundle signed by extsigner: signature.data=%d chars",
+                len(signed_bundle.get("signature", {}).get("data", "")),
+            )
+            return signed_bundle
+        if isinstance(doc, dict) and doc.get("signature"):
+            bundle["signature"]["data"] = doc["signature"]
+            return bundle
+
+    signature_data = response.get("signature", response.get("signatureData", ""))
+    if signature_data:
+        bundle["signature"]["data"] = signature_data
+        return bundle
+
+    logger.warning(
+        "Extsigner returned unexpected response format for Document Bundle: %s",
+        json.dumps(response, ensure_ascii=False)[:2000],
+    )
+    raise CezihSigningError(
+        "Certilia potpisivanje kliničkog dokumenta nije vratilo potpis. "
+        "Provjerite Certilia aplikaciju na mobitelu i pokušajte ponovno."
+    )
+
+
 __all__ = [
     "SIGNATURE_TYPE_CODE",
     "SIGNATURE_TYPE_SYSTEM",
@@ -441,5 +610,8 @@ __all__ = [
     "_add_signature_smartcard",
     "_debug_dump_jws",
     "_resolve_signing_method",
+    "_sign_document_bundle_extsigner",
+    "_sign_document_bundle_smartcard",
     "add_signature",
+    "sign_document_bundle",
 ]
