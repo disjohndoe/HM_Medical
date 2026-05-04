@@ -59,6 +59,28 @@ SYS_DJELATNOSTI_ID = "http://fhir.cezih.hr/specifikacije/identifikatori/ID-djela
 SYS_ZAVRSETAK_PREGLEDA = "http://fhir.cezih.hr/specifikacije/CodeSystem/sifrarnik-zavrsetaka-pregleda"
 
 
+# CEZIH StructureDefinition URLs from cezih.hr.klinicki-dokumenti package.
+# Declared via meta.profile on every inner-bundle resource so profile-aware
+# validators (and HZZO manual review) can match conformance unambiguously.
+_PROFILE_BASE = "http://fhir.cezih.hr/specifikacije/StructureDefinition"
+PROFILE_BUNDLE = f"{_PROFILE_BASE}/hr-document"
+PROFILE_PATIENT = f"{_PROFILE_BASE}/hr-pacijent"
+PROFILE_PRACTITIONER = f"{_PROFILE_BASE}/hr-practitioner"
+PROFILE_ORGANIZATION = f"{_PROFILE_BASE}/hr-organizacija"
+PROFILE_ENCOUNTER = f"{_PROFILE_BASE}/hr-encounter"
+PROFILE_CONDITION = f"{_PROFILE_BASE}/dokumentirani-slucaj"
+PROFILE_ANAMNEZA = f"{_PROFILE_BASE}/anamneza"
+PROFILE_ISHOD = f"{_PROFILE_BASE}/ishod-pregleda"
+PROFILE_DJELATNOST = f"{_PROFILE_BASE}/djelatnost"
+
+# Per HRTipDokumenta (011/012/013) the Composition has a distinct profile.
+_COMPOSITION_PROFILE_BY_TYPE_CODE = {
+    "011": f"{_PROFILE_BASE}/izvjesce-nakon-pregleda-u-ambulanti-privatne-zdravstvene-ustanove",
+    "012": f"{_PROFILE_BASE}/nalaz-iz-specijalisticke-ordinacije-privatne-zdravstvene-ustanove",
+    "013": f"{_PROFILE_BASE}/otpusno-pismo-iz-privatne-zdravstvene-ustanove",
+}
+
+
 # Composition.title is fixed per profile - exact string match required.
 _TITLE_BY_TYPE_CODE = {
     "011": "Izvješće nakon pregleda u ambulanti privatne zdravstvene ustanove",
@@ -103,6 +125,7 @@ def _build_patient_resource(patient_data: dict) -> dict[str, Any]:
 
     resource: dict[str, Any] = {
         "resourceType": "Patient",
+        "meta": {"profile": [PROFILE_PATIENT]},
         "identifier": [identifier],
         "name": [name],
     }
@@ -127,6 +150,7 @@ def _build_practitioner_resource(practitioner_id: str, practitioner_name: str) -
         raise CezihError("Practitioner name is required for clinical document author/attester")
     return {
         "resourceType": "Practitioner",
+        "meta": {"profile": [PROFILE_PRACTITIONER]},
         "identifier": [
             {
                 "system": ID_PRACTITIONER,
@@ -143,6 +167,7 @@ def _build_organization_resource(org_code: str, org_name: str) -> dict[str, Any]
         raise CezihError("HZZO sifra ustanove (org_code) is required for clinical document author/attester")
     return {
         "resourceType": "Organization",
+        "meta": {"profile": [PROFILE_ORGANIZATION]},
         "identifier": [
             {
                 "system": ID_ORG,
@@ -169,6 +194,7 @@ def _build_encounter_resource(
         raise CezihError("CEZIH encounter_id is required for clinical document encounter reference")
     return {
         "resourceType": "Encounter",
+        "meta": {"profile": [PROFILE_ENCOUNTER]},
         "identifier": [
             {
                 "system": ID_ENCOUNTER,
@@ -205,6 +231,7 @@ def _build_condition_resource(
 
     resource: dict[str, Any] = {
         "resourceType": "Condition",
+        "meta": {"profile": [PROFILE_CONDITION]},
         "identifier": [
             {
                 "system": ID_CASE_GLOBAL,
@@ -260,6 +287,7 @@ def _build_anamneza_observation(
         raise CezihError("Anamneza tekst (record sadrzaj) is required for clinical document")
     return {
         "resourceType": "Observation",
+        "meta": {"profile": [PROFILE_ANAMNEZA]},
         "status": "final",
         "code": {
             "coding": [
@@ -291,6 +319,7 @@ def _build_ishod_observation(
     """
     return {
         "resourceType": "Observation",
+        "meta": {"profile": [PROFILE_ISHOD]},
         "status": "final",
         "code": {
             "coding": [
@@ -330,6 +359,7 @@ def _build_djelatnost_resource(
         raise CezihError("Djelatnost display name is required for clinical document djelatnost section")
     return {
         "resourceType": "HealthcareService",
+        "meta": {"profile": [PROFILE_DJELATNOST]},
         "identifier": [
             {
                 "system": SYS_DJELATNOSTI_ID,
@@ -362,9 +392,11 @@ def _build_composition(
             f"expected one of 011/012/013"
         )
     title = _TITLE_BY_TYPE_CODE[document_type_code]
+    composition_profile = _COMPOSITION_PROFILE_BY_TYPE_CODE[document_type_code]
 
     return {
         "resourceType": "Composition",
+        "meta": {"profile": [composition_profile]},
         "status": "final",
         "type": {
             "coding": [
@@ -531,6 +563,7 @@ def build_clinical_document_bundle(
     # Composition MUST be the first entry in a Bundle.type=document per FHIR R4.
     bundle: dict[str, Any] = {
         "resourceType": "Bundle",
+        "meta": {"profile": [PROFILE_BUNDLE]},
         "identifier": {
             "system": "urn:ietf:rfc:3986",
             "value": f"urn:oid:{document_oid}",
