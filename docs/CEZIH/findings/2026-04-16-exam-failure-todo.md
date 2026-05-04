@@ -1,4 +1,6 @@
-# CEZIH Exam — Post-Failure TODO (2026-04-16)
+# CEZIH Exam - Post-Failure TODO (2026-04-16)
+
+**ARCHIVED 2026-05-04** - all items resolved or explicitly deferred; exam re-taken and PASSED on 2026-05-04. Kept as historical artifact alongside other dated findings.
 
 Failed on-site exam at HZZO Zagreb. Examiner feedback → 4 blocking items below.
 

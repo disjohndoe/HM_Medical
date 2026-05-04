@@ -229,7 +229,7 @@ AKD card (local JWS)   Certilia (push to mobile)
 | Phase 17 | DONE | TC20 cancel document — VERIFIED via ITI-65 replace with OID lookup (2026-04-13) |
 | Phase 18 | DONE | E2E production test — all 16 TCs verified on app.hmdigital.hr against real CEZIH (2026-04-13) |
 | Phase 19 | DONE | TC11 PMIR foreigner registration — VERIFIED (Patient/1348216, 4 stacked fixes) (2026-04-13) |
-| Phase 20 | BLOCKED | Structured logging — branch `feat/structured-logging`, merge after HZZO exam (2026-04-23) |
+| Phase 20 | DONE | Structured logging — JSON formatter, request IDs, client error relay (merged 2026-05-04 after exam) |
 
 ### Key CEZIH Technical Findings (from live testing)
 
@@ -294,7 +294,7 @@ AKD card (local JWS)   Certilia (push to mobile)
 - **Certilia card certs:** Active (valid until 26.03.2029, waiting for physical card delivery)
 - **OAuth2:** WORKING (client_credentials via certsso2, needs `/auth/` prefix)
 - **22/22 TCs VERIFIED** against real CEZIH (smart card sweep 2026-04-22 + 2026-04-23; Certilia mobile sweep 2026-04-22 afternoon reverify). Certilia path subsequently outaged 2026-04-23–04-28 due to CEZIH Bearer requirement, re-verified after fix on 2026-04-28.
-- **Certification:** in flight — exam date pending. Both signing paths verified working as of 2026-04-28; ready when scheduling resumes.
+- **Certification:** PASSED 2026-05-04 (HZZO confirmed). Awaiting (a) cooperation agreement signature with HZZO, (b) publication on `cezih.hr/certificirani_proizvodjaci_aplikacija.html`, (c) production access provisioning (`pvpri.cezih.hr`). No firm timeline from HZZO. Test env on `pvsek.cezih.hr` continues to work; production switch is env-vars-only (see `docs/runbooks/pvpri-production-switch.md`).
 
 ## Deployment
 
