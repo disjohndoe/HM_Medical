@@ -9,6 +9,33 @@ type RequestOptions = {
 // Refresh lock — only one refresh at a time, others wait for its result
 let refreshPromise: Promise<void> | null = null;
 
+// --- Client error relay ---
+
+let lastRequestId: string | null = null;
+
+/** Report a frontend error to the backend structured log. Fire-and-forget. */
+export function reportClientError(error: Error | unknown): void {
+  const payload: Record<string, string> = {
+    message: error instanceof Error ? error.message : String(error),
+    url: typeof window !== "undefined" ? window.location.href : "",
+    userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+  };
+  if (error instanceof Error && error.stack) {
+    payload.stack = error.stack;
+  }
+  if (lastRequestId) {
+    payload.request_id = lastRequestId;
+  }
+
+  // Fire-and-forget — never await, swallow all errors
+  fetch(`${API_BASE}/client-log`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+}
+
 async function doRefresh(): Promise<void> {
   // refresh_token is sent automatically via httpOnly cookie (path=/api/auth)
   const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
@@ -122,6 +149,8 @@ async function apiClient<T>(endpoint: string, options: RequestOptions = {}): Pro
       },
       body: body ? JSON.stringify(body) : undefined,
     });
+    const rid = res.headers.get("x-request-id");
+    if (rid) lastRequestId = rid;
   } catch {
     const endpointName = endpoint.split("/").pop() || endpoint
     throw new Error(`Greška u komunikaciji s poslužiteljem (${endpointName}). Provjerite mrežnu vezu i pokušajte ponovo.`);

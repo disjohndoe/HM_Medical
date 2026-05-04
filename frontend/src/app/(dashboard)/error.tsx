@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { reportClientError } from "@/lib/api-client";
 
 export default function DashboardError({
   error,
@@ -11,7 +12,7 @@ export default function DashboardError({
   unstable_retry: () => void;
 }) {
   useEffect(() => {
-    console.error("Dashboard error:", error);
+    reportClientError(error);
   }, [error]);
 
   return (
