@@ -14,6 +14,29 @@ request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
 tenant_id_ctx: ContextVar[str] = ContextVar("tenant_id", default="")
 user_id_ctx: ContextVar[str] = ContextVar("user_id", default="")
 
+# Standard LogRecord attributes — anything else in record.__dict__ came from `extra={}`.
+_STD_LOGRECORD_ATTRS = frozenset(
+    {
+        "args", "asctime", "created", "exc_info", "exc_text", "filename",
+        "funcName", "levelname", "levelno", "lineno", "message", "module",
+        "msecs", "msg", "name", "pathname", "process", "processName",
+        "relativeCreated", "stack_info", "taskName", "thread", "threadName",
+    }
+)
+
+
+def _record_extras(record: logging.LogRecord) -> dict:
+    """Return user-supplied extras: vanilla `extra={}` keys plus the wrapped `_extra` dict."""
+    extras = {
+        k: v
+        for k, v in record.__dict__.items()
+        if k not in _STD_LOGRECORD_ATTRS and not k.startswith("_")
+    }
+    wrapped = record.__dict__.get("_extra")
+    if isinstance(wrapped, dict):
+        extras.update(wrapped)
+    return extras
+
 
 class JsonFormatter(logging.Formatter):
     """Emit one JSON object per log line."""
@@ -33,8 +56,7 @@ class JsonFormatter(logging.Formatter):
                 obj[key] = val
 
         # Merge extra fields (e.g. extra={"status_code": 200, "duration_ms": 42.3})
-        if record.__dict__.get("_extra"):
-            obj.update(record.__dict__["_extra"])
+        obj.update(_record_extras(record))
 
         # Append exception info
         if record.exc_info and record.exc_info[1] is not None:
@@ -60,9 +82,9 @@ class TextFormatter(logging.Formatter):
 
         parts.append(record.getMessage())
 
-        if record.__dict__.get("_extra"):
-            extras = " ".join(f"{k}={v}" for k, v in record.__dict__["_extra"].items())
-            parts.append(f"| {extras}")
+        extras = _record_extras(record)
+        if extras:
+            parts.append("| " + " ".join(f"{k}={v}" for k, v in extras.items()))
 
         text = " ".join(parts)
 
