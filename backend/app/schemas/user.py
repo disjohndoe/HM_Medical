@@ -11,6 +11,7 @@ CezihSigningMethod = Literal["smartcard", "extsigner"]
 
 _HZJZ_RE = re.compile(r"^\d{7}$")
 _MBO_RE = re.compile(r"^\d{9}$")
+_DJELATNOST_RE = re.compile(r"^\d{7}$")
 
 
 def _coerce_practitioner_id(v: str | None) -> str | None:
@@ -26,6 +27,14 @@ def _coerce_mbo_lijecnika(v: str | None) -> str | None:
         return None
     if v is not None and not _MBO_RE.match(v):
         raise ValueError("MBO liječnika mora imati točno 9 znamenki")
+    return v
+
+
+def _coerce_djelatnost_code(v: str | None) -> str | None:
+    if v == "":
+        return None
+    if v is not None and not _DJELATNOST_RE.match(v):
+        raise ValueError("Šifra djelatnosti mora imati točno 7 znamenki")
     return v
 
 
@@ -48,6 +57,8 @@ class UserRead(BaseModel):
     practitioner_id: str | None = None
     mbo_lijecnika: str | None = None
     cezih_signing_method: CezihSigningMethod
+    djelatnost_code: str | None = None
+    djelatnost_display: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -67,9 +78,12 @@ class UserCreate(BaseModel):
     practitioner_id: str | None = None
     mbo_lijecnika: str | None = None
     cezih_signing_method: CezihSigningMethod = "extsigner"
+    djelatnost_code: str | None = None
+    djelatnost_display: str | None = None
 
     _coerce_practitioner_id = field_validator("practitioner_id", mode="before")(_coerce_practitioner_id)
     _coerce_mbo_lijecnika = field_validator("mbo_lijecnika", mode="before")(_coerce_mbo_lijecnika)
+    _coerce_djelatnost_code = field_validator("djelatnost_code", mode="before")(_coerce_djelatnost_code)
 
 
 class UserUpdate(BaseModel):
@@ -93,9 +107,12 @@ class UserUpdate(BaseModel):
     practitioner_id: str | None = None
     mbo_lijecnika: str | None = None
     cezih_signing_method: CezihSigningMethod | None = None
+    djelatnost_code: str | None = None
+    djelatnost_display: str | None = None
 
     _coerce_practitioner_id = field_validator("practitioner_id", mode="before")(_coerce_practitioner_id)
     _coerce_mbo_lijecnika = field_validator("mbo_lijecnika", mode="before")(_coerce_mbo_lijecnika)
+    _coerce_djelatnost_code = field_validator("djelatnost_code", mode="before")(_coerce_djelatnost_code)
 
     @field_validator("cezih_signing_method")
     @classmethod

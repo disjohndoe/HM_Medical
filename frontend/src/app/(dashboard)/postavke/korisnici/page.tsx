@@ -71,6 +71,8 @@ export default function KorisniciPage() {
       practitioner_id: data.practitioner_id ?? undefined,
       mbo_lijecnika: data.mbo_lijecnika ?? undefined,
       cezih_signing_method: data.cezih_signing_method,
+      djelatnost_code: data.djelatnost_code ?? undefined,
+      djelatnost_display: data.djelatnost_display ?? undefined,
     }
     createUser.mutate(createData, {
       onSuccess: () => {

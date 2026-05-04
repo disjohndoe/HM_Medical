@@ -12,6 +12,8 @@ export interface Tenant {
   web: string | null;
   sifra_ustanove: string | null;
   oid: string | null;
+  djelatnost_code: string | null;
+  djelatnost_display: string | null;
   plan_tier: string;
   trial_expires_at: string | null;
   is_active: boolean;
@@ -38,6 +40,8 @@ export interface User {
   practitioner_id: string | null;
   mbo_lijecnika: string | null;
   cezih_signing_method: CezihSigningMethod;
+  djelatnost_code: string | null;
+  djelatnost_display: string | null;
   card_certificate_serial: string | null;
   card_required: boolean;
   tenant?: Tenant;
@@ -78,6 +82,8 @@ export interface UserCreate {
   practitioner_id?: string | null;
   mbo_lijecnika?: string | null;
   cezih_signing_method?: CezihSigningMethod;
+  djelatnost_code?: string | null;
+  djelatnost_display?: string | null;
 }
 
 export interface CezihPatientImport {

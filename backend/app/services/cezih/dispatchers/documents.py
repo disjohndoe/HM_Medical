@@ -34,6 +34,39 @@ async def _get_medical_record(db: AsyncSession, tenant_id: UUID, patient_id: UUI
     return result.scalar_one_or_none()
 
 
+async def _resolve_djelatnost(
+    db: AsyncSession,
+    tenant_id: UUID,
+    user_id: UUID | None,
+) -> tuple[str, str]:
+    """Resolve djelatnost: User override -> Tenant default -> 422 fail.
+
+    Mirrors the practitioner_id fallback shape - prefer record.doktor_id's
+    User row (passed in as user_id), else tenant default. No silent fallback
+    to a hardcoded code per CLAUDE.md "No fallbacks" rule.
+    """
+    from app.models.tenant import Tenant
+    from app.models.user import User
+
+    if user_id:
+        user = await db.get(User, user_id)
+        if user and user.djelatnost_code and user.djelatnost_display:
+            return user.djelatnost_code, user.djelatnost_display
+
+    tenant = await db.get(Tenant, tenant_id)
+    if tenant and tenant.djelatnost_code and tenant.djelatnost_display:
+        return tenant.djelatnost_code, tenant.djelatnost_display
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            "Nije postavljena šifra djelatnosti zdravstvene zaštite. "
+            "Postavite je u Postavke → Klinika (zadana vrijednost) ili "
+            "Postavke → Korisnici (po doktoru) prije slanja dokumenta u CEZIH."
+        ),
+    )
+
+
 async def _get_medical_record_by_id(db: AsyncSession | None, tenant_id: UUID | None, record_id: UUID | None):
     """Fetch medical record by ID with tenant validation only."""
     if not db or not tenant_id or not record_id:
@@ -110,6 +143,10 @@ async def send_enalaz(
             detail="HZJZ ID djelatnika nije postavljen. Potrebno je za CEZIH potpisivanje.",
         )
 
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(
+        db, tenant_id, record.doktor_id or user_id
+    )
+
     record_data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
 
     try:
@@ -123,6 +160,8 @@ async def send_enalaz(
             encounter_id=encounter_id,
             case_id=case_id,
             practitioner_name=practitioner_name,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
         )
     except CezihError as e:
         logger.error("CEZIH e-Nalaz send failed: %s", e.message)
@@ -399,6 +438,10 @@ async def dispatch_replace_document(
     if record and hasattr(record, "cezih_document_oid"):
         stored_oid = record.cezih_document_oid or ""
 
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(
+        db, tenant_id, (record.doktor_id if record else None) or user_id
+    )
+
     try:
         result = await real_service.replace_document(
             http_client,
@@ -411,6 +454,8 @@ async def dispatch_replace_document(
             case_id=case_id,
             practitioner_name=practitioner_name,
             original_document_oid=stored_oid,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -523,6 +568,10 @@ async def dispatch_replace_document_with_edit(
     # Use stored OID if available — avoids unreliable ITI-67 lookup
     stored_oid = record.cezih_document_oid or "" if record else ""
 
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(
+        db, tenant_id, record.doktor_id or user_id
+    )
+
     try:
         result = await real_service.replace_document(
             http_client,
@@ -535,6 +584,8 @@ async def dispatch_replace_document_with_edit(
             case_id=case_id,
             practitioner_name=practitioner_name,
             original_document_oid=stored_oid,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -650,6 +701,10 @@ async def dispatch_cancel_document(
     if record:
         stored_oid = record.cezih_document_oid or ""
 
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(
+        db, tenant_id, (record.doktor_id if record else None) or user_id
+    )
+
     try:
         result = await real_service.cancel_document(
             http_client,
@@ -662,6 +717,8 @@ async def dispatch_cancel_document(
             case_id=case_id,
             practitioner_name=practitioner_name,
             original_document_oid=stored_oid,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)

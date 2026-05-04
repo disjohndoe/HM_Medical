@@ -72,6 +72,15 @@ const userSchema = z.object({
     z.string().regex(DOCTOR_ID_RULES.mbo.pattern, DOCTOR_ID_RULES.mbo.message).nullable().optional()
   ),
   cezih_signing_method: z.enum(["smartcard", "extsigner"]),
+  djelatnost_code: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z.string().regex(/^\d{7}$/, "Šifra djelatnosti mora imati točno 7 znamenki").nullable().optional()
+  ),
+  djelatnost_display: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
 })
 
 export type UserFormData = z.infer<typeof userSchema>
@@ -121,6 +130,8 @@ export function UserFormDialog({
     practitioner_id: user?.practitioner_id ?? null,
     mbo_lijecnika: user?.mbo_lijecnika ?? null,
     cezih_signing_method: user?.cezih_signing_method ?? "extsigner",
+    djelatnost_code: user?.djelatnost_code ?? null,
+    djelatnost_display: user?.djelatnost_display ?? null,
   }), [user])
 
   const {
@@ -148,6 +159,8 @@ export function UserFormDialog({
     if (!canHoldDoctorIds) {
       setValue("mbo_lijecnika", null)
       setValue("practitioner_id", null)
+      setValue("djelatnost_code", null)
+      setValue("djelatnost_display", null)
     }
   }, [canHoldDoctorIds, setValue])
 
@@ -226,6 +239,32 @@ export function UserFormDialog({
                 {errors.mbo_lijecnika && (
                   <p className="text-xs text-destructive">{errors.mbo_lijecnika.message}</p>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="djelatnost_code">Šifra djelatnosti (nadjačava klinički zadanu)</Label>
+                <Input
+                  id="djelatnost_code"
+                  placeholder="npr. 2010000"
+                  maxLength={7}
+                  {...register("djelatnost_code")}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Ostavite prazno da koristite zadanu vrijednost klinike. Postavite za polikliniku gdje
+                  svaki doktor radi pod drugom djelatnošću.
+                </p>
+                {errors.djelatnost_code && (
+                  <p className="text-xs text-destructive">{errors.djelatnost_code.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="djelatnost_display">Naziv djelatnosti</Label>
+                <Input
+                  id="djelatnost_display"
+                  placeholder="npr. Internistička djelatnost"
+                  {...register("djelatnost_display")}
+                />
               </div>
             </>
           )}

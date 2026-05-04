@@ -53,6 +53,8 @@ class User(BaseTenantModel):
     practitioner_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     mbo_lijecnika: Mapped[str | None] = mapped_column(String(9), nullable=True)
     cezih_signing_method: Mapped[str] = mapped_column(String(20), nullable=False, server_default="extsigner")
+    djelatnost_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    djelatnost_display: Mapped[str | None] = mapped_column(String(255), nullable=True)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

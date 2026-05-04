@@ -35,6 +35,8 @@ class Tenant(Base, TimestampMixin):
     web: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sifra_ustanove: Mapped[str | None] = mapped_column(String(20), nullable=True)
     oid: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    djelatnost_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    djelatnost_display: Mapped[str | None] = mapped_column(String(255), nullable=True)
     plan_tier: Mapped[str] = mapped_column(String(20), nullable=False, server_default="trial")
     trial_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")

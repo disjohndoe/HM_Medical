@@ -326,6 +326,8 @@ def _build_djelatnost_resource(
     """Build djelatnost HealthcareService for djelatnost section entry."""
     if not djelatnost_code:
         raise CezihError("Djelatnost code is required for clinical document djelatnost section")
+    if not djelatnost_display:
+        raise CezihError("Djelatnost display name is required for clinical document djelatnost section")
     return {
         "resourceType": "HealthcareService",
         "identifier": [
@@ -335,7 +337,7 @@ def _build_djelatnost_resource(
             }
         ],
         "providedBy": {"reference": organization_full_url},
-        "name": djelatnost_display or f"Djelatnost {djelatnost_code}",
+        "name": djelatnost_display,
     }
 
 
@@ -440,8 +442,8 @@ def build_clinical_document_bundle(
     document_oid: str,
     document_type_code: str,
     document_type_display: str,
-    djelatnost_code: str = "1010000",
-    djelatnost_display: str = "Opća/obiteljska medicina",
+    djelatnost_code: str,
+    djelatnost_display: str,
 ) -> tuple[dict, str]:
     """Build inner FHIR Document Bundle (HRDocument profile) for ITI-65 Binary content.
 

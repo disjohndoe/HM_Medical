@@ -48,6 +48,11 @@ const clinicSchema = z.object({
   zupanija: nullableString,
   web: nullableString,
   sifra_ustanove: nullableString,
+  djelatnost_code: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z.string().regex(/^\d{7}$/, "Šifra djelatnosti mora imati točno 7 znamenki").nullable().optional()
+  ),
+  djelatnost_display: nullableString,
   has_hzzo_contract: z.boolean().optional(),
 })
 
@@ -93,6 +98,8 @@ export default function KlinikaSettingsPage() {
         zupanija: clinic.zupanija ?? null,
         web: clinic.web ?? null,
         sifra_ustanove: clinic.sifra_ustanove ?? null,
+        djelatnost_code: clinic.djelatnost_code ?? null,
+        djelatnost_display: clinic.djelatnost_display ?? null,
         has_hzzo_contract: clinic.has_hzzo_contract ?? false,
       })
     }
@@ -244,6 +251,31 @@ export default function KlinikaSettingsPage() {
                 <p className="text-xs text-muted-foreground">
                   Dobijete od HZZO-a pri registraciji zdravstvene ustanove
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="djelatnost_code">Šifra djelatnosti zdravstvene zaštite</Label>
+                <Input
+                  id="djelatnost_code"
+                  placeholder="npr. 1010000"
+                  maxLength={7}
+                  {...register("djelatnost_code")}
+                />
+                {errors.djelatnost_code && (
+                  <p className="text-xs text-destructive">{errors.djelatnost_code.message}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Zadana šifra za sve dokumente klinike. Pojedini doktori mogu nadjačati u Postavke → Korisnici.
+                  Primjer: 1010000 - Opća/obiteljska medicina, 2010000 - Internistička djelatnost,
+                  2030000 - Ginekološka djelatnost.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="djelatnost_display">Naziv djelatnosti</Label>
+                <Input
+                  id="djelatnost_display"
+                  placeholder="npr. Opća/obiteljska medicina"
+                  {...register("djelatnost_display")}
+                />
               </div>
               <div className="space-y-2">
                 <Label>OID informacijskog sustava</Label>
