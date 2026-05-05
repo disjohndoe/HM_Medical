@@ -220,13 +220,8 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
 
     switch (c.clinical_status) {
       case "active":
-      case "recurrence": {
-        const visited = new Set(c.visited_clinical_statuses || [])
-        const actions: string[] = []
-        if (!visited.has("remission")) actions.push("remission")
-        actions.push("resolve")
-        return filter(actions)
-      }
+      case "recurrence":
+        return filter(["remission", "resolve"])
       case "remission":
         return filter(["relapse", "resolve"])
       case "relapse":
