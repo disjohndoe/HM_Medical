@@ -250,7 +250,7 @@ async def _build_document_bundle(
     binary_uuid = str(uuid.uuid4())
     binary_resource: dict = {
         "resourceType": "Binary",
-        "contentType": "application/json",
+        "contentType": "application/fhir+json",
         "data": clinical_b64,
     }
     doc_ref_dict["content"] = [
