@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -55,4 +55,11 @@ class CezihCase(BaseTenantModel):
     last_error_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    visited_clinical_statuses: Mapped[list | None] = mapped_column(
+        JSON,
+        nullable=True,
+        default=list,
+        comment="Append-only log of visited clinical statuses (remission, relapse, resolved)",
     )

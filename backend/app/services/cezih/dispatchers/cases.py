@@ -158,6 +158,7 @@ async def _fetch_fresh_local_cases_by_patient(
                 "last_error_display": row.last_error_display,
                 "last_error_diagnostics": row.last_error_diagnostics,
                 "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
+                "visited_clinical_statuses": row.visited_clinical_statuses or [],
             }
             for row in rows
         ]
@@ -217,6 +218,7 @@ async def _update_local_case(
     abatement_date: str | None = None,
     clear_abatement: bool = False,
     note: str | None = None,
+    visited_clinical_statuses: list[str] | None = None,
 ) -> None:
     """Patch the local CezihCase mirror if it exists. Non-fatal on failure."""
     if not db or not tenant_id or not case_id:
@@ -254,6 +256,8 @@ async def _update_local_case(
             row.abatement_date = abatement_date
         if note is not None:
             row.note = note
+        if visited_clinical_statuses is not None:
+            row.visited_clinical_statuses = visited_clinical_statuses
         await db.flush()
     except (IntegrityError, OperationalError) as exc:
         logger.warning("Failed to update local CezihCase mirror: %s", exc)
@@ -483,6 +487,33 @@ async def dispatch_update_case(
     else:
         new_status = _CASE_ACTION_TO_STATUS.get(action)
         if new_status:
+            # Record the departing clinical status before overwriting.
+            # Only statuses that are action targets (remission, relapse,
+            # resolved) need tracking - they may be blocked on re-entry.
+            visited: list[str] = []
+            old_status: str | None = None
+            recordable = {"remission", "relapse", "resolved"}
+            if local_case_id:
+                from sqlalchemy import or_
+
+                from app.models.cezih_case import CezihCase
+
+                cur = (
+                    await db.execute(
+                        select(CezihCase).where(
+                            CezihCase.tenant_id == tenant_id,
+                            or_(
+                                CezihCase.cezih_case_id == case_id,
+                                CezihCase.local_case_id == case_id,
+                            ),
+                        )
+                    )
+                ).scalar_one_or_none()
+                if cur:
+                    visited = list(cur.visited_clinical_statuses or [])
+                    old_status = cur.clinical_status
+            if old_status and old_status in recordable and old_status not in visited:
+                visited.append(old_status)
             await _update_local_case(
                 db,
                 tenant_id,
@@ -490,6 +521,7 @@ async def dispatch_update_case(
                 clinical_status=new_status,
                 abatement_date=(datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00") if action == "resolve" else None),
                 clear_abatement=(action == "reopen"),
+                visited_clinical_statuses=visited,
             )
     return result
 

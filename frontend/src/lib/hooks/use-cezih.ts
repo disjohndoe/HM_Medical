@@ -727,18 +727,21 @@ export function useUpdateCaseStatus() {
         // visible even though QEDm eventual consistency may hide it for a
         // few seconds on the next refetch.
         const today = new Date().toISOString().split("T")[0]
+        const recordable = new Set(["remission", "relapse", "resolved"])
         qc.setQueryData<CasesListResponse>(queryKey, (old) => {
           if (!old) return old
           return {
-            cases: old.cases.map((c) =>
-              c.case_id !== vars.caseId
-                ? c
-                : {
-                    ...c,
-                    clinical_status: newStatus,
-                    abatement_date: newStatus === "resolved" ? today : c.abatement_date,
-                  },
-            ),
+            cases: old.cases.map((c) => {
+              if (c.case_id !== vars.caseId) return c
+              const visited = new Set(c.visited_clinical_statuses || [])
+              if (recordable.has(c.clinical_status)) visited.add(c.clinical_status)
+              return {
+                ...c,
+                clinical_status: newStatus,
+                abatement_date: newStatus === "resolved" ? today : c.abatement_date,
+                visited_clinical_statuses: [...visited],
+              }
+            }),
           }
         })
       }

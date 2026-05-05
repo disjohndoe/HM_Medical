@@ -817,6 +817,7 @@ export interface CaseItem {
   last_error_display?: string | null;
   last_error_diagnostics?: string | null;
   last_error_at?: string | null;
+  visited_clinical_statuses?: string[];
   // Frontend-only marker: true for cases created (or spawned via 2.2)
   // in the current session. CEZIH's 2.5 Resolve only works reliably
   // on cases it observed as 'Potvrđen' from creation, so we gate the

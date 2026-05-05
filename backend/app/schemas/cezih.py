@@ -380,6 +380,7 @@ class CaseItem(BaseModel):
     last_error_display: str | None = None
     last_error_diagnostics: str | None = None
     last_error_at: datetime | None = None
+    visited_clinical_statuses: list[str] = []
 
 
 class CasesListResponse(BaseModel):
