@@ -113,8 +113,17 @@ async def _persist_local_case_by_patient_id(
             )
         )
         await db.flush()
-    except (IntegrityError, OperationalError) as exc:
-        logger.warning("Failed to persist local CezihCase mirror: %s", exc)
+    except (IntegrityError, OperationalError):
+        logger.exception(
+            "CezihCase mirror persist failed",
+            extra={
+                "tenant_id": str(tenant_id),
+                "patient_id": str(patient_id),
+                "cezih_case_id": cezih_case_id,
+                "local_case_id": local_case_id,
+            },
+        )
+        raise
 
 
 def _serialize_case_row(row) -> dict:
@@ -252,7 +261,7 @@ async def _update_local_case(
     note: str | None = None,
     visited_clinical_statuses: list[str] | None = None,
 ) -> None:
-    """Patch the local CezihCase mirror if it exists. Non-fatal on failure."""
+    """Patch the local CezihCase mirror if it exists."""
     if not db or not tenant_id or not case_id:
         return
     try:
@@ -291,8 +300,15 @@ async def _update_local_case(
         if visited_clinical_statuses is not None:
             row.visited_clinical_statuses = visited_clinical_statuses
         await db.flush()
-    except (IntegrityError, OperationalError) as exc:
-        logger.warning("Failed to update local CezihCase mirror: %s", exc)
+    except (IntegrityError, OperationalError):
+        logger.exception(
+            "CezihCase mirror update failed",
+            extra={
+                "tenant_id": str(tenant_id),
+                "cezih_case_id": case_id,
+            },
+        )
+        raise
 
 
 async def dispatch_retrieve_cases(

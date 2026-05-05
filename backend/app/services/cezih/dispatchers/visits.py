@@ -128,8 +128,16 @@ async def _persist_local_visit_by_patient_id(
             )
         )
         await db.flush()
-    except (IntegrityError, OperationalError) as exc:
-        logger.warning("Failed to persist local CezihVisit mirror: %s", exc)
+    except (IntegrityError, OperationalError):
+        logger.exception(
+            "CezihVisit mirror persist failed",
+            extra={
+                "tenant_id": str(tenant_id),
+                "patient_id": str(patient_id),
+                "cezih_visit_id": cezih_visit_id,
+            },
+        )
+        raise
 
 
 def _parse_dt(value) -> datetime | None:
@@ -219,8 +227,16 @@ async def _upsert_cezih_visit_from_response(
                 parsed_start = _parse_dt(remote.get("period_start"))
                 if parsed_start:
                     row.period_start = parsed_start
-    except (IntegrityError, OperationalError) as exc:
-        logger.warning("Failed to upsert CezihVisit from response: %s", exc)
+    except (IntegrityError, OperationalError):
+        logger.exception(
+            "CezihVisit mirror upsert failed",
+            extra={
+                "tenant_id": str(tenant_id),
+                "patient_id": str(patient_id),
+                "cezih_visit_id": cezih_visit_id,
+            },
+        )
+        raise
 
 
 def _serialize_visit_row(row) -> dict:
@@ -323,7 +339,6 @@ async def _update_local_visit(
     """Upsert the local CezihVisit mirror for this visit.
 
     If no row exists yet, insert a fresh row so the edit is reflected.
-    Non-fatal on failure.
     """
     if not db or not tenant_id or not visit_id:
         return
@@ -377,8 +392,15 @@ async def _update_local_visit(
             if clear_period_end:
                 row.period_end = None
         await db.flush()
-    except (IntegrityError, OperationalError) as exc:
-        logger.warning("Failed to update local CezihVisit mirror: %s", exc)
+    except (IntegrityError, OperationalError):
+        logger.exception(
+            "CezihVisit mirror update failed",
+            extra={
+                "tenant_id": str(tenant_id),
+                "cezih_visit_id": visit_id,
+            },
+        )
+        raise
 
 
 def _parse_visit_response(result: dict) -> dict:
@@ -812,8 +834,15 @@ async def dispatch_list_visits(
         )
     try:
         await db.flush()
-    except (IntegrityError, OperationalError) as exc:
-        logger.warning("Flush after visit upsert failed: %s", exc)
+    except (IntegrityError, OperationalError):
+        logger.exception(
+            "CezihVisit mirror flush failed after list upsert",
+            extra={
+                "tenant_id": str(tenant_id),
+                "patient_id": str(patient_id),
+            },
+        )
+        raise
     return await _list_local_visits_as_dicts(db, tenant_id, patient_id)
 
 
