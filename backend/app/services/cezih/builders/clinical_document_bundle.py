@@ -19,6 +19,7 @@ Sections that are emitted:
     - anamneza (1..1) -> Observation
     - slucaj (1..N) -> Condition (dokumentirani-slucaj)
     - ishodPregleda (1..1) -> Observation
+    - tekstualniNalaz (0..1) -> Observation (types 012/013 only, populated from dijagnoza_tekst)
 
 Sections deliberately skipped from MVP (max=N, optional):
 - prilozeni-dokumenti (PDF attachments) - separate feature
@@ -73,6 +74,7 @@ PROFILE_CONDITION = f"{_PROFILE_BASE}/dokumentirani-slucaj"
 PROFILE_ANAMNEZA = f"{_PROFILE_BASE}/anamneza"
 PROFILE_ISHOD = f"{_PROFILE_BASE}/ishod-pregleda"
 PROFILE_DJELATNOST = f"{_PROFILE_BASE}/djelatnost"
+PROFILE_TEKSTUALNI = f"{_PROFILE_BASE}/tekstualni-nalaz"
 
 # Per HRTipDokumenta (011/012/013) the Composition has a distinct profile.
 _COMPOSITION_PROFILE_BY_TYPE_CODE = {
@@ -348,6 +350,34 @@ def _build_ishod_observation(
     }
 
 
+def _build_tekstualni_nalaz_observation(
+    *,
+    sadrzaj: str,
+    patient_full_url: str,
+) -> dict[str, Any]:
+    """Build tekstualni-nalaz Observation for medicinska-informacija (types 012/013 only).
+
+    Minimal Observation per StructureDefinition: status, code (fixed 19), subject, valueString.
+    No encounter, performer, or effectiveDateTime - the profile constrains these as optional.
+    """
+    return {
+        "resourceType": "Observation",
+        "meta": {"profile": [PROFILE_TEKSTUALNI]},
+        "status": "final",
+        "code": {
+            "coding": [
+                {
+                    "system": SYS_OBSERVATIONS,
+                    "code": "19",
+                    "display": "Tekstualni nalaz",
+                }
+            ]
+        },
+        "subject": {"reference": patient_full_url},
+        "valueString": sadrzaj.strip(),
+    }
+
+
 def _build_djelatnost_resource(
     *,
     djelatnost_code: str,
@@ -386,6 +416,7 @@ def _build_composition(
     case_full_url: str,
     ishod_full_url: str,
     composition_date: str,
+    tekstualni_nalaz_full_url: str | None = None,
 ) -> dict[str, Any]:
     """Build Composition resource matching nalaz/izvjesce/otpusno profile."""
     if document_type_code not in _TITLE_BY_TYPE_CODE:
@@ -395,6 +426,14 @@ def _build_composition(
         )
     title = _TITLE_BY_TYPE_CODE[document_type_code]
     composition_profile = _COMPOSITION_PROFILE_BY_TYPE_CODE[document_type_code]
+
+    mi_entries = [
+        {"reference": anamneza_full_url},
+        {"reference": case_full_url},
+        {"reference": ishod_full_url},
+    ]
+    if tekstualni_nalaz_full_url:
+        mi_entries.append({"reference": tekstualni_nalaz_full_url})
 
     return {
         "resourceType": "Composition",
@@ -453,11 +492,7 @@ def _build_composition(
                         }
                     ]
                 },
-                "entry": [
-                    {"reference": anamneza_full_url},
-                    {"reference": case_full_url},
-                    {"reference": ishod_full_url},
-                ],
+                "entry": mi_entries,
             },
         ],
     }
@@ -508,6 +543,18 @@ def build_clinical_document_bundle(
     period_end = composition_date
     onset = record_data.get("created_at") or composition_date
 
+    # Tekstualni nalaz (code 19) only for doc types 012/013, populated from dijagnoza_tekst.
+    tekstualni_nalaz_full_url = None
+    tekstualni_nalaz = None
+    if document_type_code in ("012", "013"):
+        tekstualni_nalaz_text = (record_data.get("dijagnoza_tekst") or "").strip()
+        if tekstualni_nalaz_text:
+            tekstualni_nalaz_full_url = f"urn:uuid:{uuid.uuid4()}"
+            tekstualni_nalaz = _build_tekstualni_nalaz_observation(
+                sadrzaj=tekstualni_nalaz_text,
+                patient_full_url=patient_full_url,
+            )
+
     composition = _build_composition(
         document_type_code=document_type_code,
         document_type_display=document_type_display,
@@ -520,6 +567,7 @@ def build_clinical_document_bundle(
         case_full_url=case_full_url,
         ishod_full_url=ishod_full_url,
         composition_date=composition_date,
+        tekstualni_nalaz_full_url=tekstualni_nalaz_full_url,
     )
 
     patient = _build_patient_resource(patient_data)
@@ -565,6 +613,20 @@ def build_clinical_document_bundle(
     )
 
     # Composition MUST be the first entry in a Bundle.type=document per FHIR R4.
+    entries: list[dict[str, Any]] = [
+        {"fullUrl": composition_full_url, "resource": composition},
+        {"fullUrl": patient_full_url, "resource": patient},
+        {"fullUrl": encounter_full_url, "resource": encounter},
+        {"fullUrl": practitioner_full_url, "resource": practitioner},
+        {"fullUrl": organization_full_url, "resource": organization},
+        {"fullUrl": djelatnost_full_url, "resource": djelatnost},
+        {"fullUrl": anamneza_full_url, "resource": anamneza},
+        {"fullUrl": case_full_url, "resource": condition},
+        {"fullUrl": ishod_full_url, "resource": ishod},
+    ]
+    if tekstualni_nalaz_full_url and tekstualni_nalaz:
+        entries.append({"fullUrl": tekstualni_nalaz_full_url, "resource": tekstualni_nalaz})
+
     bundle: dict[str, Any] = {
         "resourceType": "Bundle",
         "meta": {"profile": [PROFILE_BUNDLE]},
@@ -574,17 +636,7 @@ def build_clinical_document_bundle(
         },
         "type": "document",
         "timestamp": composition_date,
-        "entry": [
-            {"fullUrl": composition_full_url, "resource": composition},
-            {"fullUrl": patient_full_url, "resource": patient},
-            {"fullUrl": encounter_full_url, "resource": encounter},
-            {"fullUrl": practitioner_full_url, "resource": practitioner},
-            {"fullUrl": organization_full_url, "resource": organization},
-            {"fullUrl": djelatnost_full_url, "resource": djelatnost},
-            {"fullUrl": anamneza_full_url, "resource": anamneza},
-            {"fullUrl": case_full_url, "resource": condition},
-            {"fullUrl": ishod_full_url, "resource": ishod},
-        ],
+        "entry": entries,
     }
 
     logger.info(

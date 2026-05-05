@@ -31,7 +31,7 @@ const recordSchema = z.object({
   tip: z.string().min(1, "Tip je obavezan"),
   dijagnoza_mkb: z.string().optional(),
   dijagnoza_tekst: z.string().optional(),
-  sadrzaj: z.string().min(10, "Sadržaj mora imati najmanje 10 znakova"),
+  sadrzaj: z.string().min(10, "Anamneza mora imati najmanje 10 znakova"),
 })
 
 type RecordFormData = z.infer<typeof recordSchema>
@@ -394,10 +394,10 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
 
 
           <div className="space-y-2">
-            <Label htmlFor="sadrzaj">Sadržaj *</Label>
+            <Label htmlFor="sadrzaj">Anamneza *</Label>
             <Textarea
               id="sadrzaj"
-              placeholder="Unesite sadržaj medicinskog zapisa (najmanje 10 znakova)..."
+              placeholder="Unesite anamnezu (najmanje 10 znakova)..."
               className="min-h-[200px]"
               {...register("sadrzaj")}
             />
