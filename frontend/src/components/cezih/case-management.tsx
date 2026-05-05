@@ -53,35 +53,9 @@ import {
   useIcd10Search,
 } from "@/lib/hooks/use-cezih"
 import type { CaseItem } from "@/lib/types"
+import { CLINICAL_STATUS, CLINICAL_STATUS_COLORS, VERIFICATION_STATUS } from "@/lib/constants"
 
 const PAGE_SIZE = 30
-
-const CLINICAL_STATUS_COLORS: Record<string, string> = {
-  active: "bg-blue-100 text-blue-800",
-  recurrence: "bg-purple-100 text-purple-800",
-  remission: "bg-green-100 text-green-800",
-  relapse: "bg-orange-100 text-orange-800",
-  inactive: "bg-gray-100 text-gray-800",
-  resolved: "bg-gray-100 text-gray-800",
-}
-
-const CLINICAL_STATUS_LABELS: Record<string, string> = {
-  active: "Aktivan",
-  recurrence: "Ponavljajući",
-  remission: "Remisija",
-  relapse: "Relaps",
-  inactive: "Neaktivan",
-  resolved: "Zatvoren",
-}
-
-const VERIFICATION_STATUS_LABELS: Record<string, string> = {
-  unconfirmed: "Nepotvrđen",
-  provisional: "Privremena",
-  "differential": "Diferencijalna",
-  confirmed: "Potvrđen",
-  refuted: "Opovrgnut",
-  "entered-in-error": "Pogreška unosa",
-}
 
 // CEZIH's health-issue-management-verification-status-create ValueSet only accepts
 // unconfirmed / provisional / differential / confirmed. refuted and entered-in-error
@@ -272,8 +246,8 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
     defaultKey: "onset_date",
     defaultDir: "desc",
     keyAccessors: {
-      status: (c) => CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status,
-      verifikacija: (c) => VERIFICATION_STATUS_LABELS[c.verification_status || ""] || c.verification_status || "",
+      status: (c) => CLINICAL_STATUS[c.clinical_status] || c.clinical_status,
+      verifikacija: (c) => VERIFICATION_STATUS[c.verification_status || ""] || c.verification_status || "",
       icd_code: (c) => c.icd_code,
       naziv: (c) => c.icd_display,
       abatement_date: (c) => c.abatement_date || null,
@@ -384,11 +358,11 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                 <Label>Status verifikacije</Label>
                 <Select value={verification} onValueChange={(v) => v && setVerification(v)}>
                   <SelectTrigger>
-                    <SelectValue>{VERIFICATION_STATUS_LABELS[verification] || verification}</SelectValue>
+                    <SelectValue>{VERIFICATION_STATUS[verification] || verification}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {CEZIH_VERIFICATION_STATUSES.map((value) => (
-                      <SelectItem key={value} value={value}>{VERIFICATION_STATUS_LABELS[value]}</SelectItem>
+                      <SelectItem key={value} value={value}>{VERIFICATION_STATUS[value]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -463,12 +437,12 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                       <TableRow key={c.case_id}>
                         <TableCell>
                           <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100"}>
-                            {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status}
+                            {CLINICAL_STATUS[c.clinical_status] || c.clinical_status}
                           </Badge>
                         </TableCell>
                         <TableCell>
                           <span className="text-xs text-muted-foreground">
-                            {VERIFICATION_STATUS_LABELS[c.verification_status || ""] || c.verification_status || "—"}
+                            {VERIFICATION_STATUS[c.verification_status || ""] || c.verification_status || "—"}
                           </span>
                         </TableCell>
                         <TableCell className="font-mono text-sm font-medium">{c.icd_code}</TableCell>
@@ -560,11 +534,11 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
               <Label className="text-xs">Status verifikacije</Label>
               <Select value={editVerification} onValueChange={(v) => v && setEditVerification(v)}>
                 <SelectTrigger className="h-8">
-                  <SelectValue>{VERIFICATION_STATUS_LABELS[editVerification] || editVerification}</SelectValue>
+                  <SelectValue>{VERIFICATION_STATUS[editVerification] || editVerification}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {CEZIH_VERIFICATION_STATUSES.map((val) => (
-                    <SelectItem key={val} value={val}>{VERIFICATION_STATUS_LABELS[val]}</SelectItem>
+                    <SelectItem key={val} value={val}>{VERIFICATION_STATUS[val]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

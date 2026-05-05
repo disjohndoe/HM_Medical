@@ -45,6 +45,35 @@ export const APPOINTMENT_STATUS_COLORS: Record<string, string> = {
   nije_dosao: "bg-orange-100 text-orange-700",
 };
 
+// --- CEZIH Cases ---
+
+export const CLINICAL_STATUS: Record<string, string> = {
+  active: "Aktivan",
+  recurrence: "Ponavljajući",
+  remission: "Remisija",
+  relapse: "Relaps",
+  inactive: "Neaktivan",
+  resolved: "Zatvoren",
+};
+
+export const CLINICAL_STATUS_COLORS: Record<string, string> = {
+  active: "bg-blue-100 text-blue-800",
+  recurrence: "bg-purple-100 text-purple-800",
+  remission: "bg-green-100 text-green-800",
+  relapse: "bg-orange-100 text-orange-800",
+  inactive: "bg-gray-100 text-gray-800",
+  resolved: "bg-gray-100 text-gray-800",
+};
+
+export const VERIFICATION_STATUS: Record<string, string> = {
+  unconfirmed: "Nepotvrđen",
+  provisional: "Privremena",
+  differential: "Diferencijalna",
+  confirmed: "Potvrđen",
+  refuted: "Opovrgnut",
+  "entered-in-error": "Pogreška unosa",
+};
+
 export const WORKING_HOURS_START = 6;
 export const WORKING_HOURS_END = 21;
 export const SLOT_GRANULARITY = 15;

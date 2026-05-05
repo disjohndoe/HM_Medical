@@ -37,28 +37,11 @@ import {
   useInsuranceCheck,
 } from "@/lib/hooks/use-cezih"
 import { useDocuments, useImportCezihDocument } from "@/lib/hooks/use-documents"
-import { OSIGURANJE_STATUS, ICD_CHAPTERS, COUNTRY_HR } from "@/lib/constants"
+import { OSIGURANJE_STATUS, ICD_CHAPTERS, COUNTRY_HR, CLINICAL_STATUS, CLINICAL_STATUS_COLORS } from "@/lib/constants"
 import { isForeignPatient, type Patient } from "@/lib/types"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 
-const CLINICAL_STATUS_COLORS: Record<string, string> = {
-  active: "bg-blue-100 text-blue-800",
-  recurrence: "bg-orange-100 text-orange-800",
-  relapse: "bg-orange-100 text-orange-800",
-  remission: "bg-green-100 text-green-800",
-  resolved: "bg-gray-100 text-gray-800",
-  inactive: "bg-gray-100 text-gray-600",
-}
-
-const CLINICAL_STATUS_LABELS: Record<string, string> = {
-  active: "Aktivan",
-  recurrence: "Ponavljajući",
-  relapse: "Relaps",
-  remission: "Remisija",
-  resolved: "Zatvoren",
-  inactive: "Neaktivan",
-}
 
 const VISIT_STATUS_COLORS: Record<string, string> = {
   "in-progress": "bg-blue-100 text-blue-800",
@@ -365,7 +348,7 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
               {filteredCases.map((c) => (
                 <div key={c.case_id} className="flex items-center gap-2 flex-wrap">
                   <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100 text-gray-600"}>
-                    {CLINICAL_STATUS_LABELS[c.clinical_status] || c.clinical_status || "Nema"}
+                    {CLINICAL_STATUS[c.clinical_status] || c.clinical_status || "Nema"}
                   </Badge>
                   <span className="font-mono text-sm">{c.icd_code}</span>
                   <span className="text-sm text-muted-foreground">{c.icd_display}</span>
