@@ -69,8 +69,10 @@ async def import_patient_from_cezih(
         if sys_uri and val:
             idents[sys_uri] = val
 
-    oib = idents.get(real_service.SYS_OIB)
-    cezih_patient_id = idents.get(real_service.SYS_JEDINSTVENI) or cezih_data.get("cezih_id") or None
+    from app.services.cezih.builders.common import ID_JEDINSTVENI, ID_OIB
+
+    oib = idents.get(ID_OIB)
+    cezih_patient_id = idents.get(ID_JEDINSTVENI) or cezih_data.get("cezih_id") or None
 
     # Parse date string to date object
     dob = None
@@ -158,12 +160,12 @@ async def import_patient_by_identifier(
     from datetime import date as date_type
 
     from app.models.patient import Patient
-    from app.services.cezih.service import (
-        SYS_EUROPSKA,
-        SYS_JEDINSTVENI,
-        SYS_MBO,
-        SYS_OIB,
-        SYS_PUTOVNICA,
+    from app.services.cezih.builders.common import (
+        ID_EHIC,
+        ID_JEDINSTVENI,
+        ID_MBO,
+        ID_OIB,
+        ID_PUTOVNICA,
     )
 
     try:
@@ -185,11 +187,11 @@ async def import_patient_by_identifier(
         if sys_uri and val:
             idents[sys_uri] = val
 
-    mbo = idents.get(SYS_MBO)
-    oib = idents.get(SYS_OIB)
-    putovnica = idents.get(SYS_PUTOVNICA)
-    ehic = idents.get(SYS_EUROPSKA)
-    cezih_patient_id = idents.get(SYS_JEDINSTVENI) or (cezih_data.get("cezih_id") or None)
+    mbo = idents.get(ID_MBO)
+    oib = idents.get(ID_OIB)
+    putovnica = idents.get(ID_PUTOVNICA)
+    ehic = idents.get(ID_EHIC)
+    cezih_patient_id = idents.get(ID_JEDINSTVENI) or (cezih_data.get("cezih_id") or None)
 
     # Duplicate check across all identifier columns — return 409 with the
     # existing patient so the UI can link to it instead of silently failing.
@@ -395,12 +397,14 @@ async def insurance_check_by_identifier(
     if cezih_data.get("datum_smrti"):
         status_osiguranja = "Preminuo"
 
+    from app.services.cezih.builders.common import ID_MBO, ID_OIB
+
     oib = ""
     mbo_from_cezih = ""
     for ident in cezih_data.get("identifikatori") or []:
-        if ident.get("system") == real_service.SYS_OIB and ident.get("value"):
+        if ident.get("system") == ID_OIB and ident.get("value"):
             oib = ident["value"]
-        elif ident.get("system") == real_service.SYS_MBO and ident.get("value"):
+        elif ident.get("system") == ID_MBO and ident.get("value"):
             mbo_from_cezih = ident["value"]
 
     result = {

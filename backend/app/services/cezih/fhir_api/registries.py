@@ -211,50 +211,31 @@ async def expand_value_set(
     url: str,
     filter_text: str | None = None,
 ) -> dict:
-    """Expand a CEZIH value set (ITI-95 SVCM $expand)."""
+    """Expand a CEZIH value set (ITI-95 SVCM $expand).
+
+    Failures propagate as CezihError per feedback_no_fallbacks.md - we do not
+    silently degrade to a plain ValueSet search when $expand fails.
+    """
     fhir_client = CezihFhirClient(client)
     params: dict = {"url": url, "_count": "100"}
     if filter_text:
         params["filter"] = filter_text
 
-    used_fallback = False
-    try:
-        response = await fhir_client.get("terminology-services/api/v1/ValueSet/$expand", params=params)
-    except Exception as e:
-        logger.warning("ValueSet $expand failed for %s: %s, falling back to plain search", url, e)
-        used_fallback = True
-        response = await fhir_client.get("terminology-services/api/v1/ValueSet", params=params)
+    response = await fhir_client.get("terminology-services/api/v1/ValueSet/$expand", params=params)
 
-    concepts = []
-    # Try expansion first (standard path)
-    expansion = response.get("expansion", {})
-    if expansion:
-        for contains in expansion.get("contains", []):
-            concepts.append(
-                {
-                    "code": contains.get("code", ""),
-                    "display": contains.get("display", ""),
-                    "system": contains.get("system", ""),
-                }
-            )
-    else:
-        # Fallback: extract from Bundle.entry
-        for entry in response.get("entry", []):
-            resource = entry.get("resource", {})
-            if resource.get("resourceType") == "Concept":
-                concepts.append(
-                    {
-                        "code": resource.get("code", ""),
-                        "display": resource.get("display", ""),
-                        "system": resource.get("system", ""),
-                    }
-                )
+    concepts = [
+        {
+            "code": contains.get("code", ""),
+            "display": contains.get("display", ""),
+            "system": contains.get("system", ""),
+        }
+        for contains in response.get("expansion", {}).get("contains", [])
+    ]
 
     return {
         "url": url,
         "concepts": concepts,
         "total": len(concepts),
-        "_method": "$expand" if not used_fallback else "search (fallback)",
     }
 
 

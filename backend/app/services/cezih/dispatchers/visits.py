@@ -414,6 +414,9 @@ async def dispatch_create_visit(
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
+            ENCOUNTER_EVENT_PROFILE_MAP,
+            PROFILE_ENCOUNTER,
+            PROFILE_ENCOUNTER_MSG_HEADER,
             add_signature,
             build_encounter_create,
             build_message_bundle,
@@ -438,7 +441,11 @@ async def dispatch_create_visit(
             sender_org_code=org_code,
             author_practitioner_id=practitioner_id,
             source_oid=source_oid,
-            profile_urls=None,
+            profile_urls={
+                "bundle": ENCOUNTER_EVENT_PROFILE_MAP["1.1"],
+                "header": PROFILE_ENCOUNTER_MSG_HEADER,
+                "resource": PROFILE_ENCOUNTER,
+            },
         )
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
@@ -510,6 +517,9 @@ async def dispatch_update_visit(
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
+            ENCOUNTER_EVENT_PROFILE_MAP,
+            PROFILE_ENCOUNTER,
+            PROFILE_ENCOUNTER_MSG_HEADER,
             add_signature,
             build_encounter_update,
             build_message_bundle,
@@ -538,7 +548,11 @@ async def dispatch_update_visit(
             sender_org_code=org_code,
             author_practitioner_id=practitioner_id,
             source_oid=source_oid,
-            profile_urls=None,
+            profile_urls={
+                "bundle": ENCOUNTER_EVENT_PROFILE_MAP["1.2"],
+                "header": PROFILE_ENCOUNTER_MSG_HEADER,
+                "resource": PROFILE_ENCOUNTER,
+            },
         )
         bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)

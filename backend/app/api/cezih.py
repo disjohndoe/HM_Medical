@@ -650,12 +650,12 @@ async def search_patient_by_identifier(
     from sqlalchemy import or_
 
     from app.models.patient import Patient
-    from app.services.cezih.service import (
-        SYS_EUROPSKA,
-        SYS_JEDINSTVENI,
-        SYS_MBO,
-        SYS_OIB,
-        SYS_PUTOVNICA,
+    from app.services.cezih.builders.common import (
+        ID_EHIC,
+        ID_JEDINSTVENI,
+        ID_MBO,
+        ID_OIB,
+        ID_PUTOVNICA,
     )
 
     filters = []
@@ -664,15 +664,15 @@ async def search_patient_by_identifier(
         val = ident.get("value")
         if not sys_uri or not val:
             continue
-        if sys_uri == SYS_MBO:
+        if sys_uri == ID_MBO:
             filters.append(Patient.mbo == val)
-        elif sys_uri == SYS_OIB:
+        elif sys_uri == ID_OIB:
             filters.append(Patient.oib == val)
-        elif sys_uri == SYS_PUTOVNICA:
+        elif sys_uri == ID_PUTOVNICA:
             filters.append(Patient.broj_putovnice == val)
-        elif sys_uri == SYS_EUROPSKA:
+        elif sys_uri == ID_EHIC:
             filters.append(Patient.ehic_broj == val)
-        elif sys_uri == SYS_JEDINSTVENI:
+        elif sys_uri == ID_JEDINSTVENI:
             filters.append(Patient.cezih_patient_id == val)
     if result.get("cezih_id"):
         filters.append(Patient.cezih_patient_id == result["cezih_id"])

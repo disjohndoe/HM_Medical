@@ -8,7 +8,8 @@ import logging
 from datetime import UTC, datetime
 
 from app.services.cezih.builders.condition import (
-    PROFILE_HI_CREATE_BUNDLE,
+    CASE_EVENT_PROFILE_MAP,
+    PROFILE_CONDITION,
     PROFILE_HI_MESSAGE_HEADER,
 )
 from app.services.cezih.client import CezihFhirClient
@@ -180,8 +181,9 @@ async def create_case(
         author_practitioner_id=practitioner_id,
         source_oid=source_oid,
         profile_urls={
-            "bundle": PROFILE_HI_CREATE_BUNDLE,
+            "bundle": CASE_EVENT_PROFILE_MAP["2.1"],
             "header": PROFILE_HI_MESSAGE_HEADER,
+            "resource": PROFILE_CONDITION,
         },
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
@@ -246,6 +248,11 @@ async def create_recurring_case(
         sender_org_code=org_code,
         author_practitioner_id=practitioner_id,
         source_oid=source_oid,
+        profile_urls={
+            "bundle": CASE_EVENT_PROFILE_MAP["2.2"],
+            "header": PROFILE_HI_MESSAGE_HEADER,
+            "resource": PROFILE_CONDITION,
+        },
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
     await _ensure_case_session(fhir_client)
@@ -298,12 +305,20 @@ async def update_case(
     )
 
     fhir_client = CezihFhirClient(client)
+    bundle_profile = CASE_EVENT_PROFILE_MAP.get(event_code)
+    if bundle_profile is None:
+        raise CezihError(f"No CASE_EVENT_PROFILE_MAP entry for event code {event_code}")
     bundle = await build_message_bundle(
         event_code,
         condition,
         sender_org_code=org_code,
         author_practitioner_id=practitioner_id,
         source_oid=source_oid,
+        profile_urls={
+            "bundle": bundle_profile,
+            "header": PROFILE_HI_MESSAGE_HEADER,
+            "resource": PROFILE_CONDITION,
+        },
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
     await _ensure_case_session(fhir_client)
@@ -356,6 +371,11 @@ async def update_case_data(
         sender_org_code=org_code,
         author_practitioner_id=practitioner_id,
         source_oid=source_oid,
+        profile_urls={
+            "bundle": CASE_EVENT_PROFILE_MAP["2.6"],
+            "header": PROFILE_HI_MESSAGE_HEADER,
+            "resource": PROFILE_CONDITION,
+        },
     )
     bundle = await add_signature(bundle, practitioner_id, http_client=client)
     await _ensure_case_session(fhir_client)

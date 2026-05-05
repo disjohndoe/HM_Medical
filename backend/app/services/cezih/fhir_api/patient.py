@@ -8,14 +8,12 @@ import uuid
 
 import httpx
 
+from app.services.cezih.builders.common import ID_JEDINSTVENI, ID_MBO, ID_OIB
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError, CezihFhirError
 from app.services.cezih.fhir_api.identifiers import (
     _IDENTIFIER_LABEL_MAP,
     _IDENTIFIER_SYSTEM_MAP,
-    SYS_JEDINSTVENI,
-    SYS_MBO,
-    SYS_OIB,
 )
 from app.services.cezih.models import FHIRPatient
 
@@ -79,7 +77,7 @@ async def search_patient_by_identifier(
             "PDQm patient search returned %d entries for %s|%s — using first", len(entries), identifier_system, value
         )
 
-    raw_resource = entries[0].get("resource", {})
+    raw_resource = _require_patient_resource(entries[0])
     logger.info("PDQm raw Patient resource (%s|%s): %.2000s", identifier_system, value, str(raw_resource))
 
     patient = FHIRPatient.model_validate(raw_resource)
@@ -89,7 +87,7 @@ async def search_patient_by_identifier(
     # jedinstveni-identifikator-pacijenta is what subsequent FHIR operations use.
     cezih_id = ""
     for ident in patient.identifier:
-        if ident.system == SYS_JEDINSTVENI and ident.value:
+        if ident.system == ID_JEDINSTVENI and ident.value:
             cezih_id = ident.value
             break
     if not cezih_id:
@@ -169,7 +167,7 @@ async def search_patient_by_identifier(
 async def fetch_patient_demographics(client: httpx.AsyncClient, mbo: str) -> dict:
     """Fetch patient demographics from CEZIH PDQm and return fields matching our Patient model."""
     fhir_client = CezihFhirClient(client)
-    params = {"identifier": f"{SYS_MBO}|{mbo}"}
+    params = {"identifier": f"{ID_MBO}|{mbo}"}
     response = await fhir_client.get("patient-registry-services/api/v1/Patient", params=params, timeout=10)
 
     if response.get("resourceType") != "Bundle":
@@ -179,12 +177,12 @@ async def fetch_patient_demographics(client: httpx.AsyncClient, mbo: str) -> dic
     if not entries:
         raise CezihError(f"Pacijent s MBO {mbo} nije pronađen u CEZIH registru")
 
-    patient = FHIRPatient.model_validate(entries[0].get("resource", {}))
+    patient = FHIRPatient.model_validate(_require_patient_resource(entries[0]))
     family, given = _extract_name(patient)
 
     oib = ""
     for ident in patient.identifier:
-        if ident.system == SYS_OIB and ident.value:
+        if ident.system == ID_OIB and ident.value:
             oib = ident.value
 
     spol_map = {"male": "M", "female": "Z"}
@@ -209,7 +207,7 @@ async def check_insurance(
 
     GET /patient-registry-services/api/v1/Patient?identifier={system_uri}|{value}
 
-    For Croatian insured patients pass (SYS_MBO, mbo). For foreigners use the
+    For Croatian insured patients pass (ID_MBO, mbo). For foreigners use the
     jedinstveni-id / EHIC / putovnica identifier returned by the resolver.
     """
     fhir_client = CezihFhirClient(client)
@@ -234,15 +232,15 @@ async def check_insurance(
                 "status_osiguranja": "Nije pronađen",
             }
 
-        patient = FHIRPatient.model_validate(entries[0].get("resource", {}))
+        patient = FHIRPatient.model_validate(_require_patient_resource(entries[0]))
         family, given = _extract_name(patient)
 
         oib = ""
         mbo_from_cezih = ""
         for ident in patient.identifier:
-            if ident.system == SYS_OIB and ident.value:
+            if ident.system == ID_OIB and ident.value:
                 oib = ident.value
-            elif ident.system == SYS_MBO and ident.value:
+            elif ident.system == ID_MBO and ident.value:
                 mbo_from_cezih = ident.value
 
         spol_map = {"male": "M", "female": "Ž", "other": "Ostalo", "unknown": "Nepoznato"}
@@ -281,6 +279,21 @@ def _extract_name(patient: FHIRPatient) -> tuple[str, str]:
     family = official.family or ""
     given = " ".join(official.given) if official.given else ""
     return family, given
+
+
+def _require_patient_resource(entry: dict) -> dict:
+    """Return entry.resource if it is a Patient, else raise CezihError.
+
+    HAPI sometimes wraps OperationOutcome (or other resource types) into a
+    Bundle entry on partial errors. Without this guard FHIRPatient.model_validate
+    crashes with a confusing Pydantic ValidationError instead of a clear
+    Croatian message.
+    """
+    resource = entry.get("resource") or {}
+    rt = resource.get("resourceType")
+    if rt != "Patient":
+        raise CezihError(f"CEZIH vratio neočekivan resurs (resourceType={rt or 'None'}) umjesto Patient")
+    return resource
 
 
 __all__ = [

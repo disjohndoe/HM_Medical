@@ -26,8 +26,20 @@ from app.services.cezih.builders.common import (
 
 logger = logging.getLogger(__name__)
 
-PROFILE_HI_CREATE_BUNDLE = "http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-create-health-issue-message"
-PROFILE_HI_MESSAGE_HEADER = "http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-hi-management-message-header"
+_PROFILE_BASE = "http://fhir.cezih.hr/specifikacije/StructureDefinition"
+PROFILE_CONDITION = f"{_PROFILE_BASE}/hr-condition"
+PROFILE_HI_MESSAGE_HEADER = f"{_PROFILE_BASE}/hr-hi-management-message-header"
+PROFILE_HI_CREATE_BUNDLE = f"{_PROFILE_BASE}/hr-create-health-issue-message"
+
+CASE_EVENT_PROFILE_MAP = {
+    "2.1": f"{_PROFILE_BASE}/hr-create-health-issue-message",
+    "2.2": f"{_PROFILE_BASE}/hr-create-health-issue-recurrence-message",
+    "2.3": f"{_PROFILE_BASE}/hr-health-issue-remission-message",
+    "2.4": f"{_PROFILE_BASE}/hr-health-issue-resolve-message",
+    "2.5": f"{_PROFILE_BASE}/hr-health-issue-relapse-message",
+    "2.6": f"{_PROFILE_BASE}/hr-health-issue-update-message",
+    "2.9": f"{_PROFILE_BASE}/hr-reopen-health-issue-message",
+}
 
 
 def build_condition_create(

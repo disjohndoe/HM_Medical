@@ -72,6 +72,7 @@ async def register_foreigner(
     country = to_alpha3(patient_data.get("drzavljanstvo") or "")
     patient_resource: dict = {
         "resourceType": "Patient",
+        "meta": {"profile": ["http://fhir.cezih.hr/specifikacije/StructureDefinition/hr-pacijent"]},
         "identifier": identifiers,
         "active": True,
         "name": [
@@ -100,10 +101,11 @@ async def register_foreigner(
         patient_resource["gender"] = fhir_gender
 
     # Inner Bundle (type=history).
-    # NOTE: working encounters use NO meta.profile on individual resources.
-    # CEZIH knows expected profiles from the StructureDefinition, not meta.profile.
+    # Profile per HRRegisterPatient slice PMIRBundleHistoryEntry.resource:
+    # https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.Bundle.History
     inner_bundle = {
         "resourceType": "Bundle",
+        "meta": {"profile": ["https://profiles.ihe.net/ITI/PMIR/StructureDefinition/IHE.PMIR.Bundle.History"]},
         "type": "history",
         "entry": [
             {

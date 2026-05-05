@@ -1,29 +1,36 @@
-"""CEZIH identifier system constants and patient-identifier resolution."""
+"""CEZIH identifier system constants and patient-identifier resolution.
+
+Identifier system URIs (`ID_MBO`, `ID_OIB`, `ID_EHIC`, `ID_PUTOVNICA`,
+`ID_JEDINSTVENI`) are owned by `app.services.cezih.builders.common`.
+This module exposes resolution helpers + the friendly-label/short-key
+maps the API + dispatcher layers use, and re-exports the canonical
+URI names for callers that import via the `service.py` shim.
+"""
 
 from __future__ import annotations
 
+from app.services.cezih.builders.common import (
+    ID_EHIC,
+    ID_JEDINSTVENI,
+    ID_MBO,
+    ID_OIB,
+    ID_PUTOVNICA,
+)
 from app.services.cezih.exceptions import CezihError
 
-# CEZIH identifier systems
-SYS_MBO = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
-SYS_OIB = "http://fhir.cezih.hr/specifikacije/identifikatori/OIB"
-SYS_PUTOVNICA = "http://fhir.cezih.hr/specifikacije/identifikatori/putovnica"
-SYS_EUROPSKA = "http://fhir.cezih.hr/specifikacije/identifikatori/europska-kartica"
-SYS_JEDINSTVENI = "http://fhir.cezih.hr/specifikacije/identifikatori/jedinstveni-identifikator-pacijenta"
-
 _IDENTIFIER_SYSTEM_MAP = {
-    "mbo": SYS_MBO,
-    "oib": SYS_OIB,
-    "putovnica": SYS_PUTOVNICA,
-    "ehic": SYS_EUROPSKA,
+    "mbo": ID_MBO,
+    "oib": ID_OIB,
+    "putovnica": ID_PUTOVNICA,
+    "ehic": ID_EHIC,
 }
 
 _IDENTIFIER_LABEL_MAP = {
-    SYS_MBO: "MBO",
-    SYS_PUTOVNICA: "Putovnica",
-    SYS_EUROPSKA: "EHIC",
-    SYS_JEDINSTVENI: "CEZIH ID",
-    SYS_OIB: "OIB",
+    ID_MBO: "MBO",
+    ID_PUTOVNICA: "Putovnica",
+    ID_EHIC: "EHIC",
+    ID_JEDINSTVENI: "CEZIH ID",
+    ID_OIB: "OIB",
 }
 
 
@@ -36,7 +43,7 @@ def _require_identifier_system(patient_data: dict) -> str:
     system = patient_data.get("identifier_system")
     if not system:
         raise CezihError(
-            "patient_data missing 'identifier_system' — caller must pass resolve_cezih_identifier() output"
+            "patient_data missing 'identifier_system' - caller must pass resolve_cezih_identifier() output"
         )
     return system
 
@@ -49,7 +56,7 @@ def _require_identifier_value(patient_data: dict) -> str:
     """
     value = patient_data.get("identifier_value") or patient_data.get("mbo")
     if not value:
-        raise CezihError("patient_data missing 'identifier_value' — caller must pass resolve_cezih_identifier() output")
+        raise CezihError("patient_data missing 'identifier_value' - caller must pass resolve_cezih_identifier() output")
     return value
 
 
@@ -61,24 +68,24 @@ def resolve_cezih_identifier(patient) -> tuple[str, str]:
     Raises CezihError if the patient carries none of these.
     """
     if patient.mbo:
-        return (SYS_MBO, patient.mbo)
+        return (ID_MBO, patient.mbo)
     if getattr(patient, "cezih_patient_id", None):
-        return (SYS_JEDINSTVENI, patient.cezih_patient_id)
+        return (ID_JEDINSTVENI, patient.cezih_patient_id)
     if getattr(patient, "oib", None):
-        return (SYS_OIB, patient.oib)
+        return (ID_OIB, patient.oib)
     if getattr(patient, "ehic_broj", None):
-        return (SYS_EUROPSKA, patient.ehic_broj)
+        return (ID_EHIC, patient.ehic_broj)
     if getattr(patient, "broj_putovnice", None):
-        return (SYS_PUTOVNICA, patient.broj_putovnice)
+        return (ID_PUTOVNICA, patient.broj_putovnice)
     raise CezihError("Pacijent nema CEZIH identifikator (MBO, CEZIH ID, OIB, EHIC ili putovnica)")
 
 
 __all__ = [
-    "SYS_MBO",
-    "SYS_OIB",
-    "SYS_PUTOVNICA",
-    "SYS_EUROPSKA",
-    "SYS_JEDINSTVENI",
+    "ID_MBO",
+    "ID_OIB",
+    "ID_PUTOVNICA",
+    "ID_EHIC",
+    "ID_JEDINSTVENI",
     "_IDENTIFIER_SYSTEM_MAP",
     "_IDENTIFIER_LABEL_MAP",
     "_require_identifier_system",
