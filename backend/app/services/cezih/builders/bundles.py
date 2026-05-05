@@ -153,8 +153,8 @@ def build_iti65_transaction_bundle(
     # List.source only accepts Practitioner/Patient/Device — NOT Organization
     if author_practitioner_id:
         submission_set["source"] = practitioner_ref(author_practitioner_id)
-    # Extensions: sourceId (required, min:1) + ihe-authorOrg
-    extensions: list[dict[str, Any]] = [
+    # sourceId extension on List.extension (required, min:1)
+    submission_set["extension"] = [
         {
             "url": "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-sourceId",
             "valueIdentifier": {
@@ -163,14 +163,14 @@ def build_iti65_transaction_bundle(
             },
         },
     ]
-    if sender_org_code:
-        extensions.append(
+    # authorOrg extension on List.source.extension per HRMinimalSubmissionSet profile
+    if sender_org_code and author_practitioner_id:
+        submission_set["source"]["extension"] = [
             {
                 "url": "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-authorOrg",
                 "valueReference": org_ref(sender_org_code),
             }
-        )
-    submission_set["extension"] = extensions
+        ]
 
     # Pre-assign UUIDs to entries without _uuid to ensure consistency
     for e in entries:

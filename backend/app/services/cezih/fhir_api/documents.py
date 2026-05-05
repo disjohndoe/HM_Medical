@@ -144,7 +144,8 @@ async def _build_document_bundle(
                     "code": coding["code"],
                     "display": coding["display"],
                 }
-            ]
+            ],
+            "text": coding["display"],
         },
         "subject": {
             "type": "Patient",
@@ -343,7 +344,8 @@ def build_cancel_bundle(
                     "code": coding["code"],
                     "display": coding["display"],
                 }
-            ]
+            ],
+            "text": coding["display"],
         },
         "subject": {
             "type": "Patient",
