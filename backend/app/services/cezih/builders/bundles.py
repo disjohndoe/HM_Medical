@@ -125,12 +125,12 @@ def build_iti65_transaction_bundle(
         },
         "identifier": [
             {
-                "use": "official",
+                "use": "usual",
                 "system": "urn:ietf:rfc:3986",
                 "value": f"urn:uuid:{unique_id}",
             },
             {
-                "use": "usual",
+                "use": "official",
                 "system": "urn:ietf:rfc:3986",
                 "value": f"urn:uuid:{submission_set_uuid}",
             },
@@ -163,6 +163,17 @@ def build_iti65_transaction_bundle(
             },
         },
     ]
+    # designationType extension (mustSupport=true in HRMinimalSubmissionSet) — maps to XDS contentTypeCode
+    _first_doc_ref = next((e for e in entries if e.get("resourceType") == "DocumentReference"), None)
+    if _first_doc_ref:
+        _dt_coding = _first_doc_ref.get("type", {}).get("coding")
+        if _dt_coding:
+            submission_set["extension"].append(
+                {
+                    "url": "https://profiles.ihe.net/ITI/MHD/StructureDefinition/ihe-designationType",
+                    "valueCodeableConcept": {"coding": _dt_coding},
+                }
+            )
     # authorOrg extension on List.source.extension per HRMinimalSubmissionSet profile
     if sender_org_code and author_practitioner_id:
         submission_set["source"]["extension"] = [

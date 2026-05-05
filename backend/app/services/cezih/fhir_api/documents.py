@@ -147,6 +147,17 @@ async def _build_document_bundle(
             ],
             "text": coding["display"],
         },
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": coding["system"],
+                        "code": coding["code"],
+                        "display": coding["display"],
+                    }
+                ]
+            }
+        ],
         "subject": {
             "type": "Patient",
             "identifier": {
@@ -347,6 +358,17 @@ def build_cancel_bundle(
             ],
             "text": coding["display"],
         },
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": coding["system"],
+                        "code": coding["code"],
+                        "display": coding["display"],
+                    }
+                ]
+            }
+        ],
         "subject": {
             "type": "Patient",
             "identifier": {
@@ -440,7 +462,9 @@ def build_cancel_bundle(
         ]
     doc_ref_dict["context"] = context
 
-    # Placeholder content (no actual Binary - HRCancelDocumentBundle forbids Documents slice)
+    # Placeholder content - matches canonical Bundle-ITI-65-Cancel.json from cezih.hr.klinicki-dokumenti v0.3.
+    # HRCancelDocumentBundle forbids the Documents slice (Bundle.entry:Documents max=0), so this
+    # attachment.url is an intentional dangling urn:uuid with no Binary entry backing it.
     content_uuid = str(uuid.uuid4())
     doc_ref_dict["content"] = [
         {
