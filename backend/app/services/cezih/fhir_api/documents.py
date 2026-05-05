@@ -42,6 +42,7 @@ async def _build_document_bundle(
     encounter_id: str = "",
     case_id: str = "",
     practitioner_name: str = "",
+    org_name: str = "",
     relates_to: dict | None = None,
     use_external_profile: bool = False,
     doc_status: str = "current",
@@ -91,7 +92,7 @@ async def _build_document_bundle(
         practitioner_id=practitioner_id or "",
         practitioner_name=practitioner_name,
         org_code=org_code,
-        org_name=record_data.get("org_name", "") or f"Ustanova {org_code}",
+        org_name=org_name or f"Ustanova {org_code}",
         encounter_id=encounter_id,
         case_id=case_id,
         document_oid=doc_oid,
@@ -170,7 +171,7 @@ async def _build_document_bundle(
             author_practitioner["display"] = practitioner_name
         doc_ref_dict["author"].append(author_practitioner)
 
-    # Author: organization (HZZO code)
+    # Author: organization (HZZO code) — display required per canonical examples
     if org_code:
         doc_ref_dict["author"].append(
             {
@@ -179,6 +180,7 @@ async def _build_document_bundle(
                     "system": ID_ORG,
                     "value": org_code,
                 },
+                "display": org_name or f"Ustanova {org_code}",
             }
         )
 
@@ -193,14 +195,15 @@ async def _build_document_bundle(
             "display": practitioner_name or practitioner_id,
         }
 
-    # Custodian: organization — display required (min:1)
+    # Custodian: organization — type + display required per canonical examples
     if org_code:
         doc_ref_dict["custodian"] = {
+            "type": "Organization",
             "identifier": {
                 "system": ID_ORG,
                 "value": org_code,
             },
-            "display": f"Ustanova {org_code}",
+            "display": org_name or f"Ustanova {org_code}",
         }
 
     # Context: encounter, case, period, practiceSetting (CEZIHDR-005/006/008/011)
@@ -301,6 +304,7 @@ def build_cancel_bundle(
     org_code: str = "",
     encounter_id: str = "",
     case_id: str = "",
+    org_name: str = "",
 ) -> dict:
     """Build a canonical HRCancelDocumentBundle (2-entry ITI-65 cancel).
 
@@ -373,6 +377,7 @@ def build_cancel_bundle(
                     "system": ID_ORG,
                     "value": org_code,
                 },
+                "display": org_name or f"Ustanova {org_code}",
             }
         )
 
@@ -388,11 +393,12 @@ def build_cancel_bundle(
 
     if org_code:
         doc_ref_dict["custodian"] = {
+            "type": "Organization",
             "identifier": {
                 "system": ID_ORG,
                 "value": org_code,
             },
-            "display": f"Ustanova {org_code}",
+            "display": org_name or f"Ustanova {org_code}",
         }
 
     context: dict = {
@@ -495,6 +501,7 @@ async def send_enalaz(
     encounter_id: str = "",
     case_id: str = "",
     practitioner_name: str = "",
+    org_name: str = "",
 ) -> dict:
     """Send clinical document / finding (ITI-65 MHD)."""
     fhir_client = CezihFhirClient(client)
@@ -512,6 +519,7 @@ async def send_enalaz(
         encounter_id=encounter_id,
         case_id=case_id,
         practitioner_name=practitioner_name,
+        org_name=org_name,
     )
 
     response = await fhir_client.post(
@@ -645,6 +653,7 @@ async def replace_document(
     case_id: str = "",
     practitioner_name: str = "",
     original_document_oid: str = "",
+    org_name: str = "",
 ) -> dict:
     """Replace a clinical document (TC19, ITI-65 transaction bundle with relatesTo).
 
@@ -697,6 +706,7 @@ async def replace_document(
         encounter_id=encounter_id,
         case_id=case_id,
         practitioner_name=practitioner_name,
+        org_name=org_name,
         relates_to=relates_to,
         use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
     )
@@ -784,6 +794,7 @@ async def cancel_document(
     case_id: str = "",
     practitioner_name: str = "",
     original_document_oid: str = "",
+    org_name: str = "",
 ) -> dict:
     """Cancel/storno a clinical document (TC20).
 
@@ -842,6 +853,7 @@ async def cancel_document(
         encounter_id=encounter_id,
         case_id=case_id,
         practitioner_name=practitioner_name,
+        org_name=org_name,
         relates_to=relates_to,
         use_external_profile=False,
     )
@@ -879,6 +891,7 @@ async def cancel_document_canonical(
     case_id: str = "",
     practitioner_name: str = "",
     original_document_oid: str = "",
+    org_name: str = "",
 ) -> dict:
     """Cancel/storno via canonical HRCancelDocumentBundle (2-entry, status=entered-in-error).
 
@@ -918,6 +931,7 @@ async def cancel_document_canonical(
         org_code=org_code,
         encounter_id=encounter_id,
         case_id=case_id,
+        org_name=org_name,
     )
 
     response = await fhir_client.post(

@@ -591,6 +591,7 @@ async def dispatch_replace_document_with_edit(
             original_document_oid=stored_oid,
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
+            org_name=org_name,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -646,6 +647,7 @@ async def dispatch_cancel_document(
     org_code: str = "",
     practitioner_id: str | None = None,
     practitioner_name: str = "",
+    org_name: str = "",
 ) -> dict:
     """Cancel/storno a document on CEZIH (via ITI-65 replace)."""
     from app.models.medical_record import MedicalRecord
@@ -724,6 +726,7 @@ async def dispatch_cancel_document(
             original_document_oid=stored_oid,
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
+            org_name=org_name,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -765,6 +768,7 @@ async def dispatch_cancel_document_canonical(
     org_code: str = "",
     practitioner_id: str | None = None,
     practitioner_name: str = "",
+    org_name: str = "",
 ) -> dict:
     """Cancel/storno via canonical HRCancelDocumentBundle (2-entry, entered-in-error)."""
     from app.models.medical_record import MedicalRecord
@@ -836,6 +840,7 @@ async def dispatch_cancel_document_canonical(
             original_document_oid=stored_oid,
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
+            org_name=org_name,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)

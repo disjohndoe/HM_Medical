@@ -779,7 +779,7 @@ async def create_case(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_case(
         data.patient_id,
         current_user.practitioner_id or "",
@@ -807,7 +807,7 @@ async def update_case_status(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_case(
         case_id,
         patient_id,
@@ -832,7 +832,7 @@ async def update_case_data(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_case_data(
         case_id,
         patient_id,
@@ -1058,7 +1058,7 @@ async def create_visit(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_visit(
         data.patient_id,
         data.nacin_prijema,
@@ -1085,7 +1085,7 @@ async def update_visit(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_visit(
         visit_id,
         patient_id,
@@ -1116,7 +1116,7 @@ async def visit_action(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_visit_action(
         visit_id,
         data.action,
