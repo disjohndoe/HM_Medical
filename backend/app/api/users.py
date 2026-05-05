@@ -170,6 +170,8 @@ async def create_user(
         practitioner_id=data.practitioner_id,
         mbo_lijecnika=data.mbo_lijecnika,
         cezih_signing_method=data.cezih_signing_method,
+        djelatnost_code=data.djelatnost_code,
+        djelatnost_display=data.djelatnost_display,
     )
     db.add(user)
     try:
