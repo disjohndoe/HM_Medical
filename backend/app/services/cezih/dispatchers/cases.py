@@ -305,7 +305,7 @@ async def _update_local_case(
             "CezihCase mirror update failed",
             extra={
                 "tenant_id": str(tenant_id),
-                "cezih_case_id": case_id,
+                "case_id": case_id,
             },
         )
         raise

@@ -12,6 +12,7 @@ from app.services.cezih.dispatchers.cases import (
 from app.services.cezih.dispatchers.visits import (
     _persist_local_visit_by_patient_id,
     _update_local_visit,
+    _upsert_cezih_visit_from_response,
 )
 
 
@@ -188,4 +189,35 @@ async def test_update_local_visit_propagates_operational_error():
             tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
             visit_id="cv1",
             status_str="finished",
+        )
+
+
+# ---------------------------------------------------------------------------
+# _upsert_cezih_visit_from_response
+# ---------------------------------------------------------------------------
+
+
+def _make_db_execute_raises(exc_class):
+    """Return a mock AsyncSession whose execute() raises exc_class.
+
+    Used for helpers where the except block wraps db.execute (SELECT) rather
+    than db.flush — i.e. _upsert_cezih_visit_from_response.
+    """
+    db = MagicMock()
+    db.add = MagicMock()
+    db.execute = AsyncMock(side_effect=exc_class(None, None, Exception("mocked db error")))
+    db.flush = AsyncMock()
+    return db
+
+
+@pytest.mark.asyncio
+async def test_upsert_cezih_visit_from_response_propagates_integrity_error():
+    db = _make_db_execute_raises(IntegrityError)
+    with pytest.raises(IntegrityError):
+        await _upsert_cezih_visit_from_response(
+            db=db,
+            tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+            patient_id=UUID("00000000-0000-0000-0000-000000000002"),
+            patient_mbo="123456789",
+            remote={"visit_id": "cv1"},
         )
