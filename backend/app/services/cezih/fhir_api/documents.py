@@ -289,6 +289,172 @@ async def _build_document_bundle(
     return bundle_dict, doc_oid or doc_uuid
 
 
+def build_cancel_bundle(
+    *,
+    patient_data: dict,
+    record_data: dict,
+    original_document_oid: str,
+    djelatnost_code: str,
+    djelatnost_display: str,
+    practitioner_id: str | None = None,
+    practitioner_name: str = "",
+    org_code: str = "",
+    encounter_id: str = "",
+    case_id: str = "",
+) -> dict:
+    """Build a canonical HRCancelDocumentBundle (2-entry ITI-65 cancel).
+
+    Matches the Klinicki Dokumenti IG: SubmissionSet + DocumentReference
+    with status=entered-in-error and masterIdentifier=original doc OID.
+    No Binary, no signing, no OID generation, no relatesTo.
+    """
+    oid_value = (
+        original_document_oid
+        if original_document_oid.startswith("urn:oid:")
+        else f"urn:oid:{original_document_oid}"
+    )
+    coding = get_cezih_document_coding(record_data.get("tip", "nalaz"))
+    patient_display = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip()
+    doc_uuid = str(uuid.uuid4())
+
+    doc_ref_dict: dict = {
+        "resourceType": "DocumentReference",
+        "masterIdentifier": {
+            "use": "usual",
+            "system": "urn:ietf:rfc:3986",
+            "value": oid_value,
+        },
+        "identifier": [
+            {
+                "use": "official",
+                "system": "urn:ietf:rfc:3986",
+                "value": f"urn:uuid:{doc_uuid}",
+            }
+        ],
+        "status": "entered-in-error",
+        "type": {
+            "coding": [
+                {
+                    "system": coding["system"],
+                    "code": coding["code"],
+                    "display": coding["display"],
+                }
+            ]
+        },
+        "subject": {
+            "type": "Patient",
+            "identifier": {
+                "system": _require_identifier_system(patient_data),
+                "value": _require_identifier_value(patient_data),
+            },
+            "display": patient_display,
+        },
+        "date": _now_iso(),
+        "author": [],
+    }
+
+    if practitioner_id:
+        author_practitioner: dict = {
+            "type": "Practitioner",
+            "identifier": {
+                "system": ID_PRACTITIONER,
+                "value": practitioner_id,
+            },
+        }
+        if practitioner_name:
+            author_practitioner["display"] = practitioner_name
+        doc_ref_dict["author"].append(author_practitioner)
+
+    if org_code:
+        doc_ref_dict["author"].append(
+            {
+                "type": "Organization",
+                "identifier": {
+                    "system": ID_ORG,
+                    "value": org_code,
+                },
+            }
+        )
+
+    if practitioner_id:
+        doc_ref_dict["authenticator"] = {
+            "type": "Practitioner",
+            "identifier": {
+                "system": ID_PRACTITIONER,
+                "value": practitioner_id,
+            },
+            "display": practitioner_name or practitioner_id,
+        }
+
+    if org_code:
+        doc_ref_dict["custodian"] = {
+            "identifier": {
+                "system": ID_ORG,
+                "value": org_code,
+            },
+            "display": f"Ustanova {org_code}",
+        }
+
+    context: dict = {
+        "period": {
+            "start": record_data.get("created_at", _now_iso()),
+            "end": _now_iso(),
+        },
+        "practiceSetting": {
+            "coding": [
+                {
+                    "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/djelatnosti-zz",
+                    "code": djelatnost_code,
+                    "display": djelatnost_display,
+                }
+            ]
+        },
+    }
+    if encounter_id:
+        context["encounter"] = [
+            {
+                "type": "Encounter",
+                "identifier": {
+                    "system": ID_ENCOUNTER,
+                    "value": encounter_id,
+                },
+            }
+        ]
+    if case_id:
+        context["related"] = [
+            {
+                "type": "Condition",
+                "identifier": {
+                    "system": ID_CASE_GLOBAL,
+                    "value": case_id,
+                },
+            }
+        ]
+    doc_ref_dict["context"] = context
+
+    # Placeholder content (no actual Binary - HRCancelDocumentBundle forbids Documents slice)
+    content_uuid = str(uuid.uuid4())
+    doc_ref_dict["content"] = [
+        {
+            "attachment": {
+                "contentType": "application/fhir+json",
+                "language": "hr",
+                "url": f"urn:uuid:{content_uuid}",
+            }
+        }
+    ]
+
+    doc_ref_dict["_uuid"] = doc_uuid
+
+    bundle_dict = build_iti65_transaction_bundle(
+        [doc_ref_dict],
+        sender_org_code=org_code,
+        author_practitioner_id=practitioner_id,
+    )
+
+    return bundle_dict
+
+
 def _extract_ref_id_from_response(response: dict) -> str:
     """Extract DocumentReference ID from an ITI-65 transaction response.
 
@@ -696,6 +862,79 @@ async def cancel_document(
         "new_reference_id": ref_id,
         "new_document_oid": new_oid,
         "status": "current",
+    }
+
+
+async def cancel_document_canonical(
+    client: httpx.AsyncClient,
+    reference_id: str,
+    patient_data: dict,
+    record_data: dict,
+    *,
+    djelatnost_code: str,
+    djelatnost_display: str,
+    org_code: str = "",
+    practitioner_id: str | None = None,
+    encounter_id: str = "",
+    case_id: str = "",
+    practitioner_name: str = "",
+    original_document_oid: str = "",
+) -> dict:
+    """Cancel/storno via canonical HRCancelDocumentBundle (2-entry, status=entered-in-error).
+
+    Lightweight alternative to the replace-style cancel_document(). No OID
+    generation, no inner Document Bundle, no signing. Tests the canonical
+    Klinicki Dokumenti IG profile that was never validated against live CEZIH.
+    """
+    fhir_client = CezihFhirClient(client)
+
+    if not original_document_oid:
+        original_document_oid = await _lookup_document_oid(
+            fhir_client,
+            reference_id,
+            _require_identifier_value(patient_data),
+            identifier_system=_require_identifier_system(patient_data),
+        )
+    if not original_document_oid:
+        raise CezihError(
+            f"TC20 canonical cancel: nije moguće pronaći OID dokumenta {reference_id} u CEZIH-u "
+            "(ITI-67 search nije vratio masterIdentifier). Storno se ne može poslati "
+            "bez OID-a originalnog dokumenta."
+        )
+
+    logger.info(
+        "TC20 canonical cancel: ref=%s oid=%s - using HRCancelDocumentBundle profile",
+        reference_id, original_document_oid,
+    )
+
+    bundle_dict = build_cancel_bundle(
+        patient_data=patient_data,
+        record_data=record_data,
+        original_document_oid=original_document_oid,
+        djelatnost_code=djelatnost_code,
+        djelatnost_display=djelatnost_display,
+        practitioner_id=practitioner_id,
+        practitioner_name=practitioner_name,
+        org_code=org_code,
+        encounter_id=encounter_id,
+        case_id=case_id,
+    )
+
+    response = await fhir_client.post(
+        "doc-mhd-svc/api/v1/iti-65-service",
+        json_body=bundle_dict,
+    )
+
+    ref_id = _extract_ref_id_from_response(response)
+    if not ref_id:
+        ref_id = f"FHIR-CX-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+
+    return {
+        "success": True,
+        "reference_id": reference_id,
+        "new_reference_id": ref_id,
+        "new_document_oid": original_document_oid,
+        "status": "entered-in-error",
     }
 
 

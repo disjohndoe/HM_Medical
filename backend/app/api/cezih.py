@@ -76,8 +76,8 @@ def _http_client(request: Request):
 async def _get_tenant_cezih_config(
     db: AsyncSession,
     tenant_id,
-) -> tuple[str, str]:
-    """Get validated org_code and OID for a tenant. Raises HTTPException if missing."""
+) -> tuple[str, str, str]:
+    """Get validated org_code, OID, and naziv for a tenant. Raises HTTPException if missing."""
     from fastapi import HTTPException
 
     tenant = await db.get(Tenant, tenant_id)
@@ -93,7 +93,7 @@ async def _get_tenant_cezih_config(
             status_code=422,
             detail="OID informacijskog sustava nije generiran. Kliknite 'Generiraj OID' u Postavke > Klinika.",
         )
-    return tenant.sifra_ustanove, tenant.oid
+    return tenant.sifra_ustanove, tenant.oid, tenant.naziv
 
 
 @router.get("/status", response_model=CezihStatusResponse)
@@ -219,7 +219,7 @@ async def send_enalaz(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip()
 
     return await cezih.send_enalaz(
@@ -235,6 +235,7 @@ async def send_enalaz(
         encounter_id=data.encounter_id,
         case_id=data.case_id,
         practitioner_name=practitioner_name,
+        org_name=org_name,
     )
 
 
@@ -709,7 +710,7 @@ async def register_foreigner(
     from app.models.patient import Patient
 
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     result = await cezih.foreigner_registration(
         data.model_dump(),
         org_code=org_code,
@@ -778,7 +779,7 @@ async def create_case(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_case(
         data.patient_id,
         current_user.practitioner_id or "",
@@ -806,7 +807,7 @@ async def update_case_status(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_case(
         case_id,
         patient_id,
@@ -831,7 +832,7 @@ async def update_case_data(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_case_data(
         case_id,
         patient_id,
@@ -891,7 +892,7 @@ async def replace_document(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
     return await cezih.dispatch_replace_document(
         reference_id,
@@ -905,6 +906,7 @@ async def replace_document(
         practitioner_name=practitioner_name,
         encounter_id=data.encounter_id if data else "",
         case_id=data.case_id if data else "",
+        org_name=org_name,
     )
 
 
@@ -921,7 +923,7 @@ async def replace_document_with_edit(
     if CEZIH failed the local record was already edited, so this endpoint
     gates the local edit on CEZIH 2xx."""
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, _, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
     edits = data.model_dump(exclude={"record_id", "patient_id", "encounter_id", "case_id"}, exclude_none=False)
     return await cezih.dispatch_replace_document_with_edit(
@@ -938,6 +940,7 @@ async def replace_document_with_edit(
         practitioner_name=practitioner_name,
         encounter_id=data.encounter_id,
         case_id=data.case_id,
+        org_name=org_name,
     )
 
 
@@ -945,13 +948,15 @@ async def replace_document_with_edit(
 async def cancel_document(
     request: Request,
     reference_id: str,
+    canonical: bool = False,
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
-    return await cezih.dispatch_cancel_document(
+    dispatch_fn = cezih.dispatch_cancel_document_canonical if canonical else cezih.dispatch_cancel_document
+    return await dispatch_fn(
         reference_id,
         db=db,
         user_id=current_user.id,
@@ -960,6 +965,7 @@ async def cancel_document(
         org_code=org_code,
         practitioner_id=current_user.practitioner_id,
         practitioner_name=practitioner_name,
+        org_name=org_name,
     )
 
 
@@ -1052,7 +1058,7 @@ async def create_visit(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_create_visit(
         data.patient_id,
         data.nacin_prijema,
@@ -1079,7 +1085,7 @@ async def update_visit(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_update_visit(
         visit_id,
         patient_id,
@@ -1110,7 +1116,7 @@ async def visit_action(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, _, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
     return await cezih.dispatch_visit_action(
         visit_id,
         data.action,

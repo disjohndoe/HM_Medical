@@ -96,6 +96,7 @@ async def send_enalaz(
     encounter_id: str = "",
     case_id: str = "",
     practitioner_name: str = "",
+    org_name: str = "",
 ) -> dict:
     """Send an e-Nalaz (finding) to CEZIH via ITI-65."""
     from app.models.patient import Patient
@@ -162,6 +163,7 @@ async def send_enalaz(
             practitioner_name=practitioner_name,
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
+            org_name=org_name,
         )
     except CezihError as e:
         logger.error("CEZIH e-Nalaz send failed: %s", e.message)
@@ -381,6 +383,7 @@ async def dispatch_replace_document(
     practitioner_name: str = "",
     encounter_id: str = "",
     case_id: str = "",
+    org_name: str = "",
 ) -> dict:
     """Replace a document on CEZIH (ITI-65 replace, used for cancel/storno)."""
     from app.models.patient import Patient
@@ -456,6 +459,7 @@ async def dispatch_replace_document(
             original_document_oid=stored_oid,
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
+            org_name=org_name,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -501,6 +505,7 @@ async def dispatch_replace_document_with_edit(
     practitioner_name: str = "",
     encounter_id: str = "",
     case_id: str = "",
+    org_name: str = "",
 ) -> dict:
     """Atomic edit-and-replace. Signs + calls CEZIH ITI-65 replace using the
     PROPOSED content, and only on 2xx applies the edits to the local
@@ -743,6 +748,117 @@ async def dispatch_cancel_document(
         tenant_id,
         user_id,
         action="e_nalaz_cancel",
+        details={"reference_id": reference_id, "new_reference_id": result.get("new_reference_id")},
+    )
+    if db:
+        await db.commit()
+    return result
+
+
+async def dispatch_cancel_document_canonical(
+    reference_id: str,
+    *,
+    db: AsyncSession | None = None,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    http_client=None,
+    org_code: str = "",
+    practitioner_id: str | None = None,
+    practitioner_name: str = "",
+) -> dict:
+    """Cancel/storno via canonical HRCancelDocumentBundle (2-entry, entered-in-error)."""
+    from app.models.medical_record import MedicalRecord
+    from app.models.patient import Patient
+
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
+
+    patient_data: dict = {}
+    record_data: dict = {}
+    encounter_id = ""
+    case_id = ""
+    record_id: UUID | None = None
+    if db and tenant_id:
+        query_result = await db.execute(
+            sa_select(MedicalRecord).where(
+                MedicalRecord.tenant_id == tenant_id,
+                MedicalRecord.cezih_reference_id == reference_id,
+            )
+        )
+        record = query_result.scalar_one_or_none()
+        if record:
+            record_id = record.id
+            if record.patient_id:
+                patient = await db.get(Patient, record.patient_id)
+                if patient:
+                    try:
+                        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+                    except CezihError as e:
+                        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+                    patient_data = {
+                        "mbo": id_val,
+                        "identifier_system": id_sys,
+                        "identifier_value": id_val,
+                        "ime": patient.ime,
+                        "prezime": patient.prezime,
+                    }
+            encounter_id = record.cezih_encounter_id or ""
+            case_id = record.cezih_case_id or ""
+            if not practitioner_id and record.doktor_id:
+                practitioner_id = str(record.doktor_id)
+            record_data = {
+                "tip": record.tip,
+                "dijagnoza_mkb": record.dijagnoza_mkb,
+                "dijagnoza_tekst": record.dijagnoza_tekst,
+                "sadrzaj": record.sadrzaj or "",
+                "preporucena_terapija": record.preporucena_terapija,
+                "created_at": record.created_at.isoformat() if record.created_at else None,
+            }
+
+    stored_oid = ""
+    if record:
+        stored_oid = record.cezih_document_oid or ""
+
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(
+        db, tenant_id, (record.doktor_id if record else None) or user_id
+    )
+
+    try:
+        result = await real_service.cancel_document_canonical(
+            http_client,
+            reference_id,
+            patient_data=patient_data,
+            record_data=record_data,
+            org_code=org_code,
+            practitioner_id=practitioner_id,
+            encounter_id=encounter_id,
+            case_id=case_id,
+            practitioner_name=practitioner_name,
+            original_document_oid=stored_oid,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
+        )
+    except CezihError as e:
+        await record_cezih_error("medical_record", record_id, tenant_id, e)
+        _raise_cezih_error(e)
+
+    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
+    if db and tenant_id:
+        rec_result = await db.execute(
+            sa_select(MedicalRecord).where(
+                MedicalRecord.tenant_id == tenant_id,
+                MedicalRecord.cezih_reference_id == reference_id,
+            )
+        )
+        rec = rec_result.scalar_one_or_none()
+        if rec:
+            rec.cezih_storno = True
+            await db.flush()
+
+    await _write_audit(
+        db,
+        tenant_id,
+        user_id,
+        action="e_nalaz_cancel_canonical",
         details={"reference_id": reference_id, "new_reference_id": result.get("new_reference_id")},
     )
     if db:
