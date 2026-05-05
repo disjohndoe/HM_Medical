@@ -693,18 +693,6 @@ export function useCreateCase() {
   })
 }
 
-// Status-transition actions → target clinical_status in our local view.
-// (Invariant: a case NEVER disappears from the Slučajevi table — we always
-// keep it visible, just with the new status. CEZIH QEDm's eventual
-// consistency would otherwise hide the case for several seconds after any
-// action, which the user experiences as "my case vanished".)
-const CASE_ACTION_TO_STATUS: Record<string, string> = {
-  resolve: "resolved",
-  remission: "remission",
-  relapse: "relapse",
-  reopen: "active",
-}
-
 export function useUpdateCaseStatus() {
   const qc = useQueryClient()
   return useMutation({
@@ -721,50 +709,15 @@ export function useUpdateCaseStatus() {
     },
     onSuccess: (resp, vars, ctx) => {
       const queryKey = ctx?.queryKey ?? ["cezih", "cases", vars.patientId]
-      const newStatus = CASE_ACTION_TO_STATUS[vars.action]
-      if (newStatus) {
-        // Server accepted - reflect the new status in cache so the case stays
-        // visible even though QEDm eventual consistency may hide it for a
-        // few seconds on the next refetch.
-        const today = new Date().toISOString().split("T")[0]
-        const recordable = new Set(["remission", "relapse", "resolved"])
+      if (resp.case) {
         qc.setQueryData<CasesListResponse>(queryKey, (old) => {
           if (!old) return old
-          return {
-            cases: old.cases.map((c) => {
-              if (c.case_id !== vars.caseId) return c
-              const visited = new Set(c.visited_clinical_statuses || [])
-              if (recordable.has(c.clinical_status)) visited.add(c.clinical_status)
-              return {
-                ...c,
-                clinical_status: newStatus,
-                abatement_date: newStatus === "resolved" ? today : c.abatement_date,
-                visited_clinical_statuses: [...visited],
-              }
-            }),
+          // create_recurring returns a NEW child row (different case_id); prepend it.
+          // All other actions return the same case_id; splice in place.
+          if (vars.action === "create_recurring" && resp.case!.case_id !== vars.caseId) {
+            return { cases: [resp.case as CaseItem, ...old.cases] }
           }
-        })
-      }
-      if (vars.action === "create_recurring" && ctx) {
-        qc.setQueryData<CasesListResponse>(ctx.queryKey, (old) => {
-          if (!old) return old
-          const parent = old.cases.find((c) => c.case_id === vars.caseId)
-          if (!parent) return old
-          const newCaseId = resp.case_id || `pending-${vars.caseId}-rec`
-          if (old.cases.some((c) => c.case_id === newCaseId)) return old
-          const today = new Date().toISOString().split("T")[0]
-          const newCase: CaseItem = {
-            case_id: newCaseId,
-            icd_code: parent.icd_code,
-            icd_display: parent.icd_display,
-            clinical_status: "recurrence",
-            verification_status: parent.verification_status,
-            onset_date: today,
-            abatement_date: null,
-            note: null,
-            _local: true,
-          }
-          return { cases: [newCase, ...old.cases] }
+          return { cases: old.cases.map((c) => (c.case_id === vars.caseId ? (resp.case as CaseItem) : c)) }
         })
       }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })

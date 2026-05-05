@@ -420,6 +420,7 @@ class CaseActionResponse(BaseModel):
     success: bool
     case_id: str | None = None
     action: str | None = None
+    case: CaseItem | None = None
 
 
 # ============================================================

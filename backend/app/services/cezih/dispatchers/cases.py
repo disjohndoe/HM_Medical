@@ -117,6 +117,26 @@ async def _persist_local_case_by_patient_id(
         logger.warning("Failed to persist local CezihCase mirror: %s", exc)
 
 
+def _serialize_case_row(row) -> dict:
+    """Serialize a CezihCase ORM row to the CaseItem dict shape."""
+    return {
+        "case_id": row.cezih_case_id or row.local_case_id,
+        "icd_code": row.icd_code,
+        "icd_display": row.icd_display or "",
+        "clinical_status": row.clinical_status or "",
+        "verification_status": row.verification_status,
+        "onset_date": row.onset_date,
+        "abatement_date": row.abatement_date,
+        "note": row.note,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "last_error_code": row.last_error_code,
+        "last_error_display": row.last_error_display,
+        "last_error_diagnostics": row.last_error_diagnostics,
+        "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
+        "visited_clinical_statuses": row.visited_clinical_statuses or [],
+    }
+
+
 async def _fetch_fresh_local_cases_by_patient(
     db: AsyncSession | None,
     tenant_id: UUID | None,
@@ -143,28 +163,40 @@ async def _fetch_fresh_local_cases_by_patient(
             .order_by(CezihCase.created_at.desc())
         )
         rows = result.scalars().all()
-        return [
-            {
-                "case_id": row.cezih_case_id or row.local_case_id,
-                "icd_code": row.icd_code,
-                "icd_display": row.icd_display or "",
-                "clinical_status": row.clinical_status or "",
-                "verification_status": row.verification_status,
-                "onset_date": row.onset_date,
-                "abatement_date": row.abatement_date,
-                "note": row.note,
-                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-                "last_error_code": row.last_error_code,
-                "last_error_display": row.last_error_display,
-                "last_error_diagnostics": row.last_error_diagnostics,
-                "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
-                "visited_clinical_statuses": row.visited_clinical_statuses or [],
-            }
-            for row in rows
-        ]
+        return [_serialize_case_row(row) for row in rows]
     except SQLAlchemyError as exc:
         logger.warning("Failed to read local CezihCase mirror: %s", exc)
         return []
+
+
+async def _read_local_case_as_dict(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    case_id: str,
+) -> dict | None:
+    """Re-read a single CezihCase mirror row and return its CaseItem dict."""
+    if not db or not tenant_id or not case_id:
+        return None
+    try:
+        from sqlalchemy import or_
+
+        from app.models.cezih_case import CezihCase
+
+        row = (
+            await db.execute(
+                select(CezihCase).where(
+                    CezihCase.tenant_id == tenant_id,
+                    or_(
+                        CezihCase.cezih_case_id == case_id,
+                        CezihCase.local_case_id == case_id,
+                    ),
+                )
+            )
+        ).scalar_one_or_none()
+        return _serialize_case_row(row) if row else None
+    except SQLAlchemyError as exc:
+        logger.warning("Failed to re-read local CezihCase row for response: %s", exc)
+        return None
 
 
 def _merge_with_local(
@@ -483,7 +515,8 @@ async def dispatch_update_case(
                 new_cezih_id,
                 clinical_status="recurrence",
             )
-        return {"success": True, "case_id": new_cezih_id or None, "action": "create_recurring"}
+        child_case = await _read_local_case_as_dict(db, tenant_id, new_cezih_id) if new_cezih_id else None
+        return {"success": True, "case_id": new_cezih_id or None, "action": "create_recurring", "case": child_case}
     else:
         new_status = _CASE_ACTION_TO_STATUS.get(action)
         if new_status:
@@ -529,6 +562,7 @@ async def dispatch_update_case(
                 clear_abatement=(action == "reopen"),
                 visited_clinical_statuses=visited,
             )
+    result["case"] = await _read_local_case_as_dict(db, tenant_id, case_id)
     return result
 
 

@@ -848,10 +848,10 @@ export interface CaseResponse {
 }
 
 export interface CaseActionResponse {
-
   success: boolean;
   case_id?: string;
   action?: string;
+  case?: CaseItem | null;
 }
 
 // ============================================================
