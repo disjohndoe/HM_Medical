@@ -512,6 +512,12 @@ async def dispatch_update_case(
                 if cur:
                     visited = list(cur.visited_clinical_statuses or [])
                     old_status = cur.clinical_status
+            # For reopen: restore the status from before "resolved" was set.
+            # visited at this point still contains the pre-resolve history.
+            if action == "reopen":
+                pre_resolve = [s for s in visited if s != "resolved"]
+                if pre_resolve:
+                    new_status = pre_resolve[-1]
             if old_status and old_status in recordable and old_status not in visited:
                 visited.append(old_status)
             await _update_local_case(
