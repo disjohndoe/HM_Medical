@@ -45,6 +45,7 @@ from app.services.cezih.builders.common import (
     ID_PUTOVNICA,
     _now_iso,
 )
+from app.services.cezih.builders.encounter import NACIN_PRIJEMA_MAP
 from app.services.cezih.exceptions import CezihError
 
 logger = logging.getLogger(__name__)
@@ -188,6 +189,7 @@ def _build_encounter_resource(
     period_start: str,
     period_end: str,
     case_full_url: str,
+    nacin_prijema: str = "6",
 ) -> dict[str, Any]:
     """Build hr-encounter Encounter resource referenced from Composition.encounter."""
     if not encounter_id:
@@ -204,8 +206,8 @@ def _build_encounter_resource(
         "status": "finished",
         "class": {
             "system": SYS_NACIN_PRIJEMA,
-            "code": "5",
-            "display": "Redovni prijem",
+            "code": nacin_prijema,
+            "display": NACIN_PRIJEMA_MAP.get(nacin_prijema, nacin_prijema),
         },
         "subject": {"reference": patient_full_url},
         "participant": [{"individual": {"reference": practitioner_full_url}}],
@@ -476,6 +478,7 @@ def build_clinical_document_bundle(
     document_type_display: str,
     djelatnost_code: str,
     djelatnost_display: str,
+    nacin_prijema: str = "6",
 ) -> tuple[dict, str]:
     """Build inner FHIR Document Bundle (HRDocument profile) for ITI-65 Binary content.
 
@@ -544,6 +547,7 @@ def build_clinical_document_bundle(
         period_start=period_start,
         period_end=period_end,
         case_full_url=case_full_url,
+        nacin_prijema=nacin_prijema,
     )
     anamneza_text = (record_data.get("sadrzaj") or record_data.get("dijagnoza_tekst") or "").strip()
     anamneza = _build_anamneza_observation(

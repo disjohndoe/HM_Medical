@@ -45,6 +45,7 @@ async def _build_document_bundle(
     relates_to: dict | None = None,
     use_external_profile: bool = False,
     doc_status: str = "current",
+    nacin_prijema: str = "6",
 ) -> tuple[dict, str]:
     """Build a complete ITI-65 transaction bundle for document submission/replace.
 
@@ -98,6 +99,7 @@ async def _build_document_bundle(
         document_type_display=coding["display"],
         djelatnost_code=djelatnost_code,
         djelatnost_display=djelatnost_display,
+        nacin_prijema=nacin_prijema,
     )
     signed_inner_bundle = await sign_document_bundle(inner_bundle, attester_practitioner_url)
     inner_json_bytes = json.dumps(
@@ -112,7 +114,7 @@ async def _build_document_bundle(
     )
 
     _doc_ref_profile = (
-        "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternaltMinimalDocumentReference"
+        "http://fhir.cezih.hr/specifikacije/StructureDefinition/HRExternalMinimalDocumentReference"
         if use_external_profile
         else "http://fhir.cezih.hr/specifikacije/StructureDefinition/HR.MinimalDocumentReference"
     )
