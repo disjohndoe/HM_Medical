@@ -324,15 +324,6 @@ class VisitActionRequest(BaseModel):
     period_start: str | None = None  # preserve original visit start time
 
 
-class VisitResponse(BaseModel):
-    success: bool
-    visit_id: str
-    status: str  # planned, in-progress, finished, cancelled, entered-in-error
-    nacin_prijema: str | None = None
-    vrsta_posjete: str | None = None
-    tip_posjete: str | None = None
-
-
 class VisitItem(BaseModel):
     visit_id: str
     patient_mbo: str
@@ -359,6 +350,16 @@ class VisitItem(BaseModel):
 
 class VisitsListResponse(BaseModel):
     visits: list[VisitItem]
+
+
+class VisitResponse(BaseModel):
+    success: bool
+    visit_id: str
+    status: str  # planned, in-progress, finished, cancelled, entered-in-error
+    nacin_prijema: str | None = None
+    vrsta_posjete: str | None = None
+    tip_posjete: str | None = None
+    visit: VisitItem | None = None  # full updated row after action; None if mirror missing
 
 
 # ============================================================
