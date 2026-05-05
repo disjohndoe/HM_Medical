@@ -128,8 +128,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     const selectedCase = activeCases.find((c) => c.case_id === selectedCaseId)
     if (selectedCase?.icd_code) {
       setValue("dijagnoza_mkb", selectedCase.icd_code, { shouldValidate: true })
-      const currentTekst = watch("dijagnoza_tekst")
-      if (!currentTekst && selectedCase.icd_display) {
+      if (selectedCase.icd_display) {
         setValue("dijagnoza_tekst", selectedCase.icd_display)
       }
     }
