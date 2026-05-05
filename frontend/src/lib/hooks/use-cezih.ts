@@ -582,37 +582,19 @@ export function useVisitAction() {
       const prev = qc.getQueryData<VisitsListResponse>(queryKey)
       return { prev, queryKey }
     },
-    onSuccess: (_resp, vars) => {
+    onSuccess: (resp, vars) => {
       clearError(vars.visitId)
-      // Server accepted - now safe to reflect the new status in cache.
-      const newStatus =
-        vars.action === "close" ? "finished"
-        : vars.action === "reopen" ? "in-progress"
-        : vars.action === "storno" ? "entered-in-error"
-        : null
-      if (newStatus) {
-        const nowIso = new Date().toISOString()
+      if (resp.visit) {
         qc.setQueryData<VisitsListResponse>(["cezih", "visits", vars.patientId], (old) => {
           if (!old) return old
           return {
             visits: old.visits.map((v) =>
-              v.visit_id !== vars.visitId
-                ? v
-                : {
-                    ...v,
-                    status: newStatus,
-                    period_end:
-                      vars.action === "close" ? nowIso
-                      : vars.action === "reopen" ? null
-                      : v.period_end,
-                    updated_at: nowIso,
-                  },
+              v.visit_id === vars.visitId ? (resp.visit as VisitItem) : v
             ),
           }
         })
       }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
-      qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
     },
     onError: (err, vars, ctx) => {
       showCezihErrorToast(err)

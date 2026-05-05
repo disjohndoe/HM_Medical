@@ -223,6 +223,58 @@ async def _upsert_cezih_visit_from_response(
         logger.warning("Failed to upsert CezihVisit from response: %s", exc)
 
 
+def _serialize_visit_row(row) -> dict:
+    tip = row.tip_posjete or ""
+    vrsta = row.vrsta_posjete or ""
+    admission = row.admission_type or ""
+    return {
+        "visit_id": row.cezih_visit_id or "",
+        "patient_mbo": row.patient_mbo,
+        "status": row.status,
+        "visit_type": admission,
+        "visit_type_display": _ADMISSION_TYPE_LABELS.get(admission) if admission else None,
+        "vrsta_posjete": vrsta,
+        "vrsta_posjete_display": _VRSTA_POSJETE_LABELS.get(vrsta) if vrsta else None,
+        "tip_posjete": tip,
+        "tip_posjete_display": _TIP_POSJETE_LABELS.get(tip) if tip else None,
+        "reason": row.reason,
+        "period_start": row.period_start.isoformat() if row.period_start else None,
+        "period_end": row.period_end.isoformat() if row.period_end else None,
+        "service_provider_code": row.service_provider_code,
+        "practitioner_id": (row.practitioner_ids or [""])[0] if row.practitioner_ids else None,
+        "practitioner_ids": list(row.practitioner_ids) if row.practitioner_ids else [],
+        "diagnosis_case_ids": list(row.diagnosis_case_ids) if row.diagnosis_case_ids else [],
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "last_error_code": row.last_error_code,
+        "last_error_display": row.last_error_display,
+        "last_error_diagnostics": row.last_error_diagnostics,
+        "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
+    }
+
+
+async def _read_local_visit_as_dict(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    cezih_visit_id: str,
+) -> dict | None:
+    if not db or not tenant_id or not cezih_visit_id:
+        return None
+    try:
+        from app.models.cezih_visit import CezihVisit
+
+        result = await db.execute(
+            select(CezihVisit).where(
+                CezihVisit.tenant_id == tenant_id,
+                CezihVisit.cezih_visit_id == cezih_visit_id,
+            )
+        )
+        row = result.scalar_one_or_none()
+        return _serialize_visit_row(row) if row else None
+    except SQLAlchemyError as exc:
+        logger.warning("Failed to re-read local CezihVisit mirror: %s", exc)
+        return None
+
+
 async def _list_local_visits_as_dicts(
     db: AsyncSession | None,
     tenant_id: UUID | None,
@@ -247,37 +299,7 @@ async def _list_local_visits_as_dicts(
             .order_by(CezihVisit.period_start.desc().nullslast(), CezihVisit.created_at.desc())
         )
         rows = result.scalars().all()
-        out: list[dict] = []
-        for row in rows:
-            tip = row.tip_posjete or ""
-            vrsta = row.vrsta_posjete or ""
-            admission = row.admission_type or ""
-            out.append(
-                {
-                    "visit_id": row.cezih_visit_id or "",
-                    "patient_mbo": row.patient_mbo,
-                    "status": row.status,
-                    "visit_type": admission,
-                    "visit_type_display": _ADMISSION_TYPE_LABELS.get(admission) if admission else None,
-                    "vrsta_posjete": vrsta,
-                    "vrsta_posjete_display": _VRSTA_POSJETE_LABELS.get(vrsta) if vrsta else None,
-                    "tip_posjete": tip,
-                    "tip_posjete_display": _TIP_POSJETE_LABELS.get(tip) if tip else None,
-                    "reason": row.reason,
-                    "period_start": row.period_start.isoformat() if row.period_start else None,
-                    "period_end": row.period_end.isoformat() if row.period_end else None,
-                    "service_provider_code": row.service_provider_code,
-                    "practitioner_id": (row.practitioner_ids or [""])[0] if row.practitioner_ids else None,
-                    "practitioner_ids": list(row.practitioner_ids) if row.practitioner_ids else [],
-                    "diagnosis_case_ids": list(row.diagnosis_case_ids) if row.diagnosis_case_ids else [],
-                    "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-                    "last_error_code": row.last_error_code,
-                    "last_error_display": row.last_error_display,
-                    "last_error_diagnostics": row.last_error_diagnostics,
-                    "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
-                }
-            )
-        return out
+        return [_serialize_visit_row(row) for row in rows]
     except SQLAlchemyError as exc:
         logger.warning("Failed to read local CezihVisit mirror: %s", exc)
         return []
@@ -731,6 +753,7 @@ async def dispatch_visit_action(
             status_str="entered-in-error",
             service_provider_code=org_code,
         )
+    parsed["visit"] = await _read_local_visit_as_dict(db, tenant_id, visit_id)
     return parsed
 
 

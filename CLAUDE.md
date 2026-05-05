@@ -234,6 +234,7 @@ AKD card (local JWS)   Certilia (push to mobile)
 | Phase 18 | DONE | E2E production test — all 16 TCs verified on app.hmdigital.hr against real CEZIH (2026-04-13) |
 | Phase 19 | DONE | TC11 PMIR foreigner registration — VERIFIED (Patient/1348216, 4 stacked fixes) (2026-04-13) |
 | Phase 20 | DONE | Structured logging — JSON formatter, request IDs, client error relay (merged 2026-05-04 after exam) |
+| Phase 21 | DONE | ITI-65 inner FHIR Document Bundle — Binary now holds signed Bundle.type=document (not plain text/PDF), HRDocument profile, 9 entries, JCS+JWS signing (2026-05-05) |
 
 ### Key CEZIH Technical Findings (from live testing)
 
@@ -298,7 +299,9 @@ AKD card (local JWS)   Certilia (push to mobile)
 - **Certilia card certs:** Active (valid until 26.03.2029, waiting for physical card delivery)
 - **OAuth2:** WORKING (client_credentials via certsso2, needs `/auth/` prefix)
 - **22/22 TCs VERIFIED** against real CEZIH (smart card sweep 2026-04-22 + 2026-04-23; Certilia mobile sweep 2026-04-22 afternoon reverify). Certilia path subsequently outaged 2026-04-23–04-28 due to CEZIH Bearer requirement, re-verified after fix on 2026-04-28.
-- **Certification:** PASSED 2026-05-04 (HZZO confirmed). Awaiting (a) cooperation agreement signature with HZZO, (b) publication on `cezih.hr/certificirani_proizvodjaci_aplikacija.html`, (c) production access provisioning (`pvpri.cezih.hr`). No firm timeline from HZZO. Test env on `pvsek.cezih.hr` continues to work; production switch is env-vars-only (see `docs/runbooks/pvpri-production-switch.md`).
+- **On-site exam:** PASSED (Zapisnik signed with HZZO agent, confirmed 2026-05-04).
+- **Provjera spremnosti:** REJECTED 2026-05-04 (Natalija Malkoč, HZZO) — clinical documents were sent as plain text/PDF in Binary instead of signed `Bundle.type=document`. **Fix implemented same day** (Phase 21). **New termin requested 2026-05-05** (email to Provjera.Spremnosti@hzzo.hr).
+- **Awaiting:** new provjera spremnosti exam termin from HZZO. After passing: (a) cooperation agreement with HZZO, (b) publication on `cezih.hr/certificirani_proizvodjaci_aplikacija.html`, (c) production access (`pvpri.cezih.hr`). Test env on `pvsek.cezih.hr` continues to work; production switch is env-vars-only (see `docs/runbooks/pvpri-production-switch.md`).
 
 ## Deployment
 
