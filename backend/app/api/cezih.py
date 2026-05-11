@@ -1065,6 +1065,7 @@ async def create_visit(
         data.vrsta_posjete,
         data.tip_posjete,
         data.reason,
+        data.case_id,
         db=db,
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,

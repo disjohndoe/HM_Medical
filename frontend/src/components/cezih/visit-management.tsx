@@ -127,6 +127,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   const [nacinPrijema, setNacinPrijema] = useState("6")
   const [tipPosjete, setTipPosjete] = useState("2")
   const [reason, setReason] = useState("")
+  const [createCaseId, setCreateCaseId] = useState("")
 
   // Edit state
   const [editVisitId, setEditVisitId] = useState<string | null>(null)
@@ -141,6 +142,12 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   const myOrgCode = tenant?.sifra_ustanove || ""
   const { data: casesData } = useRetrieveCases(patientId)
   const activeCases = (casesData?.cases ?? []).filter((c) => c.clinical_status === "active")
+  // Eligible for visit linkage: active + remission + relapse (closed/entered-in-error excluded).
+  // BE mirrors this rule and 422s when patient has any eligible case but case_id is missing.
+  const eligibleCases = (casesData?.cases ?? []).filter(
+    (c) => c.clinical_status === "active" || c.clinical_status === "remission" || c.clinical_status === "relapse",
+  )
+  const caseRequired = eligibleCases.length > 0
 
   const isExternalVisit = (v: VisitItem) =>
     !!myOrgCode && !!v.service_provider_code && v.service_provider_code !== myOrgCode
@@ -180,6 +187,15 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     [sortedVisits, clampedVisitsPage],
   )
 
+  // When the dialog opens, default-select the most recent eligible case if any.
+  // This avoids accidental "Bez slučaja" submissions when patient has cases.
+  const handleOpenCreate = (open: boolean) => {
+    if (open && !createCaseId && eligibleCases.length > 0) {
+      setCreateCaseId(eligibleCases[0].case_id)
+    }
+    setShowCreate(open)
+  }
+
   const handleCreate = () => {
     // Close dialog and reset form BEFORE firing the mutation. The optimistic
     // row handles UI feedback; closing up-front prevents a Base UI
@@ -190,10 +206,12 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
       nacin_prijema: nacinPrijema,
       tip_posjete: tipPosjete,
       reason: reason || undefined,
+      case_id: createCaseId || undefined,
     }
     const capturedNacin = nacinPrijema
     const capturedTip = tipPosjete
     setReason("")
+    setCreateCaseId("")
     createVisit.mutate(payload, {
       onSuccess: (res) => {
         setShowCreate(false)
@@ -309,7 +327,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
             </span>
           )}
         </div>
-        <Button size="sm" variant="outline" onClick={() => setShowCreate(true)}>
+        <Button size="sm" variant="outline" onClick={() => handleOpenCreate(true)}>
           <Plus className="mr-1 h-3.5 w-3.5" />
           Nova posjeta
         </Button>
@@ -337,7 +355,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
             </li>
           </ul>
         </div>
-        <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <Dialog open={showCreate} onOpenChange={handleOpenCreate}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Nova posjeta</DialogTitle>
@@ -370,6 +388,54 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                 </Select>
               </div>
               <div className="space-y-1">
+                <Label className="text-xs">
+                  Povezani slučaj{caseRequired && <span className="text-destructive"> *</span>}
+                </Label>
+                <Select
+                  value={createCaseId || NO_CASE}
+                  onValueChange={(v) => setCreateCaseId(!v || v === NO_CASE ? "" : v)}
+                  disabled={eligibleCases.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                      {createCaseId
+                        ? (() => {
+                            const c = eligibleCases.find((x) => x.case_id === createCaseId)
+                            return c ? `${c.icd_code} — ${c.icd_display}` : createCaseId
+                          })()
+                        : eligibleCases.length === 0
+                          ? "Pacijent nema aktivnih slučajeva"
+                          : "Odaberite slučaj"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent
+                    alignItemWithTrigger={false}
+                    className="w-auto min-w-(--anchor-width) max-w-[min(90vw,560px)]"
+                  >
+                    {!caseRequired && (
+                      <SelectItem value={NO_CASE}>Bez povezanog slučaja</SelectItem>
+                    )}
+                    {eligibleCases.map((c) => (
+                      <SelectItem key={c.case_id} value={c.case_id}>
+                        {c.icd_code} — {c.icd_display}
+                        {c.clinical_status !== "active" && (
+                          <span className="ml-1 text-xs text-muted-foreground">({c.clinical_status})</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {eligibleCases.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Posjeta će biti poslana bez veze sa slučajem. Preporučujemo kreirati slučaj prije posjete.
+                  </p>
+                ) : caseRequired && !createCaseId ? (
+                  <p className="text-xs text-destructive">
+                    HZZO zahtijeva povezivanje posjete sa slučajem kada pacijent ima aktivnih slučajeva.
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-1">
                 <Label className="text-xs">Razlog (opcionalno)</Label>
                 <Textarea
                   placeholder="Razlog posjete"
@@ -380,8 +446,12 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
               </div>
             </div>
             <DialogFooter>
-              <Button size="sm" variant="outline" onClick={() => setShowCreate(false)}>Odustani</Button>
-              <Button size="sm" onClick={handleCreate} disabled={createVisit.isPending}>
+              <Button size="sm" variant="outline" onClick={() => handleOpenCreate(false)}>Odustani</Button>
+              <Button
+                size="sm"
+                onClick={handleCreate}
+                disabled={createVisit.isPending || (caseRequired && !createCaseId)}
+              >
                 {createVisit.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
                 Kreiraj posjetu
               </Button>

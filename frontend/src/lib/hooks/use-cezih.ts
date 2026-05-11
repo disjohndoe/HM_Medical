@@ -457,7 +457,7 @@ export function useCreateVisit() {
         service_provider_code: null,
         practitioner_id: null,
         practitioner_ids: [],
-        diagnosis_case_ids: [],
+        diagnosis_case_ids: vars.case_id ? [vars.case_id] : [],
         _local: true,
       }
       qc.setQueryData<VisitsListResponse>(queryKey, (old) => {

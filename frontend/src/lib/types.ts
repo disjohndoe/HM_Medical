@@ -910,6 +910,7 @@ export interface CreateVisitRequest {
   vrsta_posjete?: string;   // 1-3, default: "1" (Pacijent prisutan)
   tip_posjete?: string;     // 1-3, default: "1" (Posjeta LOM)
   reason?: string;
+  case_id?: string;          // CezihCase.local_case_id — required when patient has eligible cases
 }
 
 export interface DocumentSearchItem {

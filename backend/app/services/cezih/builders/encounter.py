@@ -83,11 +83,16 @@ def build_encounter_create(
     reason: str | None = None,
     practitioner_id: str = "",
     org_code: str = "",
+    diagnosis_case_id: str | None = None,
 ) -> dict[str, Any]:
     """Build FHIR Encounter resource for visit creation (event code 1.1).
 
     Uses CEZIH Croatian CodeSystems:
       - Encounter.class: nacin-prijema (method of admission)
+
+    `diagnosis_case_id` is the `lokalni-identifikator-slucaja` value of the
+    Condition this visit belongs to. Required by HZZO so eKarton can link
+    posjeta to slučaj (see rejection 2026-05-11).
     """
     # Match official CEZIH example — field order matches spec
     encounter: dict[str, Any] = {
@@ -135,6 +140,15 @@ def build_encounter_create(
         encounter["serviceProvider"] = org_ref(org_code)
     if reason:
         encounter["reasonCode"] = [{"text": reason}]
+    if diagnosis_case_id:
+        encounter["diagnosis"] = [
+            {
+                "condition": {
+                    "type": "Condition",
+                    "identifier": {"system": ID_CASE_REF, "value": diagnosis_case_id},
+                },
+            }
+        ]
     return encounter
 
 

@@ -307,6 +307,7 @@ class CreateVisitRequest(BaseModel):
     vrsta_posjete: str = "1"  # 1-3, default: 1=Pacijent prisutan
     tip_posjete: str = "2"  # 1-3, default: 2=Posjeta SKZZ
     reason: str | None = None
+    case_id: str | None = None  # CezihCase.local_case_id — required when patient has eligible cases
 
 
 class UpdateVisitRequest(BaseModel):

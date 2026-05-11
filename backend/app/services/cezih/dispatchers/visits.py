@@ -105,6 +105,7 @@ async def _persist_local_visit_by_patient_id(
     vrsta_posjete: str | None = None,
     reason: str | None = None,
     service_provider_code: str | None = None,
+    diagnosis_case_id: str | None = None,
 ) -> None:
     """Persist a local CezihVisit mirror row after successful CEZIH create."""
     if not db or not tenant_id:
@@ -125,6 +126,8 @@ async def _persist_local_visit_by_patient_id(
                 reason=reason,
                 period_start=datetime.now(UTC),
                 service_provider_code=service_provider_code,
+                diagnosis_case_id=diagnosis_case_id,
+                diagnosis_case_ids=[diagnosis_case_id] if diagnosis_case_id else None,
             )
         )
         await db.flush()
@@ -426,12 +429,35 @@ def _parse_visit_response(result: dict) -> dict:
     return {"success": True, "visit_id": visit_id, "status": encounter_status}
 
 
+_VISIT_ELIGIBLE_CASE_STATUSES = ("active", "remission", "relapse")
+
+
+async def _patient_has_eligible_cases(
+    db: AsyncSession, tenant_id: UUID, patient_id: UUID
+) -> bool:
+    """True if patient has at least one case in active/remission/relapse.
+
+    HZZO requires visits to link to a case when one exists (eKarton view).
+    """
+    from app.models.cezih_case import CezihCase
+
+    result = await db.execute(
+        select(CezihCase.id).where(
+            CezihCase.tenant_id == tenant_id,
+            CezihCase.patient_id == patient_id,
+            CezihCase.clinical_status.in_(_VISIT_ELIGIBLE_CASE_STATUSES),
+        ).limit(1)
+    )
+    return result.first() is not None
+
+
 async def dispatch_create_visit(
     patient_id: UUID,
     nacin_prijema: str = "6",
     vrsta_posjete: str = "1",
     tip_posjete: str = "1",
     reason: str | None = None,
+    case_id: str | None = None,
     *,
     db: AsyncSession,
     user_id: UUID,
@@ -441,7 +467,12 @@ async def dispatch_create_visit(
     org_code: str | None = None,
     source_oid: str | None = None,
 ) -> dict:
-    """Create a new visit on CEZIH (TC12)."""
+    """Create a new visit on CEZIH (TC12).
+
+    `case_id` is the local-identifier-slucaja value (CezihCase.local_case_id).
+    HZZO requires posjeta-slučaj linkage when patient has any eligible case
+    (rejection 2026-05-11). FE mirrors this rule.
+    """
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
@@ -449,6 +480,12 @@ async def dispatch_create_visit(
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+
+    if not case_id and await _patient_has_eligible_cases(db, tenant_id, patient_id):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Pacijent ima aktivnih slučajeva — molim odaberite jedan slučaj kod kreiranja posjete.",
+        )
 
     try:
         identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
@@ -478,6 +515,7 @@ async def dispatch_create_visit(
             reason=reason,
             practitioner_id=practitioner_id,
             org_code=org_code or "",
+            diagnosis_case_id=case_id,
         )
         bundle = await build_message_bundle(
             "1.1",
@@ -502,7 +540,7 @@ async def dispatch_create_visit(
         tenant_id,
         user_id,
         action="visit_create",
-        details={"patient_id": str(patient_id), "nacin_prijema": nacin_prijema},
+        details={"patient_id": str(patient_id), "nacin_prijema": nacin_prijema, "case_id": case_id},
     )
     resp = _parse_visit_response(result)
     resp["nacin_prijema"] = nacin_prijema
@@ -520,6 +558,7 @@ async def dispatch_create_visit(
         vrsta_posjete=vrsta_posjete,
         reason=reason,
         service_provider_code=org_code,
+        diagnosis_case_id=case_id,
     )
     return resp
 
