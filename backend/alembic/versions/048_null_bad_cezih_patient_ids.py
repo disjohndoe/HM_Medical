@@ -11,13 +11,16 @@ re-register the foreigner via TC11 PMIR.
 Idempotent: rows already cleared are no-ops. Downgrade is intentionally
 empty — we never want to re-inject bad values.
 
-Revision ID: 048_cleanup_invalid_cezih_patient_ids
+Revision ID: 048_null_bad_cezih_patient_ids
 Revises: 047_cezih_case_visited_statuses
+
+Rev ID kept ≤ 32 chars to fit alembic_version.version_num column —
+earlier draft "048_cleanup_invalid_cezih_patient_ids" overflowed.
 """
 
 from alembic import op
 
-revision = "048_cleanup_invalid_cezih_patient_ids"
+revision = "048_null_bad_cezih_patient_ids"
 down_revision = "047_cezih_case_visited_statuses"
 branch_labels = None
 depends_on = None
