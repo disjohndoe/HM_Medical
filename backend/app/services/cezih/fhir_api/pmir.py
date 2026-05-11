@@ -221,16 +221,33 @@ def _find_mbo_in_identifiers(identifiers: list) -> str:
 
 
 def _extract_cezih_patient_identifier(response: dict) -> str:
-    """Extract CEZIH unique patient identifier from PMIR response.
+    """Extract CEZIH unique patient identifier (JID) from PMIR response.
 
-    Foreigners don't get MBO — they get 'jedinstveni-identifikator-pacijenta'.
+    Foreigners don't get MBO — they get 'jedinstveni-identifikator-pacijenta',
+    a numeric ID assigned by CEZIH (e.g. "1500000"+). HZZO Provjera Spremnosti
+    rejected 2026-05-11 because we'd been saving a CUID-shaped value (25 chars,
+    starts with 'c') in this column — the test environment is permissive enough
+    to accept it back in subsequent calls but provjera spremnosti flags it.
+
+    Strict rule: JID must be all-digits. Anything else means our local CUID
+    leaked into the payload OR CEZIH echoed back something we sent. Returns ""
+    (empty) on missing or invalid value — caller decides whether that is fatal.
     """
 
     def _find_in_identifiers(identifiers: list) -> str:
         for ident in identifiers:
             sys = ident.get("system", "")
             if "jedinstveni-identifikator" in sys:
-                return ident.get("value", "")
+                raw = ident.get("value", "") or ""
+                if raw and not raw.isdigit():
+                    logger.error(
+                        "PMIR returned non-numeric jedinstveni-identifikator-pacijenta=%r "
+                        "(expected digits only) — refusing to persist. Full identifier=%s",
+                        raw,
+                        ident,
+                    )
+                    return ""
+                return raw
         return ""
 
     if response.get("resourceType") == "Patient":

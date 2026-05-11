@@ -72,7 +72,12 @@ async def import_patient_from_cezih(
     from app.services.cezih.builders.common import ID_JEDINSTVENI, ID_OIB
 
     oib = idents.get(ID_OIB)
-    cezih_patient_id = idents.get(ID_JEDINSTVENI) or cezih_data.get("cezih_id") or None
+    # ONLY trust an explicit jedinstveni-identifikator-pacijenta from the PDQm
+    # response. The previous `cezih_data.get("cezih_id")` fallback in patient.py
+    # picks the first identifier value (often MBO/OIB) when JID is absent — that
+    # would write the wrong value into cezih_patient_id. HZZO Provjera Spremnosti
+    # rejected 2026-05-11 over a non-numeric value in this column.
+    cezih_patient_id = idents.get(ID_JEDINSTVENI) or None
 
     # Parse date string to date object
     dob = None
@@ -191,7 +196,12 @@ async def import_patient_by_identifier(
     oib = idents.get(ID_OIB)
     putovnica = idents.get(ID_PUTOVNICA)
     ehic = idents.get(ID_EHIC)
-    cezih_patient_id = idents.get(ID_JEDINSTVENI) or (cezih_data.get("cezih_id") or None)
+    # ONLY trust an explicit jedinstveni-identifikator-pacijenta from the PDQm
+    # response. The previous `cezih_data.get("cezih_id")` fallback in patient.py
+    # picks the first identifier value (often MBO/OIB) when JID is absent — that
+    # would write the wrong value into cezih_patient_id. HZZO Provjera Spremnosti
+    # rejected 2026-05-11 over a non-numeric value in this column.
+    cezih_patient_id = idents.get(ID_JEDINSTVENI) or None
 
     # Duplicate check across all identifier columns — return 409 with the
     # existing patient so the UI can link to it instead of silently failing.

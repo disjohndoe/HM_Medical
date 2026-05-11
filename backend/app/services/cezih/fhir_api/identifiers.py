@@ -66,17 +66,33 @@ def resolve_cezih_identifier(patient) -> tuple[str, str]:
     Priority: MBO (Croatian insured) > jedinstveni-id (PMIR-registered foreigner)
     > OIB (Croatian resident without MBO on hand) > EHIC > putovnica.
     Raises CezihError if the patient carries none of these.
+
+    JID strict-shape guard: HZZO Provjera Spremnosti rejected 2026-05-11 because
+    a CUID-shaped value was being sent as jedinstveni-identifikator-pacijenta.
+    Reject any non-numeric cezih_patient_id here before it reaches CEZIH; fall
+    through to the next identifier (or final raise) so a stale-CUID row does
+    not silently fail every action.
     """
     if patient.mbo:
         return (ID_MBO, patient.mbo)
-    if getattr(patient, "cezih_patient_id", None):
-        return (ID_JEDINSTVENI, patient.cezih_patient_id)
+    jid = getattr(patient, "cezih_patient_id", None)
+    if jid:
+        if jid.isdigit():
+            return (ID_JEDINSTVENI, jid)
+        # Non-numeric JID = stale local value, never came from CEZIH PMIR.
+        # Skip it and try other identifiers; if none, the final raise will
+        # tell the doctor to re-register the foreigner via TC11.
     if getattr(patient, "oib", None):
         return (ID_OIB, patient.oib)
     if getattr(patient, "ehic_broj", None):
         return (ID_EHIC, patient.ehic_broj)
     if getattr(patient, "broj_putovnice", None):
         return (ID_PUTOVNICA, patient.broj_putovnice)
+    if jid and not jid.isdigit():
+        raise CezihError(
+            "Pacijent ima nevažeći CEZIH identifikator (nije numerički). "
+            "Molim Vas ponovno registrirajte pacijenta u CEZIH (Stranci → Registriraj)."
+        )
     raise CezihError("Pacijent nema CEZIH identifikator (MBO, CEZIH ID, OIB, EHIC ili putovnica)")
 
 

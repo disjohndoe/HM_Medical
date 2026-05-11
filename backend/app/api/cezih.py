@@ -727,7 +727,16 @@ async def register_foreigner(
         dob = date.fromisoformat(data.datum_rodjenja) if data.datum_rodjenja else None
         # PMIR returns CEZIH's jedinstveni-identifikator-pacijenta in the "mbo" key.
         # Foreigners don't have a Croatian MBO — leave patients.mbo NULL.
-        cezih_id = result.get("mbo") or None
+        # Strict-shape guard: only persist if the value is all-digits. HZZO Provjera
+        # Spremnosti rejected 2026-05-11 over a CUID stored in this column.
+        raw_cezih_id = result.get("mbo") or ""
+        cezih_id = raw_cezih_id if raw_cezih_id.isdigit() else None
+        if raw_cezih_id and not cezih_id:
+            logger.warning(
+                "Foreigner registration returned non-numeric CEZIH ID %r — not persisting. "
+                "Patient row created without cezih_patient_id; re-run TC11 to obtain valid JID.",
+                raw_cezih_id,
+            )
         patient = Patient(
             tenant_id=current_user.tenant_id,
             ime=data.ime,
