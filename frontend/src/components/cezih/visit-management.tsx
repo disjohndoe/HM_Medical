@@ -141,7 +141,6 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   const visits = visitsData?.visits ?? []
   const myOrgCode = tenant?.sifra_ustanove || ""
   const { data: casesData } = useRetrieveCases(patientId)
-  const activeCases = (casesData?.cases ?? []).filter((c) => c.clinical_status === "active")
   // Eligible for visit linkage: active + remission + relapse (closed/entered-in-error excluded).
   // BE mirrors this rule and 422s when patient has any eligible case but case_id is missing.
   const eligibleCases = (casesData?.cases ?? []).filter(
@@ -673,7 +672,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                   <SelectValue>
                     {editCaseId
                       ? (() => {
-                          const c = activeCases.find((x) => x.case_id === editCaseId)
+                          const c = eligibleCases.find((x) => x.case_id === editCaseId)
                           return c ? `${c.icd_code} — ${c.icd_display}` : editCaseId
                         })()
                       : "Bez povezanog slučaja"}
@@ -684,12 +683,15 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                   className="w-auto min-w-(--anchor-width) max-w-[min(90vw,560px)]"
                 >
                   <SelectItem value={NO_CASE}>Bez povezanog slučaja</SelectItem>
-                  {activeCases.map((c) => (
+                  {eligibleCases.map((c) => (
                     <SelectItem key={c.case_id} value={c.case_id}>
                       {c.icd_code} — {c.icd_display}
+                      {c.clinical_status !== "active" && (
+                        <span className="ml-1 text-xs text-muted-foreground">({c.clinical_status})</span>
+                      )}
                     </SelectItem>
                   ))}
-                  {editCaseId && !activeCases.some((c) => c.case_id === editCaseId) && (
+                  {editCaseId && !eligibleCases.some((c) => c.case_id === editCaseId) && (
                     <SelectItem value={editCaseId}>{editCaseId} (trenutno odabran)</SelectItem>
                   )}
                 </SelectContent>
