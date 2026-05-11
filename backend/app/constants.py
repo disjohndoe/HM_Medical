@@ -105,3 +105,22 @@ def get_cezih_document_coding(tip: str) -> dict[str, str]:
         "code": mapping["code"],
         "display": mapping["display"],
     }
+
+
+# ============================================================
+# HRTipDokumenta ↔ Šifra djelatnosti zdravstvene zaštite
+# ============================================================
+# Rules from HZZO Provjera Spremnosti (Natalija Malkoč, 2026-05-11):
+#   011 (Izvješće nakon pregleda u ambulanti) → djelatnost ∈ allowed_codes
+#       {1010000 opća medicina, 1020000 školska, 1090100 obiteljska,
+#        1040000 zdravstvena zaštita žena, 1050000 zaštita djece}
+#   012 (Nalazi specijalističke ordinacije) → djelatnost počinje s "2"
+#   013 (Otpusno pismo) → djelatnost počinje s "3"
+#
+# Privatnici only — public/contracted (001-010) excluded by separate certification.
+
+CEZIH_DOC_TYPE_DJELATNOST_RULES: dict[str, dict] = {
+    "011": {"allowed_codes": {"1010000", "1020000", "1090100", "1040000", "1050000"}},
+    "012": {"prefix": "2"},
+    "013": {"prefix": "3"},
+}

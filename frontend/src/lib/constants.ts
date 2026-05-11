@@ -138,6 +138,48 @@ export const CEZIH_ELIGIBLE_TYPES = new Set([
   "epikriza",
 ]);
 
+// Mirror of backend CEZIH_DOCUMENT_TYPE_MAP — used for pre-flight UI warnings.
+// Source of truth: backend/app/constants.py:CEZIH_DOCUMENT_TYPE_MAP.
+// Keys are record `tip` slugs; values are HRTipDokumenta codes for privatnici.
+export const CEZIH_DOC_TYPE_BY_TIP: Record<string, "011" | "012" | "013"> = {
+  ambulantno_izvjesce: "011",
+  specijalisticki_nalaz: "012",
+  otpusno_pismo: "013",
+  nalaz: "012",
+  epikriza: "011",
+};
+
+// Mirror of backend CEZIH_DOC_TYPE_DJELATNOST_RULES.
+// Source of truth: backend/app/constants.py:CEZIH_DOC_TYPE_DJELATNOST_RULES.
+// Used for pre-flight FE warning so doctor never reaches a 422 from CEZIH.
+export const CEZIH_DOC_TYPE_DJELATNOST_RULES: Record<
+  string,
+  { allowed_codes?: ReadonlyArray<string>; prefix?: string }
+> = {
+  "011": {
+    allowed_codes: ["1010000", "1020000", "1090100", "1040000", "1050000"],
+  },
+  "012": { prefix: "2" },
+  "013": { prefix: "3" },
+};
+
+// Returns null if combination is valid, or a Croatian description of the mismatch.
+export function checkDocTypeDjelatnost(
+  docTypeCode: string,
+  djelatnostCode: string | null | undefined,
+): string | null {
+  if (!djelatnostCode) return null;
+  const rule = CEZIH_DOC_TYPE_DJELATNOST_RULES[docTypeCode];
+  if (!rule) return null;
+  if (rule.allowed_codes && !rule.allowed_codes.includes(djelatnostCode)) {
+    return `Tip ${docTypeCode} zahtijeva šifru djelatnosti ∈ {${rule.allowed_codes.join(", ")}}`;
+  }
+  if (rule.prefix && !djelatnostCode.startsWith(rule.prefix)) {
+    return `Tip ${docTypeCode} zahtijeva šifru djelatnosti koja počinje znamenkom ${rule.prefix}`;
+  }
+  return null;
+}
+
 export const RECORD_TIP_COLORS: Record<string, string> = {
   ambulantno_izvjesce: "bg-emerald-100 text-emerald-800",
   specijalisticki_nalaz: "bg-indigo-100 text-indigo-800",

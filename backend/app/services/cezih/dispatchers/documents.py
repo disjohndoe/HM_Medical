@@ -10,12 +10,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import CEZIH_ELIGIBLE_TYPES
+from app.constants import CEZIH_ELIGIBLE_TYPES, get_cezih_document_coding
 from app.services.cezih import service as real_service
 from app.services.cezih.builders.common import _now_iso
 from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
 from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
 from app.services.cezih.exceptions import CezihError, CezihFhirError, CezihSigningError
+from app.services.cezih.validation import validate_doc_type_djelatnost
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,9 @@ async def send_enalaz(
     djelatnost_code, djelatnost_display = await _resolve_djelatnost(
         db, tenant_id, record.doktor_id or user_id
     )
+
+    doc_type_code = get_cezih_document_coding(record.tip)["code"]
+    validate_doc_type_djelatnost(doc_type_code, djelatnost_code)
 
     record_data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
 
@@ -445,6 +449,10 @@ async def dispatch_replace_document(
         db, tenant_id, (record.doktor_id if record else None) or user_id
     )
 
+    tip = (record_data or {}).get("tip")
+    if tip:
+        validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
+
     try:
         result = await real_service.replace_document(
             http_client,
@@ -576,6 +584,8 @@ async def dispatch_replace_document_with_edit(
     djelatnost_code, djelatnost_display = await _resolve_djelatnost(
         db, tenant_id, record.doktor_id or user_id
     )
+
+    validate_doc_type_djelatnost(get_cezih_document_coding(new_tip)["code"], djelatnost_code)
 
     try:
         result = await real_service.replace_document(
@@ -712,6 +722,10 @@ async def dispatch_cancel_document(
         db, tenant_id, (record.doktor_id if record else None) or user_id
     )
 
+    tip = record_data.get("tip")
+    if tip:
+        validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
+
     try:
         result = await real_service.cancel_document(
             http_client,
@@ -825,6 +839,10 @@ async def dispatch_cancel_document_canonical(
     djelatnost_code, djelatnost_display = await _resolve_djelatnost(
         db, tenant_id, (record.doktor_id if record else None) or user_id
     )
+
+    tip = record_data.get("tip")
+    if tip:
+        validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
 
     try:
         result = await real_service.cancel_document_canonical(

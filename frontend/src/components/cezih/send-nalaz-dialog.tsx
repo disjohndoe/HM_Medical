@@ -27,6 +27,8 @@ import {
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
 import { useSendENalaz, useListVisits, useRetrieveCases } from "@/lib/hooks/use-cezih"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
+import { CEZIH_DOC_TYPE_BY_TIP, checkDocTypeDjelatnost } from "@/lib/constants"
+import { useAuth } from "@/lib/auth"
 import { formatDateHR } from "@/lib/utils"
 
 interface SendNalazDialogProps {
@@ -48,6 +50,10 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   const { data } = useMedicalRecords(patientId)
   const sendENalaz = useSendENalaz()
   const { tipLabelMap, tipColorMap, isCezihEligible } = useRecordTypeMaps()
+  const { user, tenant } = useAuth()
+  // Pre-flight check uses current user's djelatnost (falls back to clinic default,
+  // mirroring backend _resolve_djelatnost). If neither is set, BE returns 422 first.
+  const djelatnostCode = user?.djelatnost_code || tenant?.djelatnost_code || null
 
   // Load patient visits and cases for linking
   // API returns list of dicts: {visit_id, status, period_start, visit_type_display, ...}
@@ -164,6 +170,22 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   }, [selectedIds, patientId, sendENalaz, onOpenChange, selectedEncounterId, selectedCaseId])
 
   const allSelected = eligibleRecords.length > 0 && selectedIds.size === eligibleRecords.length
+
+  // Pre-flight doc-type ↔ djelatnost mismatches for selected records.
+  // HZZO Provjera Spremnosti rejection 2026-05-11: 011 needs 1010000/1020000/1090100/1040000/1050000,
+  // 012 needs prefix "2", 013 needs prefix "3".
+  type Mismatch = { id: string; tip: string; docCode: "011" | "012" | "013"; reason: string }
+  const djelatnostMismatches: Mismatch[] = eligibleRecords
+    .filter((r) => selectedIds.has(r.id))
+    .reduce<Mismatch[]>((acc, r) => {
+      const docCode = CEZIH_DOC_TYPE_BY_TIP[r.tip]
+      if (!docCode) return acc
+      const reason = checkDocTypeDjelatnost(docCode, djelatnostCode)
+      if (!reason) return acc
+      acc.push({ id: r.id, tip: r.tip, docCode, reason })
+      return acc
+    }, [])
+  const hasDjelatnostMismatch = djelatnostMismatches.length > 0
 
   return (
     <Dialog open={open} onOpenChange={sending ? undefined : onOpenChange}>
@@ -286,6 +308,23 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
             </>
           )}
 
+          {/* Doc-type ↔ djelatnost pre-flight warning */}
+          {hasDjelatnostMismatch && !sending && (
+            <div className="rounded-lg border border-amber-500/50 bg-amber-50 p-3 space-y-1">
+              <p className="text-sm font-medium text-amber-900">
+                Tip dokumenta ne odgovara šifri djelatnosti ({djelatnostCode}):
+              </p>
+              {djelatnostMismatches.map((m) => (
+                <p key={m.id} className="text-xs text-amber-800">
+                  {tipLabelMap[m.tip] || m.tip} (tip {m.docCode}) — {m.reason}.
+                </p>
+              ))}
+              <p className="text-xs text-amber-800 pt-1">
+                Postavite ispravnu šifru djelatnosti u Postavke → Korisnici ili odznačite nalaz.
+              </p>
+            </div>
+          )}
+
           {/* Progress indicator */}
           {sending && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -315,8 +354,16 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
         <DialogFooter>
           <Button
             onClick={handleSend}
-            disabled={selectedIds.size === 0 || sending || !hasCezihIdentifier || !selectedEncounterId || !selectedCaseId}
-            title={!hasCezihIdentifier ? "Pacijent nema CEZIH identifikator — potreban za CEZIH" : (!selectedEncounterId || !selectedCaseId) ? "Odaberite posjetu i slučaj" : undefined}
+            disabled={selectedIds.size === 0 || sending || !hasCezihIdentifier || !selectedEncounterId || !selectedCaseId || hasDjelatnostMismatch}
+            title={
+              !hasCezihIdentifier
+                ? "Pacijent nema CEZIH identifikator — potreban za CEZIH"
+                : (!selectedEncounterId || !selectedCaseId)
+                  ? "Odaberite posjetu i slučaj"
+                  : hasDjelatnostMismatch
+                    ? "Tip dokumenta ne odgovara šifri djelatnosti — pogledajte upozorenje iznad"
+                    : undefined
+            }
           >
             {sending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
