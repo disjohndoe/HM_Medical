@@ -329,6 +329,13 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         if (submitOverride) {
           setOverrideSubmitting(true)
           try {
+            // Persist newly added DTS postupci BEFORE triggering CEZIH replace.
+            // The backend builds the postupci section from the performed_procedures
+            // table; if we skip this the new procedures never reach the bundle.
+            if (pendingProcedures.length > 0) {
+              await saveProcedures(record.id)
+              setPendingProcedures([])
+            }
             // The override owns the CEZIH replace request - pass the form's
             // current encounter/case selection so the doctor can re-link the
             // replaced document. Empty string means "keep existing link"

@@ -684,6 +684,7 @@ async def replace_document(
     practitioner_name: str = "",
     original_document_oid: str = "",
     org_name: str = "",
+    procedures: list[dict] | None = None,
 ) -> dict:
     """Replace a clinical document (TC19, ITI-65 transaction bundle with relatesTo).
 
@@ -739,6 +740,7 @@ async def replace_document(
         org_name=org_name,
         relates_to=relates_to,
         use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
+        procedures=procedures,
     )
 
     # Outer ITI-65 transaction is not signed; signing is on the inner Document Bundle.
@@ -825,6 +827,7 @@ async def cancel_document(
     practitioner_name: str = "",
     original_document_oid: str = "",
     org_name: str = "",
+    procedures: list[dict] | None = None,
 ) -> dict:
     """Cancel/storno a clinical document (TC20).
 
@@ -886,6 +889,7 @@ async def cancel_document(
         org_name=org_name,
         relates_to=relates_to,
         use_external_profile=False,
+        procedures=procedures,
     )
 
     # Outer ITI-65 transaction is not signed (signing is on the inner Document Bundle).

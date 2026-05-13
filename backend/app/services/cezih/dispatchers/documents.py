@@ -643,6 +643,14 @@ async def dispatch_replace_document_with_edit(
 
     validate_doc_type_djelatnost(get_cezih_document_coding(new_tip)["code"], djelatnost_code)
 
+    # Fetch performed procedures so the replaced bundle carries the postupci
+    # section. Without this, edit-and-replace silently drops every procedure
+    # the original document had.
+    try:
+        procedures = await _get_procedures_for_record(db, tenant_id, record_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         result = await real_service.replace_document(
             http_client,
@@ -658,6 +666,7 @@ async def dispatch_replace_document_with_edit(
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
             org_name=org_name,
+            procedures=procedures,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -795,6 +804,15 @@ async def dispatch_cancel_document(
     if tip:
         validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
 
+    # Storno carries the same clinical content (anamneza, dijagnoza, postupci)
+    # as the document being cancelled.
+    procedures: list[dict] = []
+    if db and tenant_id and record_id:
+        try:
+            procedures = await _get_procedures_for_record(db, tenant_id, record_id)
+        except CezihError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         result = await real_service.cancel_document(
             http_client,
@@ -810,6 +828,7 @@ async def dispatch_cancel_document(
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
             org_name=org_name,
+            procedures=procedures,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
