@@ -206,14 +206,13 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   }
 
   const handleCreate = () => {
-    // Close dialog and reset form BEFORE firing the mutation. The optimistic
-    // row handles UI feedback; closing up-front prevents a Base UI
-    // floating-ui race where the row's key swap (tempId→realId) happens
-    // mid-dialog-exit and leaves the Akcija Select inert. Closing up-front
-    // also avoids the dialog appearing to "refresh": if we only cleared
-    // fields and waited for onSuccess to close, the user would see
-    // Povezani slučaj revert to __none__ and the HZZO required-case error
-    // flash back in during the in-flight window.
+    // Keep dialog open AND form values intact until CEZIH responds. The button
+    // shows a spinner + is disabled during pending so the user can see the
+    // request is in flight. Closing or clearing fields before the response
+    // makes the dialog look like it refreshed back to defaults (especially
+    // the HZZO required-case error flashing in when createCaseId is cleared).
+    // On error the dialog stays open with the user's values so they can fix
+    // and retry without re-entering everything.
     const payload = {
       patient_id: patientId,
       nacin_prijema: nacinPrijema,
@@ -223,11 +222,11 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     }
     const capturedNacin = nacinPrijema
     const capturedTip = tipPosjete
-    setShowCreate(false)
-    setReason("")
-    setCreateCaseId("")
     createVisit.mutate(payload, {
       onSuccess: (res) => {
+        setShowCreate(false)
+        setReason("")
+        setCreateCaseId("")
         toast.success(`Posjeta kreirana: ${res.visit_id}`)
         if (res.visit_id) {
           setVisitMeta((prev) => ({
