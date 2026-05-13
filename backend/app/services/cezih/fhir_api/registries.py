@@ -258,32 +258,11 @@ async def find_organizations(client, name: str) -> list[dict]:
             for ident in org.get("identifier", []):
                 if "HZZO" in (ident.get("system") or ""):
                     hzzo_code = ident.get("value", "")
-            org_types: list[dict] = []
-            for t in org.get("type", []):
-                for coding in t.get("coding", []):
-                    org_types.append(
-                        {
-                            "system": coding.get("system", ""),
-                            "code": coding.get("code", ""),
-                            "display": coding.get("display", ""),
-                        }
-                    )
-            part_of = org.get("partOf") or {}
-            logger.info(
-                "mCSD Organization id=%s hzzo=%s name=%r type=%s partOf=%s",
-                org.get("id", ""),
-                hzzo_code,
-                org.get("name", ""),
-                org_types,
-                part_of,
-            )
             results.append(
                 {
                     "id": org.get("id", ""),
                     "name": org.get("name", ""),
                     "hzzo_code": hzzo_code,
-                    "type": org_types,
-                    "part_of": part_of,
                     "active": org.get("active", True),
                 }
             )
@@ -305,30 +284,12 @@ async def find_practitioners(client, name: str) -> list[dict]:
                 if "HZJZ" in (ident.get("system") or ""):
                     hzjz_id = ident.get("value", "")
             name_parts = pract.get("name", [{}])[0] if pract.get("name") else {}
-            qualifications: list[dict] = []
-            for q in pract.get("qualification", []):
-                for coding in q.get("code", {}).get("coding", []):
-                    qualifications.append(
-                        {
-                            "system": coding.get("system", ""),
-                            "code": coding.get("code", ""),
-                            "display": coding.get("display", ""),
-                        }
-                    )
-            logger.info(
-                "mCSD Practitioner id=%s hzjz=%s name=%s qualification=%s",
-                pract.get("id", ""),
-                hzjz_id,
-                f"{name_parts.get('family', '')} {' '.join(name_parts.get('given', []))}".strip(),
-                qualifications,
-            )
             results.append(
                 {
                     "id": pract.get("id", ""),
                     "family": name_parts.get("family", ""),
                     "given": " ".join(name_parts.get("given", [])),
                     "hzjz_id": hzjz_id,
-                    "qualifications": qualifications,
                     "active": pract.get("active", True),
                 }
             )

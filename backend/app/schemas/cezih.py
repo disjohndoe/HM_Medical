@@ -259,25 +259,11 @@ class ValueSetExpandResponse(BaseModel):
 # ============================================================
 
 
-class OrgTypeCoding(BaseModel):
-    system: str = ""
-    code: str = ""
-    display: str = ""
-
-
 class OrganizationItem(BaseModel):
     id: str
     name: str
     hzzo_code: str
     active: bool
-    type: list[OrgTypeCoding] = []
-    part_of: dict = {}
-
-
-class PractitionerQualification(BaseModel):
-    system: str = ""
-    code: str = ""
-    display: str = ""
 
 
 class PractitionerItem(BaseModel):
@@ -286,7 +272,6 @@ class PractitionerItem(BaseModel):
     given: str
     hzjz_id: str
     active: bool
-    qualifications: list[PractitionerQualification] = []
 
 
 # ============================================================
