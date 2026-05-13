@@ -37,7 +37,13 @@ import type {
 
 function showCezihErrorToast(err: Error) {
   if (err instanceof CezihApiError && err.cezih_error) {
-    toast.error("Greška na CEZIH-u. Pokušajte ponovno za nekoliko minuta.", {
+    // Surface the CEZIH display message, not a generic "try again later" -
+    // many CEZIH errors are permanent (expired storno window, validation
+    // failures) and falsely suggesting a retry hides the real cause.
+    const display = err.cezih_error.display?.trim()
+    const code = err.cezih_error.code
+    toast.error(display || err.message || "Greška na CEZIH-u.", {
+      description: code ? `Šifra: ${code}` : undefined,
       duration: 10_000,
     })
   } else if (isSigningError(err.message)) {
