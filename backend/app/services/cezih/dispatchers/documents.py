@@ -887,9 +887,11 @@ async def dispatch_cancel_document(
         db, tenant_id, (record.doktor_id if record else None) or user_id
     )
 
-    tip = record_data.get("tip")
-    if tip:
-        validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
+    # NOTE: no validate_doc_type_djelatnost on storno. The original tip was
+    # already accepted by CEZIH at send time; the user cannot change it here.
+    # If their current djelatnost setting has drifted, blocking the storno
+    # locks them out of cancelling docs they legitimately sent. CEZIH's own
+    # validator runs on the replace bundle and will reject if needed.
 
     # Storno carries the same clinical content (anamneza, dijagnoza, postupci,
     # prilozi) as the document being cancelled.
@@ -1020,9 +1022,7 @@ async def dispatch_cancel_document_canonical(
         db, tenant_id, (record.doktor_id if record else None) or user_id
     )
 
-    tip = record_data.get("tip")
-    if tip:
-        validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
+    # NOTE: no validate_doc_type_djelatnost on storno - see dispatch_cancel_document.
 
     try:
         result = await real_service.cancel_document_canonical(
