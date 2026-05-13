@@ -87,6 +87,10 @@ const NACIN_PRIJEMA_LABELS: Record<string, string> = {
   "10": "Program+",
 }
 
+const NACIN_PRIJEMA_SELECTABLE: Array<[string, string]> = [
+  ["6", NACIN_PRIJEMA_LABELS["6"]],
+]
+
 const TIP_POSJETE_LABELS: Record<string, string> = {
   "1": "Posjeta LOM",
   "2": "Posjeta SKZZ",
@@ -396,7 +400,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                     <SelectValue>{NACIN_PRIJEMA_LABELS[nacinPrijema] || nacinPrijema}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
+                    {NACIN_PRIJEMA_SELECTABLE.map(([val, label]) => (
                       <SelectItem key={val} value={val}>{label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -705,7 +709,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                   <SelectValue>{NACIN_PRIJEMA_LABELS[editNacinPrijema] || editNacinPrijema}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(NACIN_PRIJEMA_LABELS).map(([val, label]) => (
+                  {NACIN_PRIJEMA_SELECTABLE.map(([val, label]) => (
                     <SelectItem key={val} value={val}>{label}</SelectItem>
                   ))}
                 </SelectContent>
