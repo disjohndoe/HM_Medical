@@ -500,7 +500,7 @@ async def dispatch_create_visit(
     patient_id: UUID,
     nacin_prijema: str = "6",
     vrsta_posjete: str = "1",
-    tip_posjete: str = "1",
+    tip_posjete: str = "2",
     reason: str | None = None,
     case_id: str | None = None,
     *,
@@ -650,7 +650,7 @@ async def dispatch_update_visit(
     current = await _read_local_visit_as_dict(db, tenant_id, visit_id) or {}
     merged_nacin = nacin_prijema or current.get("visit_type") or "6"
     merged_vrsta = vrsta_posjete or current.get("vrsta_posjete") or "1"
-    merged_tip = tip_posjete or current.get("tip_posjete") or "1"
+    merged_tip = tip_posjete or current.get("tip_posjete") or "2"
 
     # Diagnosis case: None means "preserve current", "" means "clear", any other
     # value means "set". The FE now always sends the field; empty string when

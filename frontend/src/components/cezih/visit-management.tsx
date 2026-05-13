@@ -316,7 +316,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     setEditVisitId(v.visit_id)
     setEditReason(v.reason || "")
     setEditNacinPrijema(v.visit_type || "6")
-    setEditTipPosjete(v.tip_posjete || "1")
+    setEditTipPosjete(v.tip_posjete || "2")
     setEditCaseId(v.diagnosis_case_ids?.[0] || "")
     setEditPractitionerId(v.practitioner_ids?.length > 1 ? v.practitioner_ids[1] : "")
     setEditPeriodStart(v.period_start || undefined)
