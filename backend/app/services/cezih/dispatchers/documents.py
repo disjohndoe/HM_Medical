@@ -174,6 +174,19 @@ async def _resolve_djelatnost(
     )
 
 
+async def _is_exam_tenant(db: AsyncSession, tenant_id: UUID) -> bool:
+    """True if this tenant is the HZZO exam ordinacija.
+
+    Exam tenants bypass the doc-type ↔ djelatnost pre-flight so the full TC
+    matrix can be demoed on one djelatnost during certification. Production
+    tenants are unaffected (server_default=false on tenants.is_exam_tenant).
+    """
+    from app.models.tenant import Tenant
+
+    tenant = await db.get(Tenant, tenant_id)
+    return bool(tenant and tenant.is_exam_tenant)
+
+
 async def _get_medical_record_by_id(db: AsyncSession | None, tenant_id: UUID | None, record_id: UUID | None):
     """Fetch medical record by ID with tenant validation only."""
     if not db or not tenant_id or not record_id:
@@ -258,7 +271,11 @@ async def send_enalaz(
     )
 
     doc_type_code = get_cezih_document_coding(record.tip)["code"]
-    validate_doc_type_djelatnost(doc_type_code, djelatnost_code)
+    validate_doc_type_djelatnost(
+        doc_type_code,
+        djelatnost_code,
+        is_exam_tenant=await _is_exam_tenant(db, tenant_id),
+    )
 
     record_data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
 
@@ -575,7 +592,11 @@ async def dispatch_replace_document(
 
     tip = (record_data or {}).get("tip")
     if tip:
-        validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
+        validate_doc_type_djelatnost(
+            get_cezih_document_coding(tip)["code"],
+            djelatnost_code,
+            is_exam_tenant=await _is_exam_tenant(db, tenant_id),
+        )
 
     attachments: list[dict] = []
     if db and tenant_id and record_id:
@@ -719,7 +740,11 @@ async def dispatch_replace_document_with_edit(
         db, tenant_id, record.doktor_id or user_id
     )
 
-    validate_doc_type_djelatnost(get_cezih_document_coding(new_tip)["code"], djelatnost_code)
+    validate_doc_type_djelatnost(
+        get_cezih_document_coding(new_tip)["code"],
+        djelatnost_code,
+        is_exam_tenant=await _is_exam_tenant(db, tenant_id),
+    )
 
     # Fetch performed procedures so the replaced bundle carries the postupci
     # section. Without this, edit-and-replace silently drops every procedure

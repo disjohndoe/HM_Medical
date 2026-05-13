@@ -321,19 +321,25 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
             </>
           )}
 
-          {/* Doc-type ↔ djelatnost pre-flight warning */}
+          {/* Doc-type ↔ djelatnost pre-flight warning. Exam tenants see an
+              informational label but submit stays enabled - the backend
+              validator also bypasses on is_exam_tenant. */}
           {hasDjelatnostMismatch && !sending && (
             <div className="rounded-lg border border-amber-500/50 bg-amber-50 p-3 space-y-1">
               <p className="text-sm font-medium text-amber-900">
-                Tip dokumenta ne odgovara šifri djelatnosti ({djelatnostCode}):
+                {isExamTenant
+                  ? `Exam mode: tip dokumenta ne odgovara šifri djelatnosti (${djelatnostCode}). U produkciji bi ovo bilo blokirano:`
+                  : `Tip dokumenta ne odgovara šifri djelatnosti (${djelatnostCode}):`}
               </p>
               {djelatnostMismatches.map((m) => (
                 <p key={m.id} className="text-xs text-amber-800">
-                  {tipLabelMap[m.tip] || m.tip} (tip {m.docCode}) — {m.reason}.
+                  {tipLabelMap[m.tip] || m.tip} (tip {m.docCode}) - {m.reason}.
                 </p>
               ))}
               <p className="text-xs text-amber-800 pt-1">
-                Postavite ispravnu šifru djelatnosti u Postavke → Korisnici ili odznačite nalaz.
+                {isExamTenant
+                  ? "Slanje dozvoljeno radi HZZO certifikacijske provjere."
+                  : "Postavite ispravnu šifru djelatnosti u Postavke → Korisnici ili odznačite nalaz."}
               </p>
             </div>
           )}
@@ -367,14 +373,21 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
         <DialogFooter>
           <Button
             onClick={handleSend}
-            disabled={selectedIds.size === 0 || sending || !hasCezihIdentifier || !selectedEncounterId || !selectedCaseId || hasDjelatnostMismatch}
+            disabled={
+              selectedIds.size === 0
+              || sending
+              || !hasCezihIdentifier
+              || !selectedEncounterId
+              || !selectedCaseId
+              || (hasDjelatnostMismatch && !isExamTenant)
+            }
             title={
               !hasCezihIdentifier
-                ? "Pacijent nema CEZIH identifikator — potreban za CEZIH"
+                ? "Pacijent nema CEZIH identifikator - potreban za CEZIH"
                 : (!selectedEncounterId || !selectedCaseId)
                   ? "Odaberite posjetu i slučaj"
-                  : hasDjelatnostMismatch
-                    ? "Tip dokumenta ne odgovara šifri djelatnosti — pogledajte upozorenje iznad"
+                  : hasDjelatnostMismatch && !isExamTenant
+                    ? "Tip dokumenta ne odgovara šifri djelatnosti - pogledajte upozorenje iznad"
                     : undefined
             }
           >
