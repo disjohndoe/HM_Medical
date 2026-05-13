@@ -159,7 +159,7 @@ export function BiljeskaForm({ open, onOpenChange, patientId, biljeska }: Biljes
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="biljeska-datum">Datum *</Label>
-              <Input id="biljeska-datum" type="date" {...register("datum")} />
+              <Input id="biljeska-datum" type="date" disabled={isEdit} {...register("datum")} />
               {errors.datum && (
                 <p className="text-sm text-destructive">{errors.datum.message}</p>
               )}

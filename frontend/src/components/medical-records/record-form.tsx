@@ -465,7 +465,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="datum">Datum *</Label>
-              <Input id="datum" type="date" {...register("datum")} />
+              <Input id="datum" type="date" disabled={isEdit} {...register("datum")} />
               {errors.datum && (
                 <p className="text-sm text-destructive">{errors.datum.message}</p>
               )}

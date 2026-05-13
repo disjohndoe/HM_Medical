@@ -540,7 +540,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Datum početka</Label>
-              <Input type="date" className="h-8 text-sm" value={editOnsetDate} onChange={(e) => setEditOnsetDate(e.target.value)} />
+              <Input type="date" className="h-8 text-sm" value={editOnsetDate} onChange={(e) => setEditOnsetDate(e.target.value)} disabled />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Datum završetka</Label>
