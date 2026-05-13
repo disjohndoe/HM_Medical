@@ -27,7 +27,7 @@ import { useResolveDtsProcedure, useCreatePerformed, useDeletePerformed, usePerf
 import { useAppointments } from "@/lib/hooks/use-appointments"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
-import { CEZIH_DOC_TYPE_BY_TIP, getAllowedDocTypes, APPOINTMENT_VRSTA } from "@/lib/constants"
+import { CEZIH_DOC_TYPE_BY_TIP, checkDocTypeDjelatnost, getAllowedDocTypes, APPOINTMENT_VRSTA } from "@/lib/constants"
 import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem, CodeSystemItem } from "@/lib/types"
 
 const recordSchema = z.object({
@@ -195,6 +195,14 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const djelatnostCode = user?.djelatnost_code || tenant?.djelatnost_code || null
   const isExamTenant = !!tenant?.is_exam_tenant
   const allowedDocTypes = new Set<string>(getAllowedDocTypes(djelatnostCode, isExamTenant))
+
+  // Exam-mode label: when the picked tip's doc code doesn't match djelatnost,
+  // production would 422. Exam tenants are bypassed server-side, but the
+  // doctor needs to see that the same payload would be rejected in prod.
+  const watchedDocCode = watchedTip ? CEZIH_DOC_TYPE_BY_TIP[watchedTip] : undefined
+  const watchedDjelatnostMismatch = watchedDocCode
+    ? checkDocTypeDjelatnost(watchedDocCode, djelatnostCode)
+    : null
 
   // Two CEZIH flags, derived from the same eligibility:
   // - cezihAutoSendOnCreate: create-and-send-to-CEZIH happy path (was the
@@ -589,6 +597,12 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
               />
               {errors.tip && (
                 <p className="text-sm text-destructive">{errors.tip.message}</p>
+              )}
+              {isExamTenant && watchedDjelatnostMismatch && (
+                <p className="text-xs text-amber-700">
+                  Exam mode: {watchedDjelatnostMismatch}. U produkciji bi slanje
+                  bilo blokirano (trenutna šifra djelatnosti: {djelatnostCode}).
+                </p>
               )}
             </div>
           </div>
