@@ -331,7 +331,10 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           dijagnoza_mkb: data.dijagnoza_mkb || null,
           dijagnoza_tekst: data.dijagnoza_tekst || null,
           sadrzaj: data.sadrzaj,
-          preporucena_terapija: therapy.length > 0 ? therapy : null,
+          // Always send the array - empty [] means "doctor cleared all drugs",
+          // null would be ambiguous with "field absent" and the backend
+          // dispatcher's _pick falls back to the old value on null.
+          preporucena_terapija: therapy,
           appointment_id: data.appointment_id || null,
         }
         if (submitOverride) {
