@@ -251,8 +251,9 @@ async def _upsert_cezih_visit_from_response(
                 row.service_provider_code = remote_sp_code
             if remote_practitioner_ids:
                 row.practitioner_ids = list(remote_practitioner_ids)
-            if remote_diagnosis_case_ids:
-                row.diagnosis_case_ids = list(remote_diagnosis_case_ids)
+            # diagnosis_case_ids is CEZIH-authoritative — always reflect remote
+            # state, including empty (case unlinked on CEZIH side).
+            row.diagnosis_case_ids = list(remote_diagnosis_case_ids) if remote_diagnosis_case_ids else None
             if not row.tip_posjete and remote.get("tip_posjete"):
                 row.tip_posjete = remote["tip_posjete"]
             if not row.vrsta_posjete and remote.get("vrsta_posjete"):
@@ -373,10 +374,16 @@ async def _update_local_visit(
     service_provider_code: str | None = None,
     set_period_end: bool = False,
     clear_period_end: bool = False,
+    diagnosis_case_id: str | None = None,
+    set_diagnosis: bool = False,
 ) -> None:
     """Upsert the local CezihVisit mirror for this visit.
 
     If no row exists yet, insert a fresh row so the edit is reflected.
+
+    `set_diagnosis=True` writes diagnosis_case_id to the mirror (falsy → clear).
+    `set_diagnosis=False` leaves the existing diagnosis_case_ids untouched —
+    callers like storno/close/reopen that don't change the diagnosis use this.
     """
     if not db or not tenant_id or not visit_id:
         return
@@ -408,6 +415,7 @@ async def _update_local_visit(
                 reason=reason,
                 period_start=datetime.now(UTC),
                 service_provider_code=service_provider_code,
+                diagnosis_case_ids=[diagnosis_case_id] if (set_diagnosis and diagnosis_case_id) else None,
             )
             if set_period_end:
                 row.period_end = datetime.now(UTC)
@@ -429,6 +437,8 @@ async def _update_local_visit(
                 row.period_end = datetime.now(UTC)
             if clear_period_end:
                 row.period_end = None
+            if set_diagnosis:
+                row.diagnosis_case_ids = [diagnosis_case_id] if diagnosis_case_id else None
         await db.flush()
     except (IntegrityError, OperationalError):
         logger.exception(
@@ -632,6 +642,35 @@ async def dispatch_update_visit(
 
     local_visit_id = await _lookup_local_visit_id(db, tenant_id, visit_id)
 
+    # Read current mirror state so partial PATCHes don't silently overwrite
+    # CEZIH-side fields the user didn't touch. The FE may omit nacin_prijema /
+    # vrsta_posjete / tip_posjete (vrsta_posjete is never sent today); without
+    # this merge, the previous code defaulted to "6"/"1"/"1" and corrupted CEZIH
+    # state on every edit.
+    current = await _read_local_visit_as_dict(db, tenant_id, visit_id) or {}
+    merged_nacin = nacin_prijema or current.get("visit_type") or "6"
+    merged_vrsta = vrsta_posjete or current.get("vrsta_posjete") or "1"
+    merged_tip = tip_posjete or current.get("tip_posjete") or "1"
+
+    # Diagnosis case: None means "preserve current", "" means "clear", any other
+    # value means "set". The FE now always sends the field; empty string when
+    # the user picks "Bez povezanog slučaja".
+    if diagnosis_case_id is None:
+        existing_cases = current.get("diagnosis_case_ids") or []
+        merged_case = existing_cases[0] if existing_cases else None
+    elif diagnosis_case_id == "":
+        merged_case = None
+    else:
+        merged_case = diagnosis_case_id
+
+    # Reason: None preserves, "" clears, value sets.
+    if reason is None:
+        merged_reason = current.get("reason")
+    elif reason == "":
+        merged_reason = None
+    else:
+        merged_reason = reason
+
     try:
         from app.services.cezih.client import CezihFhirClient
         from app.services.cezih.message_builder import (
@@ -650,14 +689,14 @@ async def dispatch_update_visit(
             encounter_id=visit_id,
             patient_mbo=identifier_value,
             identifier_system=identifier_system,
-            nacin_prijema=nacin_prijema or "6",
-            vrsta_posjete=vrsta_posjete or "1",
-            tip_posjete=tip_posjete or "1",
-            reason=reason,
+            nacin_prijema=merged_nacin,
+            vrsta_posjete=merged_vrsta,
+            tip_posjete=merged_tip,
+            reason=merged_reason,
             practitioner_id=practitioner_id,
             additional_practitioner_id=additional_practitioner_id,
             org_code=org_code or "",
-            diagnosis_case_id=diagnosis_case_id,
+            diagnosis_case_id=merged_case,
             period_start=period_start,
         )
         bundle = await build_message_bundle(
@@ -686,22 +725,21 @@ async def dispatch_update_visit(
         details={"visit_id": visit_id, "patient_id": str(patient_id)},
     )
     resp = _parse_visit_response(result)
-    if nacin_prijema:
-        resp["nacin_prijema"] = nacin_prijema
-    if vrsta_posjete:
-        resp["vrsta_posjete"] = vrsta_posjete
-    if tip_posjete:
-        resp["tip_posjete"] = tip_posjete
+    resp["nacin_prijema"] = merged_nacin
+    resp["vrsta_posjete"] = merged_vrsta
+    resp["tip_posjete"] = merged_tip
     await _update_local_visit(
         db,
         tenant_id,
         visit_id,
         patient_mbo=identifier_value,
-        tip_posjete=tip_posjete,
-        vrsta_posjete=vrsta_posjete,
-        admission_type=nacin_prijema,
-        reason=reason,
+        tip_posjete=merged_tip,
+        vrsta_posjete=merged_vrsta,
+        admission_type=merged_nacin,
+        reason=merged_reason,
         service_provider_code=org_code,
+        diagnosis_case_id=merged_case,
+        set_diagnosis=diagnosis_case_id is not None,
     )
     return resp
 

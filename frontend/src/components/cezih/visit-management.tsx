@@ -282,11 +282,11 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     updateVisit.mutate(
       {
         visitId,
-        reason: editReason || undefined,
-        nacin_prijema: editNacinPrijema || undefined,
-        tip_posjete: editTipPosjete || undefined,
-        diagnosis_case_id: editCaseId || undefined,
-        additional_practitioner_id: editPractitionerId || undefined,
+        reason: editReason,
+        nacin_prijema: editNacinPrijema,
+        tip_posjete: editTipPosjete,
+        diagnosis_case_id: editCaseId,
+        additional_practitioner_id: editPractitionerId,
         period_start: editPeriodStart,
         patientId,
       },
