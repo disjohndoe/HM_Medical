@@ -22,7 +22,7 @@ import {
   useUpdateMedicalRecord,
 } from "@/lib/hooks/use-medical-records"
 import { useDocuments, useUploadDocument, useSetRecordAttachments } from "@/lib/hooks/use-documents"
-import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch, useIcd10Search } from "@/lib/hooks/use-cezih"
+import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch } from "@/lib/hooks/use-cezih"
 import { useResolveDtsProcedure, useCreatePerformed, useDeletePerformed, usePerformedProcedures } from "@/lib/hooks/use-procedures"
 import { useAppointments } from "@/lib/hooks/use-appointments"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
@@ -114,11 +114,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const { isCezihEligible } = useRecordTypeMaps()
   const watchedTip = watch("tip")
   const isEligibleType = isCezihEligible.has(watchedTip ?? "")
-
-  // ICD-10 (MKB-10) search popover
-  const [icd10Open, setIcd10Open] = useState(false)
-  const [icd10Query, setIcd10Query] = useState("")
-  const { data: icd10Results, isLoading: icd10Loading } = useIcd10Search(icd10Query)
 
   // Appointments for this patient (selector below). Limit 200 is the API max;
   // sufficient for a single patient's history in any realistic clinic.
@@ -284,8 +279,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     if (!open) return
     setDrugSearchQuery("")
     setDrugSearchOpen(false)
-    setIcd10Open(false)
-    setIcd10Query("")
     // In edit mode, pre-populate encounter/case from the record so the
     // selectors show the current link. Create mode starts empty and auto-
     // selects the first active visit/case in the effect above.
@@ -600,65 +593,66 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="dijagnoza_mkb">MKB-10 šifra</Label>
-            <div className="flex gap-2">
-              <Input
-                id="dijagnoza_mkb"
-                placeholder="npr. J45"
-                className="flex-1 font-mono uppercase"
-                {...register("dijagnoza_mkb")}
-              />
-              <Popover open={icd10Open} onOpenChange={setIcd10Open}>
-                <PopoverTrigger
-                  render={<Button type="button" variant="outline" size="sm" className="shrink-0" />}
-                >
-                  <Search className="mr-1.5 h-3.5 w-3.5" />
-                  Pretraži
-                </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-1" align="end" container={dialogContainerRef.current ?? undefined}>
-                  <div className="relative">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50 pointer-events-none" />
-                    <input
-                      placeholder="MKB-10 šifra ili naziv..."
-                      value={icd10Query}
-                      onChange={(e) => setIcd10Query(e.target.value)}
-                      className="h-8 w-full rounded-lg border border-input/30 bg-input/30 pl-7 pr-2 text-sm outline-none focus-visible:border-ring"
-                    />
+          {cezihShowLinkSelectors && (
+            <div className="space-y-3 rounded-lg border bg-sky-50/50 dark:bg-sky-950/20 p-3">
+              {activeVisits.length === 0 || activeCases.length === 0 ? (
+                <p className="text-xs text-amber-600">
+                  Nema aktivnih posjeta ili slučajeva. Prvo kreirajte posjetu i slučaj na CEZIH stranici.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    {isEdit
+                      ? "Posjeta i slučaj za zamjenu na CEZIH. Promjena re-veže zamijenjeni dokument."
+                      : "Odaberite posjetu i slučaj za CEZIH slanje."}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Posjeta</label>
+                      <select
+                        value={selectedEncounterId}
+                        onChange={(e) => setSelectedEncounterId(e.target.value)}
+                        className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                        disabled={cezihSending}
+                      >
+                        <option value="">— Odaberi posjetu —</option>
+                        {activeVisits.map((v) => (
+                          <option key={v.visit_id} value={v.visit_id}>
+                            {v.period_start ? formatDateHR(v.period_start) : v.visit_id.slice(0, 12)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Slučaj</label>
+                      <select
+                        value={selectedCaseId}
+                        onChange={(e) => setSelectedCaseId(e.target.value)}
+                        className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                        disabled={cezihSending}
+                      >
+                        <option value="">— Odaberi slučaj —</option>
+                        {activeCases.map((c) => (
+                          <option key={c.case_id} value={c.case_id}>
+                            {c.icd_code ? `${c.icd_code} ${c.icd_display || ""}`.trim() : c.case_id.slice(0, 12)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <div className="mt-1 max-h-64 overflow-y-auto">
-                    {icd10Query.length < 2 ? (
-                      <p className="py-4 text-center text-xs text-muted-foreground">Unesite barem 2 znaka</p>
-                    ) : icd10Loading ? (
-                      <p className="py-4 text-center text-xs text-muted-foreground">Pretraživanje...</p>
-                    ) : icd10Results?.length ? (
-                      icd10Results.map((item: CodeSystemItem) => (
-                        <button
-                          key={item.code}
-                          type="button"
-                          onClick={() => {
-                            setValue("dijagnoza_mkb", item.code, { shouldValidate: true })
-                            setValue("dijagnoza_tekst", item.display)
-                            setIcd10Open(false)
-                            setIcd10Query("")
-                          }}
-                          className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted transition-colors cursor-pointer"
-                        >
-                          <Plus className="h-3 w-3 shrink-0 mt-0.5" />
-                          <div className="flex-1 text-left min-w-0">
-                            <span className="font-mono text-xs text-muted-foreground">{item.code}</span>
-                            <span className="ml-1.5">{item.display}</span>
-                          </div>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="py-4 text-center text-xs text-muted-foreground">Nema rezultata</p>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
+                  {!isEdit && (!selectedEncounterId || !selectedCaseId) && (
+                    <p className="text-xs text-amber-600">
+                      {!selectedEncounterId && !selectedCaseId
+                        ? "Potrebno je odabrati posjetu i slučaj"
+                        : !selectedEncounterId
+                          ? "Potrebno je odabrati posjetu"
+                          : "Potrebno je odabrati slučaj"}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="dijagnoza">Opis dijagnoze</Label>
@@ -897,67 +891,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
               </div>
             )}
           </div>
-
-          {cezihShowLinkSelectors && (
-            <div className="space-y-3 rounded-lg border bg-sky-50/50 dark:bg-sky-950/20 p-3">
-              {activeVisits.length === 0 || activeCases.length === 0 ? (
-                <p className="text-xs text-amber-600">
-                  Nema aktivnih posjeta ili slučajeva. Prvo kreirajte posjetu i slučaj na CEZIH stranici.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    {isEdit
-                      ? "Posjeta i slučaj za zamjenu na CEZIH. Promjena re-veže zamijenjeni dokument."
-                      : "Odaberite posjetu i slučaj za CEZIH slanje."}
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-muted-foreground">Posjeta</label>
-                      <select
-                        value={selectedEncounterId}
-                        onChange={(e) => setSelectedEncounterId(e.target.value)}
-                        className="w-full rounded border bg-background px-2 py-1.5 text-xs"
-                        disabled={cezihSending}
-                      >
-                        <option value="">— Odaberi posjetu —</option>
-                        {activeVisits.map((v) => (
-                          <option key={v.visit_id} value={v.visit_id}>
-                            {v.period_start ? formatDateHR(v.period_start) : v.visit_id.slice(0, 12)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">Slučaj</label>
-                      <select
-                        value={selectedCaseId}
-                        onChange={(e) => setSelectedCaseId(e.target.value)}
-                        className="w-full rounded border bg-background px-2 py-1.5 text-xs"
-                        disabled={cezihSending}
-                      >
-                        <option value="">— Odaberi slučaj —</option>
-                        {activeCases.map((c) => (
-                          <option key={c.case_id} value={c.case_id}>
-                            {c.icd_code ? `${c.icd_code} ${c.icd_display || ""}`.trim() : c.case_id.slice(0, 12)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  {!isEdit && (!selectedEncounterId || !selectedCaseId) && (
-                    <p className="text-xs text-amber-600">
-                      {!selectedEncounterId && !selectedCaseId
-                        ? "Potrebno je odabrati posjetu i slučaj"
-                        : !selectedEncounterId
-                          ? "Potrebno je odabrati posjetu"
-                          : "Potrebno je odabrati slučaj"}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
           <div className="space-y-2">
             <Label>Prilozi</Label>
