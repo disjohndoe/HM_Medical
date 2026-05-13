@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { DjelatnostPicker } from "@/components/ui/djelatnost-picker"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
@@ -79,6 +80,7 @@ export default function KlinikaSettingsPage() {
     handleSubmit,
     control,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<ClinicFormData>({
     resolver: standardSchemaResolver(clinicSchema),
@@ -252,30 +254,27 @@ export default function KlinikaSettingsPage() {
                   Dobijete od HZZO-a pri registraciji zdravstvene ustanove
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="djelatnost_code">Šifra djelatnosti zdravstvene zaštite</Label>
-                <Input
-                  id="djelatnost_code"
-                  placeholder="npr. 1010000"
-                  maxLength={7}
-                  {...register("djelatnost_code")}
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Šifra djelatnosti zdravstvene zaštite</Label>
+                <Controller
+                  control={control}
+                  name="djelatnost_code"
+                  render={({ field }) => (
+                    <DjelatnostPicker
+                      code={field.value ?? null}
+                      onChange={(code, display) => {
+                        field.onChange(code)
+                        setValue("djelatnost_display", display, { shouldDirty: true })
+                      }}
+                    />
+                  )}
                 />
                 {errors.djelatnost_code && (
                   <p className="text-xs text-destructive">{errors.djelatnost_code.message}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
                   Zadana šifra za sve dokumente klinike. Pojedini doktori mogu nadjačati u Postavke → Korisnici.
-                  Primjer: 1010000 - Opća/obiteljska medicina, 2010000 - Internistička djelatnost,
-                  2030000 - Ginekološka djelatnost.
                 </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="djelatnost_display">Naziv djelatnosti</Label>
-                <Input
-                  id="djelatnost_display"
-                  placeholder="npr. Opća/obiteljska medicina"
-                  {...register("djelatnost_display")}
-                />
               </div>
               <div className="space-y-2">
                 <Label>OID informacijskog sustava</Label>

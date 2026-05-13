@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, field_validator
 
 from app.schemas.tenant import TenantRead
+from app.sifranik_djelatnosti import SIFRANIK_DJELATNOSTI_BY_CODE
 
 CezihSigningMethod = Literal["smartcard", "extsigner"]
 
@@ -33,8 +34,12 @@ def _coerce_mbo_lijecnika(v: str | None) -> str | None:
 def _coerce_djelatnost_code(v: str | None) -> str | None:
     if v == "":
         return None
-    if v is not None and not _DJELATNOST_RE.match(v):
+    if v is None:
+        return None
+    if not _DJELATNOST_RE.match(v):
         raise ValueError("Šifra djelatnosti mora imati točno 7 znamenki")
+    if v not in SIFRANIK_DJELATNOSTI_BY_CODE:
+        raise ValueError("Šifra djelatnosti nije u Šifranik djelatnosti HZZO")
     return v
 
 

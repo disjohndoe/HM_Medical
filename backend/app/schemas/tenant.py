@@ -4,14 +4,20 @@ from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
+from app.sifranik_djelatnosti import SIFRANIK_DJELATNOSTI_BY_CODE
+
 _DJELATNOST_RE = re.compile(r"^\d{7}$")
 
 
 def _coerce_djelatnost_code(v: str | None) -> str | None:
     if v == "":
         return None
-    if v is not None and not _DJELATNOST_RE.match(v):
+    if v is None:
+        return None
+    if not _DJELATNOST_RE.match(v):
         raise ValueError("Šifra djelatnosti mora imati točno 7 znamenki")
+    if v not in SIFRANIK_DJELATNOSTI_BY_CODE:
+        raise ValueError("Šifra djelatnosti nije u Šifranik djelatnosti HZZO")
     return v
 
 
@@ -36,6 +42,7 @@ class TenantRead(BaseModel):
     is_active: bool
     cezih_status: str
     has_hzzo_contract: bool
+    is_exam_tenant: bool = False
 
     model_config = {"from_attributes": True}
 

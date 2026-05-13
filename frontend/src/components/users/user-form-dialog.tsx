@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { DjelatnostPicker } from "@/components/ui/djelatnost-picker"
 import {
   Select,
   SelectContent,
@@ -242,12 +243,20 @@ export function UserFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="djelatnost_code">Šifra djelatnosti (nadjačava klinički zadanu)</Label>
-                <Input
-                  id="djelatnost_code"
-                  placeholder="npr. 2010000"
-                  maxLength={7}
-                  {...register("djelatnost_code")}
+                <Label>Šifra djelatnosti (nadjačava klinički zadanu)</Label>
+                <Controller
+                  control={control}
+                  name="djelatnost_code"
+                  render={({ field }) => (
+                    <DjelatnostPicker
+                      code={field.value ?? null}
+                      onChange={(code, display) => {
+                        field.onChange(code)
+                        setValue("djelatnost_display", display, { shouldDirty: true })
+                      }}
+                      placeholder="Koristi zadanu vrijednost klinike"
+                    />
+                  )}
                 />
                 <p className="text-xs text-muted-foreground">
                   Ostavite prazno da koristite zadanu vrijednost klinike. Postavite za polikliniku gdje
@@ -256,15 +265,6 @@ export function UserFormDialog({
                 {errors.djelatnost_code && (
                   <p className="text-xs text-destructive">{errors.djelatnost_code.message}</p>
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="djelatnost_display">Naziv djelatnosti</Label>
-                <Input
-                  id="djelatnost_display"
-                  placeholder="npr. Internistička djelatnost"
-                  {...register("djelatnost_display")}
-                />
               </div>
             </>
           )}
