@@ -21,7 +21,7 @@ import {
   useCreateMedicalRecord,
   useUpdateMedicalRecord,
 } from "@/lib/hooks/use-medical-records"
-import { useUploadDocument } from "@/lib/hooks/use-documents"
+import { useDocuments, useUploadDocument, useSetRecordAttachments } from "@/lib/hooks/use-documents"
 import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch, useIcd10Search } from "@/lib/hooks/use-cezih"
 import { useResolveDtsProcedure, useCreatePerformed, useDeletePerformed, usePerformedProcedures } from "@/lib/hooks/use-procedures"
 import { useAppointments } from "@/lib/hooks/use-appointments"
@@ -57,6 +57,20 @@ interface RecordFormProps {
 
 const ACCEPTED_TYPES = ".jpeg,.jpg,.png,.pdf"
 const MAX_SIZE_MB = 10
+const PRILOZI_SIZE_WARN_BYTES = 5 * 1024 * 1024
+const PRILOZI_SIZE_CAP_BYTES = 8 * 1024 * 1024
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function mimeToKategorija(mime: string): string {
+  if (mime === "application/pdf") return "nalaz"
+  if (mime.startsWith("image/")) return "snimka"
+  return "dokument"
+}
 
 interface PendingProcedure {
   procedure_id: string
@@ -70,8 +84,8 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const createMutation = useCreateMedicalRecord()
   const updateMutation = useUpdateMedicalRecord()
   const uploadDoc = useUploadDocument()
-  const [attachedFile, setAttachedFile] = useState<File | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const setAttachments = useSetRecordAttachments()
+  const priloziInputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const dialogContainerRef = useRef<HTMLDialogElement>(null)
   const [drugSearchOpen, setDrugSearchOpen] = useState(false)
@@ -110,6 +124,52 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   // sufficient for a single patient's history in any realistic clinic.
   const { data: appointmentsData } = useAppointments(undefined, undefined, undefined, undefined, 0, 200, patientId)
   const patientAppointments = appointmentsData?.items ?? []
+
+  // Prilozi (CEZIH eKarton attachments) - multi-select from patient's docs.
+  const [selectedPrilogIds, setSelectedPrilogIds] = useState<Set<string>>(new Set())
+  const { data: allDocs } = useDocuments(patientId)
+  const { data: attachedDocs } = useDocuments(
+    patientId,
+    { medicalRecordId: isEdit && record ? record.id : null },
+  )
+  const selectedDocs = (allDocs ?? []).filter((d) => selectedPrilogIds.has(d.id))
+  const priloziTotalBytes = selectedDocs.reduce((sum, d) => sum + d.file_size, 0)
+  const priloziOverCap = priloziTotalBytes > PRILOZI_SIZE_CAP_BYTES
+  const priloziOverWarn = priloziTotalBytes > PRILOZI_SIZE_WARN_BYTES && !priloziOverCap
+
+  const togglePrilog = useCallback((id: string) => {
+    setSelectedPrilogIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const handleAddPrilog = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (f.size > MAX_SIZE_MB * 1024 * 1024) {
+      toast.error(`Datoteka je prevelika (maks ${MAX_SIZE_MB} MB)`)
+      if (priloziInputRef.current) priloziInputRef.current.value = ""
+      return
+    }
+    try {
+      const uploaded = await uploadDoc.mutateAsync({
+        patientId,
+        file: f,
+        kategorija: mimeToKategorija(f.type),
+      })
+      setSelectedPrilogIds((prev) => new Set(prev).add(uploaded.id))
+    } catch {
+      // useUploadDocument already surfaces an error toast
+    } finally {
+      if (priloziInputRef.current) priloziInputRef.current.value = ""
+    }
+  }, [patientId, uploadDoc])
 
   // Inline postupci (DTS procedures)
   const createPerformed = useCreatePerformed()
@@ -215,7 +275,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
 
   useEffect(() => {
     if (!open) return
-    setAttachedFile(null)
     setDrugSearchQuery("")
     setDrugSearchOpen(false)
     setIcd10Open(false)
@@ -230,6 +289,9 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     setDtsSearchOpen(false)
     setPendingProcedures([])
     setRemovedExistingIds(new Set())
+    // Prilozi: start empty; edit-mode prefill is handled by a separate
+    // effect that reacts to `attachedDocs` once react-query resolves it.
+    setSelectedPrilogIds(new Set())
     if (record) {
       setTherapy(record.preporucena_terapija ?? [])
       reset({
@@ -253,6 +315,12 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, record?.id, reset, isEdit])
+
+  // Pre-populate Prilozi selection in edit mode once attachedDocs resolves.
+  useEffect(() => {
+    if (!open || !isEdit || !record || !attachedDocs) return
+    setSelectedPrilogIds(new Set(attachedDocs.map((d) => d.id)))
+  }, [open, isEdit, record, attachedDocs])
 
   const handleAddTherapyDrug = (drug: LijekItem) => {
     if (therapy.some((t) => t.atk === drug.atk && t.naziv === drug.naziv && t.oblik === drug.oblik && t.jacina === drug.jacina)) {
@@ -323,6 +391,11 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   }
 
   async function onSubmit(data: RecordFormData) {
+    if (priloziOverCap) {
+      toast.error("Ukupna veličina priloga prelazi 8 MB. Uklonite barem jedan prilog.")
+      return
+    }
+    const priloziIds = Array.from(selectedPrilogIds)
     try {
       if (isEdit && record) {
         const payload: MedicalRecordUpdate = {
@@ -349,6 +422,14 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
               setPendingProcedures([])
               setRemovedExistingIds(new Set())
             }
+            // Same reasoning for Prilozi: the bundle builder reads attachments
+            // from the DB via the medical_record_id FK. The PATCH must land
+            // before the CEZIH replace fires.
+            await setAttachments.mutateAsync({
+              recordId: record.id,
+              patientId,
+              documentIds: priloziIds,
+            })
             // The override owns the CEZIH replace request - pass the form's
             // current encounter/case selection so the doctor can re-link the
             // replaced document. Empty string means "keep existing link"
@@ -364,6 +445,11 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         } else {
           const updated = await updateMutation.mutateAsync({ id: record.id, data: payload })
           await applyProcedureChanges(record.id)
+          await setAttachments.mutateAsync({
+            recordId: record.id,
+            patientId,
+            documentIds: priloziIds,
+          })
           toast.success("Zapis ažuriran")
           onSaved?.(updated)
         }
@@ -384,12 +470,14 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           await applyProcedureChanges(created.id)
         }
 
-        if (attachedFile) {
-          try {
-            await uploadDoc.mutateAsync({ patientId, file: attachedFile, kategorija: "nalaz" })
-          } catch {
-            toast.error("Zapis kreiran, ali prilog nije uploadan")
-          }
+        // Link selected prilozi to the new record. Must run BEFORE the CEZIH
+        // send so the bundle builder picks them up from the DB.
+        if (priloziIds.length > 0) {
+          await setAttachments.mutateAsync({
+            recordId: created.id,
+            patientId,
+            documentIds: priloziIds,
+          })
         }
 
         // Inline CEZIH send: save succeeded, now send if applicable
@@ -429,17 +517,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   }
 
   const [overrideSubmitting, setOverrideSubmitting] = useState(false)
-  const isSubmitting = createMutation.isPending || updateMutation.isPending || uploadDoc.isPending || overrideSubmitting || cezihSending
-
-  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    if (f.size > MAX_SIZE_MB * 1024 * 1024) {
-      toast.error(`Datoteka je prevelika (maks ${MAX_SIZE_MB} MB)`)
-      return
-    }
-    setAttachedFile(f)
-  }, [])
+  const isSubmitting = createMutation.isPending || updateMutation.isPending || uploadDoc.isPending || setAttachments.isPending || overrideSubmitting || cezihSending
 
   const handleClose = () => {
     onOpenChange(false)
@@ -874,48 +952,95 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             </div>
           )}
 
-          {!isEdit && (
-            <div className="space-y-2">
-              <Label>Prilog (opcionalno)</Label>
-              {attachedFile ? (
-                <div className="flex items-center gap-2 rounded-lg border p-3">
-                  <span className="flex-1 text-sm truncate">{attachedFile.name}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { setAttachedFile(null); if (fileInputRef.current) fileInputRef.current.value = "" }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+          <div className="space-y-2">
+            <Label>Prilozi</Label>
+            <p className="text-xs text-muted-foreground">
+              Datoteke uz nalaz - bit će dostupne u CEZIH eKarton sekciji "Priloženi dokumenti".
+            </p>
+
+            {(allDocs ?? []).length > 0 && (
+              <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-lg border p-1">
+                {(allDocs ?? []).map((doc) => {
+                  const isSelected = selectedPrilogIds.has(doc.id)
+                  const attachedElsewhere =
+                    doc.medical_record_id != null &&
+                    (!record || doc.medical_record_id !== record.id)
+                  return (
+                    <label
+                      key={doc.id}
+                      title={attachedElsewhere ? "Već priložen drugom nalazu" : undefined}
+                      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-xs ${
+                        attachedElsewhere
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer hover:bg-muted"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={attachedElsewhere}
+                        onChange={() => togglePrilog(doc.id)}
+                        className="shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{doc.naziv}</p>
+                        <p className="text-muted-foreground">
+                          {formatBytes(doc.file_size)} · {doc.mime_type}
+                        </p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            {selectedPrilogIds.size > 0 && (
+              <p
+                className={`text-xs ${
+                  priloziOverCap
+                    ? "text-destructive"
+                    : priloziOverWarn
+                      ? "text-amber-600"
+                      : "text-muted-foreground"
+                }`}
+              >
+                Ukupno: {formatBytes(priloziTotalBytes)} ({selectedPrilogIds.size}{" "}
+                {selectedPrilogIds.size === 1 ? "prilog" : "priloga"})
+                {priloziOverCap && " - prelazi maksimum 8 MB"}
+                {priloziOverWarn && " - velika veličina, dostava može biti sporija"}
+              </p>
+            )}
+
+            <label
+              htmlFor="prilozi-input"
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed p-2 transition-colors hover:bg-accent/50"
+            >
+              {uploadDoc.isPending ? (
+                <span className="text-xs text-muted-foreground">Učitavanje...</span>
               ) : (
-                <label
-                  htmlFor="record-file-input"
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed p-4 hover:bg-accent/50 transition-colors cursor-pointer"
-                >
-                  <Upload className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    Priloži datoteku (JPEG, PNG, PDF — max {MAX_SIZE_MB} MB)
+                <>
+                  <Upload className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
+                    Dodaj novi prilog (JPEG, PNG, PDF - maks {MAX_SIZE_MB} MB)
                   </span>
-                </label>
+                </>
               )}
-              <input
-                ref={fileInputRef}
-                id="record-file-input"
-                type="file"
-                accept={ACCEPTED_TYPES}
-                onChange={handleFileInputChange}
-                className="sr-only"
-              />
-            </div>
-          )}
+            </label>
+            <input
+              ref={priloziInputRef}
+              id="prilozi-input"
+              type="file"
+              accept={ACCEPTED_TYPES}
+              onChange={handleAddPrilog}
+              className="sr-only"
+            />
+          </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={handleClose}>
               Odustani
             </Button>
-            <Button type="submit" disabled={isSubmitting || (cezihAutoSendOnCreate && (activeVisits.length === 0 || activeCases.length === 0 || !selectedEncounterId || !selectedCaseId))}>
+            <Button type="submit" disabled={isSubmitting || priloziOverCap || (cezihAutoSendOnCreate && (activeVisits.length === 0 || activeCases.length === 0 || !selectedEncounterId || !selectedCaseId))}>
               {isSubmitting
                 ? cezihSending
                   ? "Slanje na CEZIH..."

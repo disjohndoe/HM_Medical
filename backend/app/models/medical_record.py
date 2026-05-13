@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseTenantModel
 
@@ -45,4 +45,10 @@ class MedicalRecord(BaseTenantModel):
     cezih_last_error_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    attachments = relationship(
+        "Document",
+        back_populates="medical_record",
+        lazy="selectin",
     )

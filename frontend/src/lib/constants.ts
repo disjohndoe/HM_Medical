@@ -554,6 +554,8 @@ export const DOCUMENT_KATEGORIJA_COLORS: Record<string, string> = {
   ostalo: "bg-gray-100 text-gray-800",
 };
 
+export const PRILOG_BADGE_LABEL = "Prilog uz nalaz";
+
 // --- Legal documents (published on hmdigital.hr, noindex + not linked from public nav) ---
 
 export const TERMS_URL = "https://hmdigital.hr/medical/uvjeti-koristenja/";

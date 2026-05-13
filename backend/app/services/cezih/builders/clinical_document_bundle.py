@@ -20,15 +20,17 @@ Sections that are emitted:
     - slucaj (1..N) -> Condition (dokumentirani-slucaj)
     - ishodPregleda (1..1) -> Observation
     - preporuceniPostupci (0..1) -> CarePlan (preporuke-za-pacijenta)
-
-Sections deliberately skipped from MVP (max=N, optional):
-- prilozeni-dokumenti (PDF attachments) - separate feature
+- prilozeni-dokumenti (0..N) -> HRPrilog DocumentReference per attachment.
+  Section emitted only when caller passes a non-empty attachments list. Each
+  attachment becomes a DocumentReference with content.attachment.data carrying
+  base64-encoded file bytes (PDF/JPEG/PNG).
 """
 
 # ruff: noqa: N815 - FHIR spec uses camelCase
 
 from __future__ import annotations
 
+import base64
 import logging
 import uuid
 from typing import Any
@@ -75,6 +77,7 @@ PROFILE_ISHOD = f"{_PROFILE_BASE}/ishod-pregleda"
 PROFILE_DJELATNOST = f"{_PROFILE_BASE}/djelatnost"
 PROFILE_PREPORUKE = f"{_PROFILE_BASE}/preporuke-za-pacijenta"
 PROFILE_PROCEDURE = f"{_PROFILE_BASE}/primijenjen-postupak"
+PROFILE_PRILOG = f"{_PROFILE_BASE}/prilog"
 SYS_PLANOVI_SKRBI = "http://fhir.cezih.hr/specifikacije/CodeSystem/hr-planovi-skrbi"
 SYS_KATEGORIJA_POSTUPKA = "http://fhir.cezih.hr/specifikacije/CodeSystem/kategorija-postupka"
 SYS_DTS = "http://fhir.cezih.hr/specifikacije/CodeSystem/DTS"
@@ -512,6 +515,42 @@ def _build_procedure_resource(
     return resource
 
 
+def _build_prilog_documentreference(
+    *,
+    attachment_bytes: bytes,
+    content_type: str,
+    title: str,
+    patient_full_url: str,
+) -> dict[str, Any]:
+    """Build HRPrilog DocumentReference for a single prilozeni-dokumenti entry.
+
+    Per cezih.hr StructureDefinition/prilog:
+    - status (1..1) = current (per profile: current | superseded | entered-in-error)
+    - content (1..1): single attachment with contentType, data, title all required
+    """
+    if not attachment_bytes:
+        raise CezihError("Prilog file bytes are empty - cannot embed in CEZIH document")
+    if not content_type:
+        raise CezihError("Prilog contentType is required by HRPrilog profile")
+    if not title:
+        raise CezihError("Prilog title (naziv) is required by HRPrilog profile")
+    return {
+        "resourceType": "DocumentReference",
+        "meta": {"profile": [PROFILE_PRILOG]},
+        "status": "current",
+        "subject": {"reference": patient_full_url},
+        "content": [
+            {
+                "attachment": {
+                    "contentType": content_type,
+                    "data": base64.b64encode(attachment_bytes).decode("ascii"),
+                    "title": title,
+                }
+            }
+        ],
+    }
+
+
 def _build_composition(
     *,
     document_type_code: str,
@@ -526,6 +565,7 @@ def _build_composition(
     ishod_full_url: str,
     preporuka_full_url: str | None = None,
     procedure_full_urls: list[str] | None = None,
+    prilog_full_urls: list[str] | None = None,
     composition_date: str,
 ) -> dict[str, Any]:
     """Build Composition resource matching nalaz/izvjesce/otpusno profile."""
@@ -581,6 +621,21 @@ def _build_composition(
         },
     ]
 
+    if prilog_full_urls:
+        sections.append({
+            "title": "Priloženi dokumenti",
+            "code": {
+                "coding": [
+                    {
+                        "system": SYS_DOC_SECTION,
+                        "code": "16",
+                        "display": "Priloženi dokumenti",
+                    }
+                ]
+            },
+            "entry": [{"reference": url} for url in prilog_full_urls],
+        })
+
     return {
         "resourceType": "Composition",
         "meta": {"profile": [composition_profile]},
@@ -633,6 +688,7 @@ def build_clinical_document_bundle(
     djelatnost_display: str,
     nacin_prijema: str = "6",
     procedures: list[dict] | None = None,
+    attachments: list[dict] | None = None,
 ) -> tuple[dict, str]:
     """Build inner FHIR Document Bundle (HRDocument profile) for ITI-65 Binary content.
 
@@ -731,6 +787,21 @@ def build_clinical_document_bundle(
             )
             procedure_entries.append({"fullUrl": proc_url, "resource": proc_resource})
 
+    # Build prilog (HRPrilog DocumentReference) resources for prilozeni-dokumenti section.
+    prilog_full_urls: list[str] = []
+    prilog_entries: list[dict[str, Any]] = []
+    if attachments:
+        for att in attachments:
+            prilog_url = f"urn:uuid:{uuid.uuid4()}"
+            prilog_full_urls.append(prilog_url)
+            prilog_resource = _build_prilog_documentreference(
+                attachment_bytes=att["bytes"],
+                content_type=att["content_type"],
+                title=att["title"],
+                patient_full_url=patient_full_url,
+            )
+            prilog_entries.append({"fullUrl": prilog_url, "resource": prilog_resource})
+
     # Build composition now that we know preporuka_full_url.
     composition = _build_composition(
         document_type_code=document_type_code,
@@ -745,6 +816,7 @@ def build_clinical_document_bundle(
         ishod_full_url=ishod_full_url,
         preporuka_full_url=preporuka_full_url,
         procedure_full_urls=procedure_full_urls or None,
+        prilog_full_urls=prilog_full_urls or None,
         composition_date=composition_date,
     )
 
@@ -765,6 +837,7 @@ def build_clinical_document_bundle(
         entries.append({"fullUrl": preporuka_full_url, "resource": preporuka_careplan})
 
     entries.extend(procedure_entries)
+    entries.extend(prilog_entries)
 
     bundle: dict[str, Any] = {
         "resourceType": "Bundle",

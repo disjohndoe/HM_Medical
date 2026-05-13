@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef } from "react"
-import { Download, Trash2, Loader2, FileText } from "lucide-react"
+import { Download, Trash2, Loader2, FileText, Paperclip } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useDocuments, useDeleteDocument } from "@/lib/hooks/use-documents"
 import { useDocumentBlob } from "@/lib/hooks/use-document-blob"
 import { DocumentPreviewDialog } from "@/components/documents/document-preview-dialog"
-import { DOCUMENT_KATEGORIJA, DOCUMENT_KATEGORIJA_COLORS } from "@/lib/constants"
+import { DOCUMENT_KATEGORIJA, DOCUMENT_KATEGORIJA_COLORS, PRILOG_BADGE_LABEL } from "@/lib/constants"
 import { formatDateHR, isImage } from "@/lib/utils"
 import type { Document } from "@/lib/types"
 
@@ -124,6 +124,12 @@ export function DocumentList({ patientId }: DocumentListProps) {
                 >
                   {DOCUMENT_KATEGORIJA[doc.kategorija] ?? doc.kategorija}
                 </Badge>
+                {doc.medical_record_id && (
+                  <Badge variant="outline" className="gap-1 bg-amber-50 text-amber-800">
+                    <Paperclip className="h-3 w-3" />
+                    {PRILOG_BADGE_LABEL}
+                  </Badge>
+                )}
                 <span className="text-xs text-muted-foreground">
                   {formatFileSize(doc.file_size)}
                 </span>

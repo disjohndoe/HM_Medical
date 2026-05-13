@@ -456,6 +456,7 @@ export interface Document {
   mime_type: string;
   uploaded_by: string;
   cezih_reference_id: string | null;
+  medical_record_id: string | null;
   created_at: string;
 }
 
@@ -468,7 +469,12 @@ export interface DocumentUploadResponse {
   mime_type: string;
   uploaded_by: string;
   cezih_reference_id: string | null;
+  medical_record_id: string | null;
   created_at: string;
+}
+
+export interface ImportCezihDocumentResponse extends DocumentUploadResponse {
+  prilozi_imported: number;
 }
 
 // --- Plan Usage ---

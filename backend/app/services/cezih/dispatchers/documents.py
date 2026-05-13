@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -19,6 +20,68 @@ from app.services.cezih.exceptions import CezihError, CezihFhirError, CezihSigni
 from app.services.cezih.validation import validate_doc_type_djelatnost
 
 logger = logging.getLogger(__name__)
+
+# Total raw byte cap for prilozi attached to one ITI-65 submission.
+# Base64 encoding inflates by ~33% so the actual payload is ~11 MB at this cap,
+# leaving headroom under Caddy's 10 MB default body limit (which we widen on
+# prod) and Keycloak/CEZIH reverse-proxy buffers.
+PRILOZI_TOTAL_BYTES_CAP = 8 * 1024 * 1024
+
+
+async def _load_attachments_for_record(
+    db: AsyncSession,
+    tenant_id: UUID,
+    record_id: UUID,
+) -> list[dict]:
+    """Load HRPrilog attachments linked to a medical record.
+
+    Reads documents.medical_record_id == record_id (single source of truth -
+    the PATCH /medical-records/{id}/attachments endpoint maintains this).
+    Returns a list of dicts ready for build_clinical_document_bundle.
+
+    Enforces the 8 MB total raw-bytes cap so an oversized signed bundle never
+    leaves our server; the frontend warns at 5 MB and blocks submit at 8 MB,
+    but a curl bypass would still hit this.
+    """
+    from app.models.document import Document
+
+    result = await db.execute(
+        sa_select(Document).where(
+            Document.medical_record_id == record_id,
+            Document.tenant_id == tenant_id,
+        ).order_by(Document.created_at)
+    )
+    docs = result.scalars().all()
+    if not docs:
+        return []
+
+    payload: list[dict] = []
+    total = 0
+    for doc in docs:
+        path = Path(doc.file_path)
+        if not path.exists():
+            raise CezihError(
+                f"Datoteka priloga '{doc.naziv}' nije pronađena na disku "
+                f"({doc.file_path}). Ne mogu poslati nalaz u CEZIH bez svih priloga."
+            )
+        data = path.read_bytes()
+        total += len(data)
+        if total > PRILOZI_TOTAL_BYTES_CAP:
+            raise CezihError(
+                f"Ukupna veličina priloga ({total // 1024} KB) premašuje "
+                f"{PRILOZI_TOTAL_BYTES_CAP // (1024 * 1024)} MB limit za CEZIH dokument. "
+                "Uklonite neki prilog ili ga zamijenite manjom verzijom."
+            )
+        payload.append({
+            "bytes": data,
+            "content_type": doc.mime_type,
+            "title": doc.naziv,
+        })
+    logger.info(
+        "Loaded %d prilozi for record %s (total %d bytes)",
+        len(payload), record_id, total,
+    )
+    return payload
 
 
 async def _get_medical_record(db: AsyncSession, tenant_id: UUID, patient_id: UUID, record_id: UUID):
@@ -205,6 +268,12 @@ async def send_enalaz(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
+    # Fetch attached prilozi (HRPrilog DocumentReferences) for the prilozeni-dokumenti section.
+    try:
+        attachments = await _load_attachments_for_record(db, tenant_id, record_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         result = await real_service.send_enalaz(
             http_client,
@@ -220,6 +289,7 @@ async def send_enalaz(
             djelatnost_display=djelatnost_display,
             org_name=org_name,
             procedures=procedures,
+            attachments=attachments,
         )
     except CezihError as e:
         logger.error("CEZIH e-Nalaz send failed: %s", e.message)
@@ -507,6 +577,13 @@ async def dispatch_replace_document(
     if tip:
         validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
 
+    attachments: list[dict] = []
+    if db and tenant_id and record_id:
+        try:
+            attachments = await _load_attachments_for_record(db, tenant_id, record_id)
+        except CezihError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         result = await real_service.replace_document(
             http_client,
@@ -522,6 +599,7 @@ async def dispatch_replace_document(
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
             org_name=org_name,
+            attachments=attachments,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -651,6 +729,14 @@ async def dispatch_replace_document_with_edit(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
+    # Same idea for HRPrilog attachments - read the current set from DB so the
+    # replaced bundle carries the prilozeni-dokumenti section per
+    # documents.medical_record_id (frontend has already PATCHed the set).
+    try:
+        attachments = await _load_attachments_for_record(db, tenant_id, record_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         result = await real_service.replace_document(
             http_client,
@@ -667,6 +753,7 @@ async def dispatch_replace_document_with_edit(
             djelatnost_display=djelatnost_display,
             org_name=org_name,
             procedures=procedures,
+            attachments=attachments,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)
@@ -804,12 +891,14 @@ async def dispatch_cancel_document(
     if tip:
         validate_doc_type_djelatnost(get_cezih_document_coding(tip)["code"], djelatnost_code)
 
-    # Storno carries the same clinical content (anamneza, dijagnoza, postupci)
-    # as the document being cancelled.
+    # Storno carries the same clinical content (anamneza, dijagnoza, postupci,
+    # prilozi) as the document being cancelled.
     procedures: list[dict] = []
+    attachments: list[dict] = []
     if db and tenant_id and record_id:
         try:
             procedures = await _get_procedures_for_record(db, tenant_id, record_id)
+            attachments = await _load_attachments_for_record(db, tenant_id, record_id)
         except CezihError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
@@ -829,6 +918,7 @@ async def dispatch_cancel_document(
             djelatnost_display=djelatnost_display,
             org_name=org_name,
             procedures=procedures,
+            attachments=attachments,
         )
     except CezihError as e:
         await record_cezih_error("medical_record", record_id, tenant_id, e)

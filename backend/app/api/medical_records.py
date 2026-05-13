@@ -12,9 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
+from app.models.document import Document
+from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.schemas.document import DocumentRead, SetRecordAttachmentsRequest
 from app.schemas.medical_record import (
     MedicalRecordCreate,
     MedicalRecordRead,
@@ -250,3 +253,86 @@ async def update_medical_record(
         },
     )
     return updated
+
+
+@router.patch("/medical-records/{record_id}/attachments", response_model=list[DocumentRead])
+async def set_record_attachments(
+    record_id: uuid.UUID,
+    payload: SetRecordAttachmentsRequest,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reconcile the prilog set for a record. Single source of truth for CEZIH prilozi membership.
+
+    Stamps medical_record_id on listed documents; unlinks any documents currently
+    attached to this record but absent from the list. Atomic in one transaction.
+    """
+    from sqlalchemy import select as sa_select
+
+    record = await db.get(MedicalRecord, record_id)
+    if not record or record.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medicinski zapis nije pronađen")
+
+    requested_ids = set(payload.document_ids)
+
+    if requested_ids:
+        check = await db.execute(
+            sa_select(Document).where(
+                Document.id.in_(requested_ids),
+                Document.tenant_id == current_user.tenant_id,
+            )
+        )
+        found_docs = check.scalars().all()
+        if len(found_docs) != len(requested_ids):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Jedan ili više priloga nije pronađen u ovoj ustanovi.",
+            )
+        for doc in found_docs:
+            if doc.patient_id != record.patient_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Prilog mora pripadati istom pacijentu kao nalaz.",
+                )
+            if doc.medical_record_id and doc.medical_record_id != record_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Dokument '{doc.naziv}' je već priložen drugom nalazu.",
+                )
+            doc.medical_record_id = record_id
+
+    currently_attached = await db.execute(
+        sa_select(Document).where(
+            Document.medical_record_id == record_id,
+            Document.tenant_id == current_user.tenant_id,
+        )
+    )
+    for doc in currently_attached.scalars().all():
+        if doc.id not in requested_ids:
+            doc.medical_record_id = None
+
+    await db.flush()
+
+    final = await db.execute(
+        sa_select(Document)
+        .where(
+            Document.medical_record_id == record_id,
+            Document.tenant_id == current_user.tenant_id,
+        )
+        .order_by(Document.created_at.desc())
+    )
+    result = final.scalars().all()
+
+    await audit_service.write_audit(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="medical_record_attachments_set",
+        resource_type="medical_record",
+        resource_id=record_id,
+        details={
+            "patient_id": str(record.patient_id),
+            "attachment_count": len(result),
+        },
+    )
+    return result
