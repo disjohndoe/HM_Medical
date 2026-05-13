@@ -763,10 +763,10 @@ async def dispatch_visit_action(
                         "documents": blocking_docs,
                     },
                 )
-            from app.services.cezih.dispatchers.documents import dispatch_cancel_document
+            from app.services.cezih.dispatchers.documents import dispatch_cancel_document_canonical
 
             for doc in blocking_docs:
-                await dispatch_cancel_document(
+                await dispatch_cancel_document_canonical(
                     doc["reference_id"],
                     db=db,
                     user_id=user_id,
