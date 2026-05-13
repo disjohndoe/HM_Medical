@@ -818,6 +818,7 @@ export function useReplaceDocumentWithEdit() {
       sadrzaj,
       sensitivity,
       preporucena_terapija,
+      appointment_id,
     }: {
       referenceId: string
       record_id: string
@@ -831,6 +832,7 @@ export function useReplaceDocumentWithEdit() {
       sadrzaj?: string | null
       sensitivity?: string | null
       preporucena_terapija?: unknown[] | null
+      appointment_id?: string | null
     }) =>
       api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}/replace-with-edit`, {
         record_id,
@@ -844,6 +846,7 @@ export function useReplaceDocumentWithEdit() {
         sadrzaj,
         sensitivity,
         preporucena_terapija,
+        appointment_id,
       }),
     onSuccess: (_resp, vars) => {
       clearError(vars.referenceId)

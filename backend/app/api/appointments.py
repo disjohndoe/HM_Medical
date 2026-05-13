@@ -45,6 +45,7 @@ async def list_appointments(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
     doktor_id: uuid.UUID | None = Query(None),
+    patient_id: uuid.UUID | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -52,7 +53,8 @@ async def list_appointments(
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await appointment_service.list_appointments(
-        db, current_user.tenant_id, date_from, date_to, doktor_id, status_filter, skip, limit
+        db, current_user.tenant_id, date_from, date_to, doktor_id, status_filter, skip, limit,
+        patient_id=patient_id,
     )
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 

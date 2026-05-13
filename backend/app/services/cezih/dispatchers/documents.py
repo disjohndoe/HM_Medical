@@ -679,6 +679,17 @@ async def dispatch_replace_document_with_edit(
         record.datum = edits["datum"]
     if edits.get("sensitivity") is not None:
         record.sensitivity = edits["sensitivity"]
+    # appointment_id: edits["appointment_id"] = None is a legitimate "unlink"
+    # request, so only skip when the key is absent.
+    if "appointment_id" in edits:
+        record.appointment_id = edits["appointment_id"]
+    # Persist re-linked visit/case so the local record reflects what was sent
+    # to CEZIH. Without this the FHIR replace uses the new IDs but our DB
+    # silently keeps the old ones.
+    if encounter_id and encounter_id != record.cezih_encounter_id:
+        record.cezih_encounter_id = encounter_id
+    if case_id and case_id != record.cezih_case_id:
+        record.cezih_case_id = case_id
     if new_ref:
         record.cezih_reference_id = new_ref
     if new_oid:

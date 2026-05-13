@@ -22,11 +22,12 @@ import {
   useUpdateMedicalRecord,
 } from "@/lib/hooks/use-medical-records"
 import { useUploadDocument } from "@/lib/hooks/use-documents"
-import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch } from "@/lib/hooks/use-cezih"
+import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch, useIcd10Search } from "@/lib/hooks/use-cezih"
 import { useResolveDtsProcedure, useCreatePerformed, usePerformedProcedures } from "@/lib/hooks/use-procedures"
-import { formatDateHR } from "@/lib/utils"
+import { useAppointments } from "@/lib/hooks/use-appointments"
+import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
-import { CEZIH_DOC_TYPE_BY_TIP, getAllowedDocTypes } from "@/lib/constants"
+import { CEZIH_DOC_TYPE_BY_TIP, getAllowedDocTypes, APPOINTMENT_VRSTA } from "@/lib/constants"
 import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem, CodeSystemItem } from "@/lib/types"
 
 const recordSchema = z.object({
@@ -35,6 +36,7 @@ const recordSchema = z.object({
   dijagnoza_mkb: z.string().optional(),
   dijagnoza_tekst: z.string().optional(),
   sadrzaj: z.string().min(10, "Anamneza mora imati najmanje 10 znakova"),
+  appointment_id: z.string().optional(),
 })
 
 type RecordFormData = z.infer<typeof recordSchema>
@@ -46,7 +48,7 @@ interface RecordFormProps {
   record?: MedicalRecord | null
   onSaved?: (record: MedicalRecord) => void | Promise<void>
   submitLabel?: string
-  submitOverride?: (payload: MedicalRecordUpdate) => Promise<void>
+  submitOverride?: (payload: MedicalRecordUpdate & { encounter_id?: string; case_id?: string }) => Promise<void>
   mode?: "create" | "edit"
   title?: string
   subtitle?: string
@@ -90,7 +92,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     resolver: standardSchemaResolver(recordSchema),
   })
 
-  // CEZIH inline send (create mode only)
+  // CEZIH visit/case selection
   const [selectedEncounterId, setSelectedEncounterId] = useState("")
   const [selectedCaseId, setSelectedCaseId] = useState("")
   const [cezihSending, setCezihSending] = useState(false)
@@ -98,6 +100,16 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const { isCezihEligible } = useRecordTypeMaps()
   const watchedTip = watch("tip")
   const isEligibleType = isCezihEligible.has(watchedTip ?? "")
+
+  // ICD-10 (MKB-10) search popover
+  const [icd10Open, setIcd10Open] = useState(false)
+  const [icd10Query, setIcd10Query] = useState("")
+  const { data: icd10Results, isLoading: icd10Loading } = useIcd10Search(icd10Query)
+
+  // Appointments for this patient (selector below). Limit 200 is the API max;
+  // sufficient for a single patient's history in any realistic clinic.
+  const { data: appointmentsData } = useAppointments(undefined, undefined, undefined, undefined, 0, 200, patientId)
+  const patientAppointments = appointmentsData?.items ?? []
 
   // Inline postupci (DTS procedures)
   const createPerformed = useCreatePerformed()
@@ -120,9 +132,18 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const djelatnostCode = user?.djelatnost_code || tenant?.djelatnost_code || null
   const isExamTenant = !!tenant?.is_exam_tenant
   const allowedDocTypes = new Set<string>(getAllowedDocTypes(djelatnostCode, isExamTenant))
-  const shouldSendToCezih = !isEdit && !!hasCezihIdentifier && isEligibleType
-  const { data: visitsData } = useListVisits(shouldSendToCezih ? patientId : "")
-  const { data: casesData } = useRetrieveCases(shouldSendToCezih ? patientId : "")
+
+  // Two CEZIH flags, derived from the same eligibility:
+  // - cezihAutoSendOnCreate: create-and-send-to-CEZIH happy path (was the
+  //   old `shouldSendToCezih`). Requires non-edit + CEZIH identifier + eligible type.
+  // - cezihShowLinkSelectors: show the Posjeta/Slučaj picker. True whenever
+  //   we'd auto-send on create, OR we're editing a record that's already on
+  //   CEZIH (so the doctor can re-link the replaced document).
+  const cezihAutoSendOnCreate = !isEdit && !!hasCezihIdentifier && isEligibleType
+  const cezihShowLinkSelectors =
+    !!hasCezihIdentifier && isEligibleType && (!isEdit || !!record?.cezih_reference_id)
+  const { data: visitsData } = useListVisits(cezihShowLinkSelectors ? patientId : "")
+  const { data: casesData } = useRetrieveCases(cezihShowLinkSelectors ? patientId : "")
 
   type VisitItem = { visit_id: string; status: string; period_start?: string; visit_type_display?: string }
   type CaseItem = { case_id: string; clinical_status: string; icd_code?: string; icd_display?: string }
@@ -133,20 +154,23 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const activeVisits = visits.filter((v) => !TERMINAL_VISIT_STATUSES.has(v.status))
   const activeCases = cases.filter((c) => !TERMINAL_CASE_STATUSES.has(c.clinical_status))
 
-  // Auto-select first visit/case when data loads
+  // Auto-select first visit/case on CREATE only - edit mode pre-populates
+  // from record.cezih_encounter_id/case_id in the reset block instead.
   useEffect(() => {
-    if (shouldSendToCezih && activeVisits.length > 0 && !selectedEncounterId) {
+    if (cezihAutoSendOnCreate && activeVisits.length > 0 && !selectedEncounterId) {
       setSelectedEncounterId(activeVisits[0].visit_id)
     }
-    if (shouldSendToCezih && activeCases.length > 0 && !selectedCaseId) {
+    if (cezihAutoSendOnCreate && activeCases.length > 0 && !selectedCaseId) {
       setSelectedCaseId(activeCases[0].case_id)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldSendToCezih, activeVisits.length, activeCases.length])
+  }, [cezihAutoSendOnCreate, activeVisits.length, activeCases.length])
 
-  // Auto-populate dijagnoza_mkb from selected case
+  // Auto-populate dijagnoza_mkb when the doctor selects/changes a case.
+  // Fires in both create and edit (re-link) modes - doctor can override via
+  // the visible MKB-10 input or the search popover.
   useEffect(() => {
-    if (!selectedCaseId || !shouldSendToCezih) return
+    if (!selectedCaseId || !cezihShowLinkSelectors) return
     const selectedCase = activeCases.find((c) => c.case_id === selectedCaseId)
     if (selectedCase?.icd_code) {
       setValue("dijagnoza_mkb", selectedCase.icd_code, { shouldValidate: true })
@@ -155,7 +179,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCaseId, shouldSendToCezih])
+  }, [selectedCaseId, cezihShowLinkSelectors])
 
   // Sync open prop with native <dialog>
   useEffect(() => {
@@ -193,8 +217,13 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     setAttachedFile(null)
     setDrugSearchQuery("")
     setDrugSearchOpen(false)
-    setSelectedEncounterId("")
-    setSelectedCaseId("")
+    setIcd10Open(false)
+    setIcd10Query("")
+    // In edit mode, pre-populate encounter/case from the record so the
+    // selectors show the current link. Create mode starts empty and auto-
+    // selects the first active visit/case in the effect above.
+    setSelectedEncounterId(isEdit ? (record?.cezih_encounter_id ?? "") : "")
+    setSelectedCaseId(isEdit ? (record?.cezih_case_id ?? "") : "")
     setCezihSending(false)
     setDtsQuery("")
     setDtsSearchOpen(false)
@@ -208,6 +237,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         dijagnoza_mkb: record.dijagnoza_mkb ?? undefined,
         dijagnoza_tekst: record.dijagnoza_tekst ?? undefined,
         sadrzaj: record.sadrzaj,
+        appointment_id: record.appointment_id ?? "",
       })
     } else {
       setTherapy([])
@@ -217,10 +247,11 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         dijagnoza_mkb: undefined,
         dijagnoza_tekst: undefined,
         sadrzaj: "",
+        appointment_id: "",
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, record?.id, reset])
+  }, [open, record?.id, reset, isEdit])
 
   const handleAddTherapyDrug = (drug: LijekItem) => {
     if (therapy.some((t) => t.atk === drug.atk && t.naziv === drug.naziv && t.oblik === drug.oblik && t.jacina === drug.jacina)) {
@@ -293,11 +324,20 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           dijagnoza_tekst: data.dijagnoza_tekst || null,
           sadrzaj: data.sadrzaj,
           preporucena_terapija: therapy.length > 0 ? therapy : null,
+          appointment_id: data.appointment_id || null,
         }
         if (submitOverride) {
           setOverrideSubmitting(true)
           try {
-            await submitOverride(payload)
+            // The override owns the CEZIH replace request - pass the form's
+            // current encounter/case selection so the doctor can re-link the
+            // replaced document. Empty string means "keep existing link"
+            // (backend falls back to record.cezih_encounter_id/case_id).
+            await submitOverride({
+              ...payload,
+              encounter_id: cezihShowLinkSelectors ? selectedEncounterId : undefined,
+              case_id: cezihShowLinkSelectors ? selectedCaseId : undefined,
+            })
           } finally {
             setOverrideSubmitting(false)
           }
@@ -316,6 +356,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           dijagnoza_tekst: data.dijagnoza_tekst || null,
           sadrzaj: data.sadrzaj,
           preporucena_terapija: therapy.length > 0 ? therapy : null,
+          appointment_id: data.appointment_id || null,
         }
         const created = await createMutation.mutateAsync(payload)
 
@@ -332,7 +373,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         }
 
         // Inline CEZIH send: save succeeded, now send if applicable
-        if (shouldSendToCezih && activeVisits.length > 0 && activeCases.length > 0 && created.id) {
+        if (cezihAutoSendOnCreate && activeVisits.length > 0 && activeCases.length > 0 && created.id) {
           setCezihSending(true)
           try {
             await sendENalaz.mutateAsync({
@@ -455,7 +496,67 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="dijagnoza">Dijagnoza</Label>
+            <Label htmlFor="dijagnoza_mkb">MKB-10 šifra</Label>
+            <div className="flex gap-2">
+              <Input
+                id="dijagnoza_mkb"
+                placeholder="npr. J45"
+                className="flex-1 font-mono uppercase"
+                {...register("dijagnoza_mkb")}
+              />
+              <Popover open={icd10Open} onOpenChange={setIcd10Open}>
+                <PopoverTrigger
+                  render={<Button type="button" variant="outline" size="sm" className="shrink-0" />}
+                >
+                  <Search className="mr-1.5 h-3.5 w-3.5" />
+                  Pretraži
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-1" align="end" container={dialogContainerRef.current ?? undefined}>
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50 pointer-events-none" />
+                    <input
+                      placeholder="MKB-10 šifra ili naziv..."
+                      value={icd10Query}
+                      onChange={(e) => setIcd10Query(e.target.value)}
+                      className="h-8 w-full rounded-lg border border-input/30 bg-input/30 pl-7 pr-2 text-sm outline-none focus-visible:border-ring"
+                    />
+                  </div>
+                  <div className="mt-1 max-h-64 overflow-y-auto">
+                    {icd10Query.length < 2 ? (
+                      <p className="py-4 text-center text-xs text-muted-foreground">Unesite barem 2 znaka</p>
+                    ) : icd10Loading ? (
+                      <p className="py-4 text-center text-xs text-muted-foreground">Pretraživanje...</p>
+                    ) : icd10Results?.length ? (
+                      icd10Results.map((item: CodeSystemItem) => (
+                        <button
+                          key={item.code}
+                          type="button"
+                          onClick={() => {
+                            setValue("dijagnoza_mkb", item.code, { shouldValidate: true })
+                            setValue("dijagnoza_tekst", item.display)
+                            setIcd10Open(false)
+                            setIcd10Query("")
+                          }}
+                          className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted transition-colors cursor-pointer"
+                        >
+                          <Plus className="h-3 w-3 shrink-0 mt-0.5" />
+                          <div className="flex-1 text-left min-w-0">
+                            <span className="font-mono text-xs text-muted-foreground">{item.code}</span>
+                            <span className="ml-1.5">{item.display}</span>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="py-4 text-center text-xs text-muted-foreground">Nema rezultata</p>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="dijagnoza">Opis dijagnoze</Label>
             <Textarea
               id="dijagnoza"
               placeholder="Opis dijagnoze"
@@ -464,6 +565,28 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="appointment_id">Termin</Label>
+            <Controller
+              name="appointment_id"
+              control={control}
+              render={({ field }) => (
+                <select
+                  id="appointment_id"
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm appearance-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                >
+                  <option value="">- Bez termina -</option>
+                  {patientAppointments.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {formatDateTimeHR(a.datum_vrijeme)} · {APPOINTMENT_VRSTA[a.vrsta] ?? a.vrsta}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="sadrzaj">Anamneza *</Label>
@@ -670,7 +793,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             )}
           </div>
 
-          {shouldSendToCezih && (
+          {cezihShowLinkSelectors && (
             <div className="space-y-3 rounded-lg border bg-sky-50/50 dark:bg-sky-950/20 p-3">
               {activeVisits.length === 0 || activeCases.length === 0 ? (
                 <p className="text-xs text-amber-600">
@@ -679,7 +802,9 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
               ) : (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">
-                    Odaberite posjetu i slučaj za CEZIH slanje.
+                    {isEdit
+                      ? "Posjeta i slučaj za zamjenu na CEZIH. Promjena re-veže zamijenjeni dokument."
+                      : "Odaberite posjetu i slučaj za CEZIH slanje."}
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -715,7 +840,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
                       </select>
                     </div>
                   </div>
-                  {(!selectedEncounterId || !selectedCaseId) && (
+                  {!isEdit && (!selectedEncounterId || !selectedCaseId) && (
                     <p className="text-xs text-amber-600">
                       {!selectedEncounterId && !selectedCaseId
                         ? "Potrebno je odabrati posjetu i slučaj"
@@ -770,14 +895,14 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
             <Button type="button" variant="outline" onClick={handleClose}>
               Odustani
             </Button>
-            <Button type="submit" disabled={isSubmitting || (shouldSendToCezih && (activeVisits.length === 0 || activeCases.length === 0 || !selectedEncounterId || !selectedCaseId))}>
+            <Button type="submit" disabled={isSubmitting || (cezihAutoSendOnCreate && (activeVisits.length === 0 || activeCases.length === 0 || !selectedEncounterId || !selectedCaseId))}>
               {isSubmitting
                 ? cezihSending
                   ? "Slanje na CEZIH..."
                   : "Spremanje..."
-                : shouldSendToCezih && (activeVisits.length === 0 || activeCases.length === 0)
+                : cezihAutoSendOnCreate && (activeVisits.length === 0 || activeCases.length === 0)
                   ? "Nema aktivnih posjeta/slučajeva"
-                  : shouldSendToCezih
+                  : cezihAutoSendOnCreate
                     ? "Kreiraj i pošalji na CEZIH"
                     : submitLabel
                       ? submitLabel

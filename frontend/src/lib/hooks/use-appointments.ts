@@ -19,17 +19,19 @@ export function useAppointments(
   statusFilter?: string,
   skip = 0,
   limit = 50,
+  patientId?: string,
 ) {
   const params = new URLSearchParams()
   if (dateFrom) params.set("date_from", dateFrom)
   if (dateTo) params.set("date_to", dateTo)
   if (doktorId) params.set("doktor_id", doktorId)
+  if (patientId) params.set("patient_id", patientId)
   if (statusFilter) params.set("status", statusFilter)
   params.set("skip", String(skip))
   params.set("limit", String(limit))
 
   return useQuery({
-    queryKey: ["appointments", dateFrom, dateTo, doktorId, statusFilter, skip, limit],
+    queryKey: ["appointments", dateFrom, dateTo, doktorId, statusFilter, skip, limit, patientId],
     queryFn: () =>
       api.get<PaginatedResponse<Appointment>>(`/appointments?${params.toString()}`),
   })

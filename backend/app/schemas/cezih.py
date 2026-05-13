@@ -471,6 +471,7 @@ class ReplaceDocumentWithEditRequest(BaseModel):
     sadrzaj: str | None = None
     sensitivity: str | None = None
     preporucena_terapija: list[dict] | None = None
+    appointment_id: UUID | None = None
 
 
 class DocumentActionResponse(BaseModel):

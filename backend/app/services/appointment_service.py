@@ -56,6 +56,8 @@ async def list_appointments(
     status_filter: str | None = None,
     skip: int = 0,
     limit: int = 50,
+    *,
+    patient_id: uuid.UUID | None = None,
 ) -> tuple[list[dict], int]:
     conditions = [Appointment.tenant_id == tenant_id]
 
@@ -65,6 +67,8 @@ async def list_appointments(
         conditions.append(Appointment.datum_vrijeme < datetime.combine(date_to + timedelta(days=1), time.min))
     if doktor_id:
         conditions.append(Appointment.doktor_id == doktor_id)
+    if patient_id:
+        conditions.append(Appointment.patient_id == patient_id)
     if status_filter:
         conditions.append(Appointment.status == status_filter)
 

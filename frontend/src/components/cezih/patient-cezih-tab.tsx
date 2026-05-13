@@ -467,17 +467,22 @@ export function PatientCezihTab({
         onOpenChange={(open) => !open && setEditTarget(null)}
         patientId={patientId}
         record={editRecord ?? null}
+        hasCezihIdentifier={hasCezihIdentifier}
         submitLabel="Spremi i zamijeni na CEZIH"
         submitOverride={async (payload) => {
           const referenceId = editTarget?.referenceId
           const recordId = editTarget?.recordId
           if (!referenceId || !recordId) return
+          // Prefer the form's current visit/case selection (doctor may have
+          // re-linked) and fall back to the record's existing IDs.
+          const encounterId = payload.encounter_id ?? editRecord?.cezih_encounter_id ?? ""
+          const caseId = payload.case_id ?? editRecord?.cezih_case_id ?? ""
           await replaceWithEdit.mutateAsync({
             referenceId,
             record_id: recordId,
             patient_id: patientId,
-            encounter_id: editRecord?.cezih_encounter_id ?? "",
-            case_id: editRecord?.cezih_case_id ?? "",
+            encounter_id: encounterId,
+            case_id: caseId,
             datum: payload.datum ?? null,
             tip: payload.tip ?? null,
             dijagnoza_mkb: payload.dijagnoza_mkb ?? null,
@@ -485,6 +490,7 @@ export function PatientCezihTab({
             sadrzaj: payload.sadrzaj ?? null,
             sensitivity: payload.sensitivity ?? null,
             preporucena_terapija: payload.preporucena_terapija ?? null,
+            appointment_id: payload.appointment_id ?? null,
           })
           setEditTarget(null)
           toast.success("e-Nalaz zamijenjen na CEZIH")
