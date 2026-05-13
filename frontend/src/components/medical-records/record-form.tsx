@@ -22,11 +22,12 @@ import {
   useUpdateMedicalRecord,
 } from "@/lib/hooks/use-medical-records"
 import { useUploadDocument } from "@/lib/hooks/use-documents"
-import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases } from "@/lib/hooks/use-cezih"
-import { formatDateHR } from "@/lib/utils"
+import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch } from "@/lib/hooks/use-cezih"
+import { useResolveDtsProcedure, useCreatePerformed, usePerformedProcedures } from "@/lib/hooks/use-procedures"
+import { formatDateHR, formatCurrencyEUR } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
 import { CEZIH_DOC_TYPE_BY_TIP, getAllowedDocTypes } from "@/lib/constants"
-import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem } from "@/lib/types"
+import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem, CodeSystemItem } from "@/lib/types"
 
 const recordSchema = z.object({
   datum: z.string().min(1, "Datum je obavezan"),
@@ -45,25 +46,23 @@ interface RecordFormProps {
   record?: MedicalRecord | null
   onSaved?: (record: MedicalRecord) => void | Promise<void>
   submitLabel?: string
-  /** When provided, the form skips its own PATCH and delegates the edited
-   *  payload to the caller. Used by the CEZIH edit-and-replace flow to
-   *  ensure the local record is only mutated after CEZIH returns 2xx. */
   submitOverride?: (payload: MedicalRecordUpdate) => Promise<void>
-  /** Override auto-detection of create-vs-edit. When "create" is passed with
-   *  a `record`, the form prefills from that record but creates a new one on
-   *  submit — used by the CEZIH "recreate locked nalaz" flow. */
   mode?: "create" | "edit"
-  /** Optional title override. Defaults to "Novi medicinski zapis" / "Uredi zapis". */
   title?: string
-  /** Optional subtitle override. */
   subtitle?: string
-  /** Whether the patient has a CEZIH identifier. When true AND record type is
-   *  CEZIH-eligible in create mode, automatically sends to CEZIH. */
   hasCezihIdentifier?: boolean
 }
 
 const ACCEPTED_TYPES = ".jpeg,.jpg,.png,.pdf"
 const MAX_SIZE_MB = 10
+
+interface PendingProcedure {
+  procedure_id: string
+  dts_code: string
+  dts_display: string
+  cijena_eur: string
+  napomena: string
+}
 
 export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel, submitOverride, mode, title, subtitle, hasCezihIdentifier }: RecordFormProps) {
   const isEdit = mode === "edit" || (mode === undefined && !!record)
@@ -101,10 +100,23 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const watchedTip = watch("tip")
   const isEligibleType = isCezihEligible.has(watchedTip ?? "")
 
+  // Inline postupci (DTS procedures)
+  const createPerformed = useCreatePerformed()
+  const resolveDts = useResolveDtsProcedure()
+  const [dtsQuery, setDtsQuery] = useState("")
+  const [dtsSearchOpen, setDtsSearchOpen] = useState(false)
+  const { data: dtsResults, isLoading: dtsLoading } = useDtsSearch(dtsQuery)
+  const [pendingProcedures, setPendingProcedures] = useState<PendingProcedure[]>([])
+
+  // Edit mode: load existing performed procedures for this record
+  const { data: existingPerformed } = usePerformedProcedures(
+    undefined, undefined, undefined, undefined, record?.id, 0, 100,
+  )
+  const [removedExistingIds, setRemovedExistingIds] = useState<Set<string>>(new Set())
+
+  const existingItems = (existingPerformed?.items ?? []).filter((p) => !removedExistingIds.has(p.id))
+
   // Filter the tip picker by what the clinic's šifra djelatnosti can emit.
-  // Production: only show record types whose CEZIH doc code is allowed.
-  // Exam tenants: show everything (covers full TC matrix on one account).
-  // Non-CEZIH record types stay visible regardless — those don't hit CEZIH.
   const { user, tenant } = useAuth()
   const djelatnostCode = user?.djelatnost_code || tenant?.djelatnost_code || null
   const isExamTenant = !!tenant?.is_exam_tenant
@@ -185,6 +197,10 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     setSelectedEncounterId("")
     setSelectedCaseId("")
     setCezihSending(false)
+    setDtsQuery("")
+    setDtsSearchOpen(false)
+    setPendingProcedures([])
+    setRemovedExistingIds(new Set())
     if (record) {
       setTherapy(record.preporucena_terapija ?? [])
       reset({
@@ -204,9 +220,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         sadrzaj: "",
       })
     }
-    // Depending on `record` (object) wipes the user's picker selection on any
-    // parent refetch. Keying on `record?.id` only re-initializes when the
-    // target record actually changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, record?.id, reset])
 
@@ -231,6 +244,49 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     setTherapy((prev) => prev.map((d, i) => (i === index ? { ...d, [field]: value } : d)))
   }
 
+  // DTS procedure handlers
+  async function handleAddDtsProcedure(item: CodeSystemItem) {
+    try {
+      const proc = await resolveDts.mutateAsync(item.code)
+      setPendingProcedures((prev) => [
+        ...prev,
+        {
+          procedure_id: proc.id,
+          dts_code: item.code,
+          dts_display: item.display,
+          cijena_eur: proc.cijena_cents ? String(proc.cijena_cents / 100) : "",
+          napomena: "",
+        },
+      ])
+      setDtsSearchOpen(false)
+      setDtsQuery("")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Greška pri dohvaćanju postupka")
+    }
+  }
+
+  function handleRemovePendingProcedure(index: number) {
+    setPendingProcedures((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function handleUpdatePendingProcedure(index: number, field: keyof PendingProcedure, value: string) {
+    setPendingProcedures((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
+  }
+
+  async function saveProcedures(recordId: string) {
+    for (const proc of pendingProcedures) {
+      const cijenaCents = proc.cijena_eur ? Math.round(parseFloat(proc.cijena_eur) * 100) : undefined
+      await createPerformed.mutateAsync({
+        patient_id: patientId,
+        procedure_id: proc.procedure_id,
+        medical_record_id: recordId,
+        datum: new Date().toISOString().split("T")[0],
+        cijena_cents: cijenaCents,
+        napomena: proc.napomena || undefined,
+      })
+    }
+  }
+
   async function onSubmit(data: RecordFormData) {
     try {
       if (isEdit && record) {
@@ -243,8 +299,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           preporucena_terapija: therapy.length > 0 ? therapy : null,
         }
         if (submitOverride) {
-          // Caller owns the write (e.g. CEZIH atomic edit-and-replace). Dialog
-          // stays open on failure so the doctor can retry without losing input.
           setOverrideSubmitting(true)
           try {
             await submitOverride(payload)
@@ -253,6 +307,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           }
         } else {
           const updated = await updateMutation.mutateAsync({ id: record.id, data: payload })
+          await saveProcedures(record.id)
           toast.success("Zapis ažuriran")
           onSaved?.(updated)
         }
@@ -267,6 +322,11 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           preporucena_terapija: therapy.length > 0 ? therapy : null,
         }
         const created = await createMutation.mutateAsync(payload)
+
+        if (pendingProcedures.length > 0) {
+          await saveProcedures(created.id)
+        }
+
         if (attachedFile) {
           try {
             await uploadDoc.mutateAsync({ patientId, file: attachedFile, kategorija: "nalaz" })
@@ -305,9 +365,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
       onOpenChange(false)
       dialogRef.current?.close()
     } catch (err) {
-      // submitOverride owns its own error toast (e.g. structured CEZIH error).
-      // For the default path, surface a generic toast so the doctor sees the
-      // failure reason.
       if (!submitOverride) {
         toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
       }
@@ -331,6 +388,8 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     onOpenChange(false)
     dialogRef.current?.close()
   }
+
+  const hasProcedures = existingItems.length > 0 || pendingProcedures.length > 0
 
   return (
     <dialog
@@ -383,8 +442,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
                       .filter((t) => t.is_cezih_eligible)
                       .filter((t) => {
                         const docCode = CEZIH_DOC_TYPE_BY_TIP[t.slug]
-                        // Non-CEZIH record types pass through; CEZIH types are
-                        // gated by the clinic's allowed doc types.
                         return !docCode || allowedDocTypes.has(docCode)
                       })
                       .map((t) => (
@@ -506,6 +563,122 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
                         placeholder="Napomena"
                         value={drug.napomena}
                         onChange={(e) => handleUpdateTherapyDrug(index, "napomena", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Primijenjeni postupci (DTS) */}
+          <div className="space-y-2">
+            <Label>Primijenjeni postupci</Label>
+            <p className="text-xs text-muted-foreground">
+              DTS postupci iz HZZO šifrarnika - bit će uključeni u e-Nalaz.
+            </p>
+            <Popover open={dtsSearchOpen} onOpenChange={setDtsSearchOpen}>
+              <PopoverTrigger
+                render={<Button variant="outline" size="sm" className="w-full justify-start text-muted-foreground" />}
+              >
+                <Search className="mr-2 h-4 w-4" />
+                Pretraži DTS postupke...
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-1" align="start" container={dialogContainerRef.current ?? undefined}>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-50 pointer-events-none" />
+                  <input
+                    placeholder="DTS šifra ili naziv (npr. EEG, pregled)..."
+                    value={dtsQuery}
+                    onChange={(e) => setDtsQuery(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-input/30 bg-input/30 pl-7 pr-2 text-sm outline-none focus-visible:border-ring"
+                  />
+                </div>
+                <div className="mt-1 max-h-64 overflow-y-auto">
+                  {dtsQuery.length < 2 ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">Unesite barem 2 znaka</p>
+                  ) : dtsLoading ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">Pretraživanje...</p>
+                  ) : dtsResults?.length ? (
+                    dtsResults.map((item) => (
+                      <button
+                        key={item.code}
+                        type="button"
+                        onClick={() => handleAddDtsProcedure(item)}
+                        className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-muted transition-colors cursor-pointer"
+                      >
+                        <Plus className="h-3 w-3 shrink-0 mt-0.5" />
+                        <div className="flex-1 text-left min-w-0">
+                          <span className="font-mono text-xs text-muted-foreground">{item.code}</span>
+                          <span className="ml-1.5">{item.display}</span>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="py-4 text-center text-xs text-muted-foreground">Nema rezultata</p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {hasProcedures && (
+              <div className="space-y-2 pt-1">
+                {/* Existing procedures (edit mode) */}
+                {existingItems.map((p) => (
+                  <div key={p.id} className="rounded-lg border p-2 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {p.dts_code ?? p.procedure_sifra}
+                        </span>
+                        <span className="ml-1.5 text-sm font-medium">{p.procedure_naziv}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setRemovedExistingIds((prev) => new Set(prev).add(p.id))}
+                        className="h-6 w-6 p-0 shrink-0"
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                    {p.cijena_cents > 0 && (
+                      <span className="text-xs text-muted-foreground">{formatCurrencyEUR(p.cijena_cents / 100)}</span>
+                    )}
+                  </div>
+                ))}
+                {/* Newly added procedures */}
+                {pendingProcedures.map((proc, index) => (
+                  <div key={`pending-${index}`} className="rounded-lg border border-dashed p-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <span className="font-mono text-xs text-muted-foreground">{proc.dts_code}</span>
+                        <span className="ml-1.5 text-sm font-medium">{proc.dts_display}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemovePendingProcedure(index)}
+                        className="h-6 w-6 p-0 shrink-0"
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="Cijena (EUR)"
+                        value={proc.cijena_eur}
+                        onChange={(e) => handleUpdatePendingProcedure(index, "cijena_eur", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                      <Input
+                        placeholder="Napomena"
+                        value={proc.napomena}
+                        onChange={(e) => handleUpdatePendingProcedure(index, "napomena", e.target.value)}
                         className="h-7 text-xs"
                       />
                     </div>
