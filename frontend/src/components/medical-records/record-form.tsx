@@ -132,7 +132,14 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     patientId,
     { medicalRecordId: isEdit && record ? record.id : null },
   )
-  const selectedDocs = (allDocs ?? []).filter((d) => selectedPrilogIds.has(d.id))
+  // Only show docs that are actually attachable here: loose docs (no record
+  // assigned) plus docs already attached to THIS record in edit mode. Docs
+  // attached to other records are noise in this picker.
+  const visibleDocs = (allDocs ?? []).filter((doc) => {
+    if (!doc.medical_record_id) return true
+    return isEdit && !!record && doc.medical_record_id === record.id
+  })
+  const selectedDocs = visibleDocs.filter((d) => selectedPrilogIds.has(d.id))
   const priloziTotalBytes = selectedDocs.reduce((sum, d) => sum + d.file_size, 0)
   const priloziOverCap = priloziTotalBytes > PRILOZI_SIZE_CAP_BYTES
   const priloziOverWarn = priloziTotalBytes > PRILOZI_SIZE_WARN_BYTES && !priloziOverCap
@@ -958,27 +965,18 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
               Datoteke uz nalaz - bit će dostupne u CEZIH eKarton sekciji "Priloženi dokumenti".
             </p>
 
-            {(allDocs ?? []).length > 0 && (
+            {visibleDocs.length > 0 && (
               <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-lg border p-1">
-                {(allDocs ?? []).map((doc) => {
+                {visibleDocs.map((doc) => {
                   const isSelected = selectedPrilogIds.has(doc.id)
-                  const attachedElsewhere =
-                    doc.medical_record_id != null &&
-                    (!record || doc.medical_record_id !== record.id)
                   return (
                     <label
                       key={doc.id}
-                      title={attachedElsewhere ? "Već priložen drugom nalazu" : undefined}
-                      className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-xs ${
-                        attachedElsewhere
-                          ? "cursor-not-allowed opacity-50"
-                          : "cursor-pointer hover:bg-muted"
-                      }`}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
                     >
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        disabled={attachedElsewhere}
                         onChange={() => togglePrilog(doc.id)}
                         className="shrink-0"
                       />
