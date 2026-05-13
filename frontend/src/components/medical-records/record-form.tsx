@@ -24,6 +24,8 @@ import {
 import { useUploadDocument } from "@/lib/hooks/use-documents"
 import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases } from "@/lib/hooks/use-cezih"
 import { formatDateHR } from "@/lib/utils"
+import { useAuth } from "@/lib/auth"
+import { CEZIH_DOC_TYPE_BY_TIP, getAllowedDocTypes } from "@/lib/constants"
 import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem } from "@/lib/types"
 
 const recordSchema = z.object({
@@ -98,6 +100,15 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const { isCezihEligible } = useRecordTypeMaps()
   const watchedTip = watch("tip")
   const isEligibleType = isCezihEligible.has(watchedTip ?? "")
+
+  // Filter the tip picker by what the clinic's šifra djelatnosti can emit.
+  // Production: only show record types whose CEZIH doc code is allowed.
+  // Exam tenants: show everything (covers full TC matrix on one account).
+  // Non-CEZIH record types stay visible regardless — those don't hit CEZIH.
+  const { user, tenant } = useAuth()
+  const djelatnostCode = user?.djelatnost_code || tenant?.djelatnost_code || null
+  const isExamTenant = !!tenant?.is_exam_tenant
+  const allowedDocTypes = new Set<string>(getAllowedDocTypes(djelatnostCode, isExamTenant))
   const shouldSendToCezih = !isEdit && !!hasCezihIdentifier && isEligibleType
   const { data: visitsData } = useListVisits(shouldSendToCezih ? patientId : "")
   const { data: casesData } = useRetrieveCases(shouldSendToCezih ? patientId : "")
@@ -368,11 +379,19 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
                     className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm appearance-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
                   >
                     <option value="" disabled>Odaberite tip</option>
-                    {(recordTypes ?? []).filter((t) => t.is_cezih_eligible).map((t) => (
-                      <option key={t.slug} value={t.slug}>
-                        {t.label}
-                      </option>
-                    ))}
+                    {(recordTypes ?? [])
+                      .filter((t) => t.is_cezih_eligible)
+                      .filter((t) => {
+                        const docCode = CEZIH_DOC_TYPE_BY_TIP[t.slug]
+                        // Non-CEZIH record types pass through; CEZIH types are
+                        // gated by the clinic's allowed doc types.
+                        return !docCode || allowedDocTypes.has(docCode)
+                      })
+                      .map((t) => (
+                        <option key={t.slug} value={t.slug}>
+                          {t.label}
+                        </option>
+                      ))}
                   </select>
                 )}
               />

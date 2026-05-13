@@ -180,6 +180,33 @@ export function checkDocTypeDjelatnost(
   return null;
 }
 
+// Returns the doc types the clinic's djelatnost allows. Exam tenants get all
+// three so HZZO can demo every doc type on one account; production tenants get
+// only the types their šifra djelatnosti permits. Used by send-nalaz / record
+// type pickers to hide ineligible options before submit.
+export function getAllowedDocTypes(
+  djelatnostCode: string | null | undefined,
+  isExamTenant: boolean,
+): ReadonlyArray<"011" | "012" | "013"> {
+  if (isExamTenant) return ["011", "012", "013"];
+  if (!djelatnostCode) return [];
+  return (["011", "012", "013"] as const).filter(
+    (code) => checkDocTypeDjelatnost(code, djelatnostCode) === null,
+  );
+}
+
+// Returns the record `tip` slugs the clinic's djelatnost can emit. Filters
+// CEZIH_DOC_TYPE_BY_TIP by getAllowedDocTypes. Same exam-bypass semantics.
+export function getAllowedRecordTipsForCezih(
+  djelatnostCode: string | null | undefined,
+  isExamTenant: boolean,
+): ReadonlyArray<string> {
+  const allowedDocTypes = new Set<string>(getAllowedDocTypes(djelatnostCode, isExamTenant));
+  return Object.entries(CEZIH_DOC_TYPE_BY_TIP)
+    .filter(([, docType]) => allowedDocTypes.has(docType))
+    .map(([tip]) => tip);
+}
+
 export const RECORD_TIP_COLORS: Record<string, string> = {
   ambulantno_izvjesce: "bg-emerald-100 text-emerald-800",
   specijalisticki_nalaz: "bg-indigo-100 text-indigo-800",

@@ -19,6 +19,7 @@ export interface Tenant {
   is_active: boolean;
   cezih_status: string;
   has_hzzo_contract: boolean;
+  is_exam_tenant: boolean;
 }
 
 export type CezihSigningMethod = "smartcard" | "extsigner";

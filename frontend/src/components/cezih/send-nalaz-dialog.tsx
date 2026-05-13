@@ -27,7 +27,11 @@ import {
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
 import { useSendENalaz, useListVisits, useRetrieveCases } from "@/lib/hooks/use-cezih"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
-import { CEZIH_DOC_TYPE_BY_TIP, checkDocTypeDjelatnost } from "@/lib/constants"
+import {
+  CEZIH_DOC_TYPE_BY_TIP,
+  checkDocTypeDjelatnost,
+  getAllowedDocTypes,
+} from "@/lib/constants"
 import { useAuth } from "@/lib/auth"
 import { formatDateHR } from "@/lib/utils"
 
@@ -54,6 +58,11 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   // Pre-flight check uses current user's djelatnost (falls back to clinic default,
   // mirroring backend _resolve_djelatnost). If neither is set, BE returns 422 first.
   const djelatnostCode = user?.djelatnost_code || tenant?.djelatnost_code || null
+  const isExamTenant = !!tenant?.is_exam_tenant
+  // Doc types this tenant can emit. Exam tenants get all three so HZZO can
+  // demo every type on one account; production tenants only see what their
+  // šifra djelatnosti permits.
+  const allowedDocTypes = new Set<string>(getAllowedDocTypes(djelatnostCode, isExamTenant))
 
   // Load patient visits and cases for linking
   // API returns list of dicts: {visit_id, status, period_start, visit_type_display, ...}
@@ -86,12 +95,16 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   }, [open, activeVisits.length, activeCases.length])
 
   const records = data?.items ?? []
-  const eligibleRecords = records.filter(
-    (r) =>
-      isCezihEligible.has(r.tip) &&
-      !r.cezih_sent &&
-      (!onlyRecordId || r.id === onlyRecordId),
-  )
+  const eligibleRecords = records.filter((r) => {
+    if (!isCezihEligible.has(r.tip)) return false
+    if (r.cezih_sent) return false
+    if (onlyRecordId && r.id !== onlyRecordId) return false
+    // Production: hide records whose doc type the clinic's djelatnost doesn't
+    // permit. Exam tenants bypass this so the full TC matrix can be demoed.
+    const docCode = CEZIH_DOC_TYPE_BY_TIP[r.tip]
+    if (docCode && !allowedDocTypes.has(docCode)) return false
+    return true
+  })
 
   // Pre-select all eligible records when dialog opens or records change
   useEffect(() => {
