@@ -43,6 +43,41 @@ async def _lookup_local_visit_id(
         return None
 
 
+async def _list_active_cezih_docs_for_visit(
+    db: AsyncSession,
+    tenant_id: UUID,
+    cezih_visit_id: str,
+) -> list[dict]:
+    """Active (non-storniran) CEZIH-mirrored nalazi linked to this Encounter.
+
+    CEZIH refuses Encounter cancel (event 1.4) with ERR_ENCOUNTER_2001 while
+    any active DocumentReference still references it. These must be storniran
+    via ITI-65 replace first.
+    """
+    from app.models.medical_record import MedicalRecord
+
+    res = await db.execute(
+        select(MedicalRecord)
+        .where(
+            MedicalRecord.tenant_id == tenant_id,
+            MedicalRecord.cezih_encounter_id == cezih_visit_id,
+            MedicalRecord.cezih_reference_id.is_not(None),
+            MedicalRecord.cezih_storno.is_(False),
+        )
+        .order_by(MedicalRecord.created_at.asc())
+    )
+    rows = res.scalars().all()
+    return [
+        {
+            "reference_id": r.cezih_reference_id,
+            "tip": r.tip,
+            "dijagnoza_mkb": r.dijagnoza_mkb,
+            "datum": r.datum.isoformat() if r.datum else None,
+        }
+        for r in rows
+    ]
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -683,10 +718,22 @@ async def dispatch_visit_action(
     tenant_id: UUID,
     http_client=None,
     practitioner_id: str | None = None,
+    practitioner_name: str = "",
     org_code: str | None = None,
+    org_name: str = "",
     source_oid: str | None = None,
+    confirm_cascade_docs: bool = False,
 ) -> dict:
-    """Perform an action on a visit (TC14): close, storno, reopen."""
+    """Perform an action on a visit (TC14): close, storno, reopen.
+
+    For storno: CEZIH rejects Encounter cancel (ERR_ENCOUNTER_2001) while any
+    active DocumentReference still references the Encounter. We preflight the
+    local mirror; if any attached nalaz is still active we either:
+    - raise 409 with the document list (confirm_cascade_docs=False), so the UI
+      can ask the doctor to authorize the cascade explicitly, or
+    - storno each attached nalaz via ITI-65 replace, then send the visit storno
+      (confirm_cascade_docs=True).
+    """
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     from app.models.patient import Patient
@@ -700,6 +747,36 @@ async def dispatch_visit_action(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
     local_visit_id = await _lookup_local_visit_id(db, tenant_id, visit_id)
+
+    if action == "storno":
+        blocking_docs = await _list_active_cezih_docs_for_visit(db, tenant_id, visit_id)
+        if blocking_docs:
+            if not confirm_cascade_docs:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "cascade_required": True,
+                        "message": (
+                            f"Posjet ima {len(blocking_docs)} aktivnih nalaza na CEZIH-u. "
+                            "Da bi se posjet stornirao, prvo se moraju stornirati svi priloženi nalazi."
+                        ),
+                        "documents": blocking_docs,
+                    },
+                )
+            from app.services.cezih.dispatchers.documents import dispatch_cancel_document
+
+            for doc in blocking_docs:
+                await dispatch_cancel_document(
+                    doc["reference_id"],
+                    db=db,
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    http_client=http_client,
+                    org_code=org_code or "",
+                    practitioner_id=practitioner_id,
+                    practitioner_name=practitioner_name or "",
+                    org_name=org_name or "",
+                )
 
     try:
         from app.services.cezih.client import CezihFhirClient

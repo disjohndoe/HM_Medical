@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, CezihApiError, isSigningError } from "@/lib/api-client"
+import { api, CascadeRequiredError, CezihApiError, isSigningError } from "@/lib/api-client"
 import { clearError, setError } from "@/lib/hooks/use-cezih-error-state"
 import type {
   CaseActionResponse,
@@ -581,8 +581,12 @@ export function useUpdateVisit() {
 export function useVisitAction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ visitId, action, patientId, periodStart }: { visitId: string; action: string; patientId: string; periodStart?: string | null }) =>
-      api.post<VisitResponse>(`/cezih/visits/${visitId}/action?patient_id=${encodeURIComponent(patientId)}`, { action, period_start: periodStart || undefined }),
+    mutationFn: ({ visitId, action, patientId, periodStart, confirmCascadeDocs }: { visitId: string; action: string; patientId: string; periodStart?: string | null; confirmCascadeDocs?: boolean }) =>
+      api.post<VisitResponse>(`/cezih/visits/${visitId}/action?patient_id=${encodeURIComponent(patientId)}`, {
+        action,
+        period_start: periodStart || undefined,
+        confirm_cascade_docs: confirmCascadeDocs || false,
+      }),
     onMutate: async (vars) => {
       // Cancel inflight refetches so the eventual onSuccess invalidation wins,
       // but DO NOT flip status optimistically - we wait for CEZIH to confirm
@@ -605,8 +609,17 @@ export function useVisitAction() {
         })
       }
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
+      qc.invalidateQueries({ queryKey: ["cezih", "visits", vars.patientId] })
+      qc.invalidateQueries({ queryKey: ["medical-records"] })
     },
     onError: (err, vars, ctx) => {
+      // Cascade-required is not a CEZIH error — the caller opens a confirmation
+      // dialog and re-fires the mutation with confirmCascadeDocs=true. Don't
+      // toast or persist it as a per-row error.
+      if (err instanceof CascadeRequiredError) {
+        if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
+        return
+      }
       showCezihErrorToast(err)
       setError(vars.visitId, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
       if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)

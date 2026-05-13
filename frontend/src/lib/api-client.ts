@@ -70,6 +70,22 @@ export class CezihApiError extends Error {
   }
 }
 
+export interface CascadeDoc {
+  reference_id: string;
+  tip: string | null;
+  dijagnoza_mkb: string | null;
+  datum: string | null;
+}
+
+export class CascadeRequiredError extends Error {
+  documents: CascadeDoc[];
+  constructor(message: string, documents: CascadeDoc[]) {
+    super(message);
+    this.name = "CascadeRequiredError";
+    this.documents = documents;
+  }
+}
+
 function extractErrorMessage(detail: unknown): string {
   // Map backend validation errors to user-friendly messages
   // Never expose internal error details, schema info, or paths
@@ -102,8 +118,12 @@ function throwApiError(status: number, errorBody: { detail?: unknown } | null): 
     throw new Error(`API error: ${status}`);
   }
   const detail = errorBody.detail;
+  if (typeof detail === "object" && detail !== null && "cascade_required" in detail) {
+    const d = detail as unknown as { message: string; documents: CascadeDoc[] };
+    throw new CascadeRequiredError(d.message, d.documents || []);
+  }
   if (typeof detail === "object" && detail !== null && "cezih_error" in detail) {
-    const d = detail as { message: string; cezih_error: { code: string; display: string; diagnostics: string } };
+    const d = detail as unknown as { message: string; cezih_error: { code: string; display: string; diagnostics: string } };
     throw new CezihApiError(d.message, d.cezih_error);
   }
   throw new Error(extractErrorMessage(detail));

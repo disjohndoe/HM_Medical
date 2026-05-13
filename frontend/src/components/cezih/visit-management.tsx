@@ -1,9 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Plus, Loader2, Building2, ExternalLink, Pencil, ChevronDown } from "lucide-react"
+import { Plus, Loader2, Building2, ExternalLink, Pencil, ChevronDown, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
+import { CascadeRequiredError, type CascadeDoc } from "@/lib/api-client"
 
 import { useAuth } from "@/lib/auth"
 
@@ -138,6 +139,15 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   const [editPractitionerId, setEditPractitionerId] = useState("")
   const [editPeriodStart, setEditPeriodStart] = useState<string | undefined>()
 
+  // Storno cascade confirmation — when backend returns 409 cascade_required,
+  // we ask the doctor to authorize pre-storno of every attached nalaz.
+  const [cascadeDialog, setCascadeDialog] = useState<{
+    visitId: string
+    periodStart?: string | null
+    message: string
+    docs: CascadeDoc[]
+  } | null>(null)
+
   const visits = visitsData?.visits ?? []
   const myOrgCode = tenant?.sifra_ustanove || ""
   const { data: casesData } = useRetrieveCases(patientId)
@@ -228,21 +238,37 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     })
   }
 
-  const handleAction = (visitId: string, action: string) => {
+  const handleAction = (visitId: string, action: string, confirmCascadeDocs = false) => {
     if (isOptimisticId(visitId)) {
       toast.info("Pričekajte dovršetak kreiranja posjete...")
       return
     }
     const visit = visits.find((v) => v.visit_id === visitId)
     visitAction.mutate(
-      { visitId, action, patientId, periodStart: visit?.period_start },
+      { visitId, action, patientId, periodStart: visit?.period_start, confirmCascadeDocs },
       {
         onSuccess: () => {
           const label = VISIT_ACTIONS.find((a) => a.value === action)?.label || action
           toast.success(`${label}: ${visitId}`)
+          setCascadeDialog(null)
+        },
+        onError: (err) => {
+          if (err instanceof CascadeRequiredError) {
+            setCascadeDialog({
+              visitId,
+              periodStart: visit?.period_start,
+              message: err.message,
+              docs: err.documents,
+            })
+          }
         },
       },
     )
+  }
+
+  const confirmCascadeStorno = () => {
+    if (!cascadeDialog) return
+    handleAction(cascadeDialog.visitId, "storno", true)
   }
 
   const handleEdit = (visitId: string) => {
@@ -606,6 +632,57 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
           </div>
         )}
       </CardContent>
+
+      <Dialog open={!!cascadeDialog} onOpenChange={(open) => { if (!open && !visitAction.isPending) setCascadeDialog(null) }}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              Storno posjete — potrebno potvrditi
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>{cascadeDialog?.message}</p>
+            <div className="rounded-md border bg-muted/40 p-3 space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Nalazi koji će biti stornirani:
+              </p>
+              <ul className="space-y-1">
+                {cascadeDialog?.docs.map((d) => (
+                  <li key={d.reference_id} className="text-sm flex flex-wrap gap-x-2">
+                    <span className="font-mono text-xs text-muted-foreground">Ref {d.reference_id}</span>
+                    {d.tip && <span>— {d.tip}</span>}
+                    {d.dijagnoza_mkb && <span className="text-muted-foreground">({d.dijagnoza_mkb})</span>}
+                    {d.datum && <span className="text-muted-foreground">— {d.datum}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Svaki nalaz traži zasebno potpisivanje. Radnja se ne može poništiti.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCascadeDialog(null)}
+              disabled={visitAction.isPending}
+            >
+              Odustani
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={confirmCascadeStorno}
+              disabled={visitAction.isPending}
+            >
+              {visitAction.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+              Storniraj sve i posjet
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editVisitId} onOpenChange={(open) => { if (!open) cancelEdit() }}>
         <DialogContent className="sm:max-w-[640px]">

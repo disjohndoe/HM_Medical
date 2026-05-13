@@ -1138,7 +1138,8 @@ async def visit_action(
     db: AsyncSession = Depends(get_db),
 ):
     await check_cezih_access(db, current_user.tenant_id)
-    org_code, source_oid, _ = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
     return await cezih.dispatch_visit_action(
         visit_id,
         data.action,
@@ -1149,8 +1150,11 @@ async def visit_action(
         tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
         practitioner_id=current_user.practitioner_id or "",
+        practitioner_name=practitioner_name,
         org_code=org_code,
+        org_name=org_name,
         source_oid=source_oid,
+        confirm_cascade_docs=data.confirm_cascade_docs,
     )
 
 

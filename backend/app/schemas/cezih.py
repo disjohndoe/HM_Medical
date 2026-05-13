@@ -337,6 +337,7 @@ class UpdateVisitRequest(BaseModel):
 class VisitActionRequest(BaseModel):
     action: str  # close, reopen, storno
     period_start: str | None = None  # preserve original visit start time
+    confirm_cascade_docs: bool = False  # set true to authorize pre-storno of attached nalazi (CEZIH ERR_ENCOUNTER_2001)
 
 
 class VisitItem(BaseModel):
