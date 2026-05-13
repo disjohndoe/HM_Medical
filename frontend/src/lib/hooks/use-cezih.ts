@@ -348,6 +348,16 @@ export function useIcd10Search(query: string, limit = 20) {
 }
 
 
+export function useDtsSearch(query: string, limit = 20) {
+  return useQuery({
+    queryKey: ["dts", "search", query],
+    queryFn: () =>
+      api.get<CodeSystemItem[]>(`/cezih/dts/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+    enabled: query.length >= 2,
+  })
+}
+
+
 // ============================================================
 // TC8: Value Set Expand
 // ============================================================

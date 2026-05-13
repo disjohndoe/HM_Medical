@@ -552,6 +552,18 @@ async def search_icd10_local(
     return await search_icd10(q, limit)
 
 
+@router.get("/dts/search", response_model=list[CodeSystemItem])
+async def search_dts_local(
+    q: str = Query("", description="Search query (DTS code or name, min 1 char)"),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    """Search local DTS procedure codes (synced from CEZIH, no VPN needed)."""
+    from app.services.dts_sync_service import search_dts
+
+    return await search_dts(q, limit)
+
+
 # ============================================================
 # TC8: Value Set Expand
 # ============================================================

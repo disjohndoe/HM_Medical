@@ -2,6 +2,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -22,7 +23,6 @@ router = APIRouter(tags=["procedures"])
 
 @router.get("/procedures", response_model=PaginatedResponse[ProcedureRead])
 async def list_procedures(
-    kategorija: str | None = Query(None),
     search: str | None = Query(None, min_length=1),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
@@ -30,7 +30,7 @@ async def list_procedures(
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await procedure_service.list_procedures(
-        db, current_user.tenant_id, kategorija=kategorija, search=search, skip=skip, limit=limit
+        db, current_user.tenant_id, search=search, skip=skip, limit=limit
     )
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 
@@ -41,7 +41,8 @@ async def create_procedure(
     current_user: User = Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    return await procedure_service.create_procedure(db, current_user.tenant_id, data)
+    procedure = await procedure_service.create_procedure(db, current_user.tenant_id, data)
+    return procedure
 
 
 @router.patch("/procedures/{procedure_id}", response_model=ProcedureRead)
@@ -96,3 +97,35 @@ async def create_performed_procedure(
     db: AsyncSession = Depends(get_db),
 ):
     return await procedure_service.create_performed(db, current_user.tenant_id, data, current_user.id)
+
+
+@router.post("/procedures/resolve-dts", response_model=ProcedureRead)
+async def resolve_dts_procedure(
+    dts_code: str = Query(..., description="DTS code to resolve"),
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get or auto-create a procedure for a DTS code. Returns the procedure with DTS display."""
+    from app.models.dts import DtsCode
+
+    procedure = await procedure_service.ensure_procedure_for_dts(db, current_user.tenant_id, dts_code)
+
+    # Fetch DTS display for response
+    dts_result = await db.execute(select(DtsCode).where(DtsCode.code == dts_code))
+    dts_row = dts_result.scalar_one_or_none()
+
+    return {
+        "id": procedure.id,
+        "sifra": procedure.sifra,
+        "naziv": procedure.naziv,
+        "opis": procedure.opis,
+        "cijena_cents": procedure.cijena_cents,
+        "trajanje_minuta": procedure.trajanje_minuta,
+        "kategorija": procedure.kategorija,
+        "is_active": procedure.is_active,
+        "tenant_id": procedure.tenant_id,
+        "dts_code": procedure.dts_code,
+        "dts_display": dts_row.display if dts_row else None,
+        "created_at": procedure.created_at,
+        "updated_at": procedure.updated_at,
+    }

@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/table"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
 import { useTableSort } from "@/lib/hooks/use-table-sort"
-import { PROCEDURE_KATEGORIJA } from "@/lib/constants"
 import { formatCurrencyEUR } from "@/lib/utils"
 import type { Procedure } from "@/lib/types"
 
@@ -26,10 +25,9 @@ interface ProcedureTableProps {
 
 export function ProcedureTable({ procedures, onEdit, onDelete }: ProcedureTableProps) {
   const { sorted, sortKey, sortDir, toggleSort } = useTableSort(procedures, {
-    defaultKey: "naziv",
+    defaultKey: "sifra",
     defaultDir: "asc",
     keyAccessors: {
-      kategorija: (p: Procedure) => PROCEDURE_KATEGORIJA[p.kategorija] || p.kategorija,
       cijena: (p: Procedure) => p.cijena_cents,
       trajanje: (p: Procedure) => p.trajanje_minuta,
     },
@@ -47,9 +45,8 @@ export function ProcedureTable({ procedures, onEdit, onDelete }: ProcedureTableP
     <Table>
       <TableHeader>
         <TableRow>
-          <SortableTableHead columnKey="sifra" label="Šifra" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+          <SortableTableHead columnKey="sifra" label="DTS šifra" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
           <SortableTableHead columnKey="naziv" label="Naziv" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-          <SortableTableHead columnKey="kategorija" label="Kategorija" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden md:table-cell" />
           <SortableTableHead columnKey="cijena" label="Cijena" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden sm:table-cell text-right" />
           <SortableTableHead columnKey="trajanje" label="Trajanje" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden lg:table-cell text-right" />
           <TableHead className="hidden md:table-cell">Status</TableHead>
@@ -59,11 +56,8 @@ export function ProcedureTable({ procedures, onEdit, onDelete }: ProcedureTableP
       <TableBody>
         {sorted.map((p) => (
           <TableRow key={p.id}>
-            <TableCell className="font-mono text-xs">{p.sifra}</TableCell>
-            <TableCell className="font-medium">{p.naziv}</TableCell>
-            <TableCell className="hidden md:table-cell">
-              {PROCEDURE_KATEGORIJA[p.kategorija] || p.kategorija}
-            </TableCell>
+            <TableCell className="font-mono text-xs">{p.dts_code ?? p.sifra}</TableCell>
+            <TableCell className="font-medium">{p.dts_display ?? p.naziv}</TableCell>
             <TableCell className="hidden sm:table-cell text-right">
               {formatCurrencyEUR(p.cijena_cents / 100)}
             </TableCell>

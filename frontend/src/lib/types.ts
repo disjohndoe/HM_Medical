@@ -226,26 +226,21 @@ export interface Procedure {
   kategorija: string;
   is_active: boolean;
   tenant_id: string;
+  dts_code: string | null;
+  dts_display: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface ProcedureCreate {
-  sifra: string;
-  naziv: string;
-  opis?: string | null;
+  dts_code: string;
   cijena_cents?: number;
   trajanje_minuta?: number;
-  kategorija: string;
 }
 
 export interface ProcedureUpdate {
-  sifra?: string | null;
-  naziv?: string | null;
-  opis?: string | null;
   cijena_cents?: number | null;
   trajanje_minuta?: number | null;
-  kategorija?: string | null;
   is_active?: boolean | null;
 }
 
@@ -262,6 +257,7 @@ export interface PerformedProcedure {
   napomena: string | null;
   procedure_naziv: string | null;
   procedure_sifra: string | null;
+  dts_code: string | null;
   doktor_ime: string | null;
   doktor_prezime: string | null;
   tenant_id: string;

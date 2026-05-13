@@ -35,6 +35,44 @@ async def _get_medical_record(db: AsyncSession, tenant_id: UUID, patient_id: UUI
     return result.scalar_one_or_none()
 
 
+async def _get_procedures_for_record(
+    db: AsyncSession,
+    tenant_id: UUID,
+    medical_record_id: UUID,
+) -> list[dict]:
+    """Fetch performed procedures for a medical record, joined with DTS codes."""
+    from app.models.dts import DtsCode
+    from app.models.procedure import PerformedProcedure, Procedure
+
+    result = await db.execute(
+        sa_select(
+            PerformedProcedure,
+            DtsCode.code.label("dts_code"),
+            DtsCode.display.label("dts_display"),
+            DtsCode.version.label("dts_version"),
+        )
+        .outerjoin(Procedure, PerformedProcedure.procedure_id == Procedure.id)
+        .outerjoin(DtsCode, Procedure.dts_code_id == DtsCode.id)
+        .where(
+            PerformedProcedure.tenant_id == tenant_id,
+            PerformedProcedure.medical_record_id == medical_record_id,
+        )
+    )
+    procedures = []
+    for row in result.all():
+        if not row.dts_code:
+            continue
+        pp = row[0]
+        procedures.append({
+            "dts_code": row.dts_code,
+            "dts_display": row.dts_display or "",
+            "dts_version": row.dts_version or "0.1.0",
+            "performed_date": pp.datum.isoformat() if pp.datum else "",
+            "note": pp.napomena,
+        })
+    return procedures
+
+
 async def _resolve_djelatnost(
     db: AsyncSession,
     tenant_id: UUID,
@@ -156,6 +194,9 @@ async def send_enalaz(
 
     record_data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
 
+    # Fetch performed procedures with DTS codes for the postupci section
+    procedures = await _get_procedures_for_record(db, tenant_id, record_id)
+
     try:
         result = await real_service.send_enalaz(
             http_client,
@@ -170,6 +211,7 @@ async def send_enalaz(
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
             org_name=org_name,
+            procedures=procedures,
         )
     except CezihError as e:
         logger.error("CEZIH e-Nalaz send failed: %s", e.message)

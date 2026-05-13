@@ -23,7 +23,6 @@ Sections that are emitted:
 
 Sections deliberately skipped from MVP (max=N, optional):
 - prilozeni-dokumenti (PDF attachments) - separate feature
-- postupci (primijenjen-postupak) - require ValueSet bindings we don't have yet
 """
 
 # ruff: noqa: N815 - FHIR spec uses camelCase
@@ -75,7 +74,10 @@ PROFILE_ANAMNEZA = f"{_PROFILE_BASE}/anamneza"
 PROFILE_ISHOD = f"{_PROFILE_BASE}/ishod-pregleda"
 PROFILE_DJELATNOST = f"{_PROFILE_BASE}/djelatnost"
 PROFILE_PREPORUKE = f"{_PROFILE_BASE}/preporuke-za-pacijenta"
+PROFILE_PROCEDURE = f"{_PROFILE_BASE}/primijenjen-postupak"
 SYS_PLANOVI_SKRBI = "http://fhir.cezih.hr/specifikacije/CodeSystem/hr-planovi-skrbi"
+SYS_KATEGORIJA_POSTUPKA = "http://fhir.cezih.hr/specifikacije/CodeSystem/kategorija-postupka"
+SYS_DTS = "http://fhir.cezih.hr/specifikacije/CodeSystem/DTS"
 
 # Per HRTipDokumenta (011/012/013) the Composition has a distinct profile.
 _COMPOSITION_PROFILE_BY_TYPE_CODE = {
@@ -460,6 +462,56 @@ def _build_preporuke_careplan(
     }
 
 
+def _build_procedure_resource(
+    *,
+    dts_code: str,
+    dts_display: str,
+    dts_version: str,
+    patient_full_url: str,
+    performed_date: str,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """Build primijenjen-postupak Procedure resource for postupci section entry.
+
+    Per primijenjen-postupak profile:
+    - status: completed (1..1)
+    - category: fixed code "1" "Medicinski postupak" (1..1)
+    - code: DTS with version (coding.version 1..1)
+    - subject: hr-pacijent reference
+    - performedDateTime (1..1)
+    - note (0..1)
+    """
+    resource: dict[str, Any] = {
+        "resourceType": "Procedure",
+        "meta": {"profile": [PROFILE_PROCEDURE]},
+        "status": "completed",
+        "category": {
+            "coding": [
+                {
+                    "system": SYS_KATEGORIJA_POSTUPKA,
+                    "code": "1",
+                    "display": "Medicinski postupak",
+                }
+            ]
+        },
+        "code": {
+            "coding": [
+                {
+                    "system": SYS_DTS,
+                    "version": dts_version,
+                    "code": dts_code,
+                    "display": dts_display,
+                }
+            ]
+        },
+        "subject": {"reference": patient_full_url},
+        "performedDateTime": performed_date,
+    }
+    if note and note.strip():
+        resource["note"] = [{"text": note.strip()}]
+    return resource
+
+
 def _build_composition(
     *,
     document_type_code: str,
@@ -473,6 +525,7 @@ def _build_composition(
     case_full_url: str,
     ishod_full_url: str,
     preporuka_full_url: str | None = None,
+    procedure_full_urls: list[str] | None = None,
     composition_date: str,
 ) -> dict[str, Any]:
     """Build Composition resource matching nalaz/izvjesce/otpusno profile."""
@@ -492,6 +545,50 @@ def _build_composition(
     if preporuka_full_url:
         mi_entries.append({"reference": preporuka_full_url})
 
+    sections = [
+        {
+            "title": "Djelatnost",
+            "code": {
+                "coding": [
+                    {
+                        "system": SYS_DOC_SECTION,
+                        "code": "12",
+                        "display": "Djelatnost",
+                    }
+                ]
+            },
+            "entry": [{"reference": djelatnost_full_url}],
+        },
+        {
+            "title": "Medicinska informacija",
+            "code": {
+                "coding": [
+                    {
+                        "system": SYS_DOC_SECTION,
+                        "code": "18",
+                        "display": "Medicinska informacija",
+                    }
+                ]
+            },
+            "entry": mi_entries,
+        },
+    ]
+
+    if procedure_full_urls:
+        sections.append({
+            "title": "Primijenjeni postupci",
+            "code": {
+                "coding": [
+                    {
+                        "system": SYS_DOC_SECTION,
+                        "code": "13",
+                        "display": "Primijenjeni postupci",
+                    }
+                ]
+            },
+            "entry": [{"reference": url} for url in procedure_full_urls],
+        })
+
     return {
         "resourceType": "Composition",
         "meta": {"profile": [composition_profile]},
@@ -508,7 +605,6 @@ def _build_composition(
         "subject": {"reference": patient_full_url},
         "encounter": {"reference": encounter_full_url},
         "date": composition_date,
-        # author: Practitioner first, Organization second (slicing ordered=true)
         "author": [
             {"reference": practitioner_full_url},
             {"reference": organization_full_url},
@@ -524,34 +620,7 @@ def _build_composition(
                 "party": {"reference": organization_full_url},
             },
         ],
-        "section": [
-            {
-                "title": "Djelatnost",
-                "code": {
-                    "coding": [
-                        {
-                            "system": SYS_DOC_SECTION,
-                            "code": "12",
-                            "display": "Djelatnost",
-                        }
-                    ]
-                },
-                "entry": [{"reference": djelatnost_full_url}],
-            },
-            {
-                "title": "Medicinska informacija",
-                "code": {
-                    "coding": [
-                        {
-                            "system": SYS_DOC_SECTION,
-                            "code": "18",
-                            "display": "Medicinska informacija",
-                        }
-                    ]
-                },
-                "entry": mi_entries,
-            },
-        ],
+        "section": sections,
     }
 
 
@@ -571,6 +640,7 @@ def build_clinical_document_bundle(
     djelatnost_code: str,
     djelatnost_display: str,
     nacin_prijema: str = "6",
+    procedures: list[dict] | None = None,
 ) -> tuple[dict, str]:
     """Build inner FHIR Document Bundle (HRDocument profile) for ITI-65 Binary content.
 
@@ -652,6 +722,23 @@ def build_clinical_document_bundle(
     if preporuka_careplan:
         preporuka_full_url = f"urn:uuid:{uuid.uuid4()}"
 
+    # Build procedure resources for postupci section.
+    procedure_full_urls: list[str] = []
+    procedure_entries: list[dict[str, Any]] = []
+    if procedures:
+        for proc in procedures:
+            proc_url = f"urn:uuid:{uuid.uuid4()}"
+            procedure_full_urls.append(proc_url)
+            proc_resource = _build_procedure_resource(
+                dts_code=proc["dts_code"],
+                dts_display=proc["dts_display"],
+                dts_version=proc.get("dts_version", "0.1.0"),
+                patient_full_url=patient_full_url,
+                performed_date=proc.get("performed_date", composition_date),
+                note=proc.get("note"),
+            )
+            procedure_entries.append({"fullUrl": proc_url, "resource": proc_resource})
+
     # Build composition now that we know preporuka_full_url.
     composition = _build_composition(
         document_type_code=document_type_code,
@@ -665,6 +752,7 @@ def build_clinical_document_bundle(
         case_full_url=case_full_url,
         ishod_full_url=ishod_full_url,
         preporuka_full_url=preporuka_full_url,
+        procedure_full_urls=procedure_full_urls or None,
         composition_date=composition_date,
     )
 
@@ -683,6 +771,8 @@ def build_clinical_document_bundle(
 
     if preporuka_careplan:
         entries.append({"fullUrl": preporuka_full_url, "resource": preporuka_careplan})
+
+    entries.extend(procedure_entries)
 
     bundle: dict[str, Any] = {
         "resourceType": "Bundle",

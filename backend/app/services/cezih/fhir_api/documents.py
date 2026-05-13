@@ -47,6 +47,7 @@ async def _build_document_bundle(
     use_external_profile: bool = False,
     doc_status: str = "current",
     nacin_prijema: str = "6",
+    procedures: list[dict] | None = None,
 ) -> tuple[dict, str]:
     """Build a complete ITI-65 transaction bundle for document submission/replace.
 
@@ -101,6 +102,7 @@ async def _build_document_bundle(
         djelatnost_code=djelatnost_code,
         djelatnost_display=djelatnost_display,
         nacin_prijema=nacin_prijema,
+        procedures=procedures,
     )
     signed_inner_bundle = await sign_document_bundle(inner_bundle, attester_practitioner_url)
     inner_json_bytes = json.dumps(
@@ -528,6 +530,7 @@ async def send_enalaz(
     case_id: str = "",
     practitioner_name: str = "",
     org_name: str = "",
+    procedures: list[dict] | None = None,
 ) -> dict:
     """Send clinical document / finding (ITI-65 MHD)."""
     fhir_client = CezihFhirClient(client)
@@ -546,6 +549,7 @@ async def send_enalaz(
         case_id=case_id,
         practitioner_name=practitioner_name,
         org_name=org_name,
+        procedures=procedures,
     )
 
     response = await fhir_client.post(

@@ -10,7 +10,10 @@ from app.models.base import BaseTenantModel
 
 class Procedure(BaseTenantModel):
     __tablename__ = "procedures"
-    __table_args__ = (UniqueConstraint("tenant_id", "sifra", name="uq_procedure_tenant_sifra"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "sifra", name="uq_procedure_tenant_sifra"),
+        UniqueConstraint("tenant_id", "dts_code", name="uq_procedure_tenant_dts_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sifra: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -18,8 +21,12 @@ class Procedure(BaseTenantModel):
     opis: Mapped[str | None] = mapped_column(Text, nullable=True)
     cijena_cents: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     trajanje_minuta: Mapped[int] = mapped_column(Integer, nullable=False, server_default="30")
-    kategorija: Mapped[str] = mapped_column(String(50), nullable=False)
+    kategorija: Mapped[str] = mapped_column(String(50), nullable=False, server_default="")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    dts_code_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dts_codes.id"), nullable=True
+    )
+    dts_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class PerformedProcedure(BaseTenantModel):

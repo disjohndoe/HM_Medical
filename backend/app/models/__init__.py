@@ -4,6 +4,7 @@ from app.models.base import Base, BaseTenantModel, TenantMixin, TimestampMixin
 from app.models.biljeska import Biljeska
 from app.models.document import Document
 from app.models.drug_list import DrugListItem
+from app.models.dts import DtsCode
 from app.models.icd10 import Icd10Code
 from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
@@ -21,6 +22,7 @@ __all__ = [
     "Biljeska",
     "Document",
     "DrugListItem",
+    "DtsCode",
     "Icd10Code",
     "MedicalRecord",
     "Patient",

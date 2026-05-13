@@ -55,7 +55,7 @@ function emptyRow(): ProcedureRow {
 export function AppointmentDetail({ appointment, open, onOpenChange, onEdit, onUpdated }: AppointmentDetailProps) {
   const updateMutation = useUpdateAppointment()
   const createPerformed = useCreatePerformed()
-  const { data: proceduresData } = useProcedures(undefined, undefined, 0, 100)
+  const { data: proceduresData } = useProcedures(undefined, 0, 100)
   const [showProcedurePrompt, setShowProcedurePrompt] = useState(false)
   const [showProcedureForm, setShowProcedureForm] = useState(false)
   const [rows, setRows] = useState<ProcedureRow[]>([emptyRow()])

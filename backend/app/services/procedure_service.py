@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.dts import DtsCode
 from app.models.patient import Patient
 from app.models.procedure import PerformedProcedure, Procedure
 from app.models.user import User
@@ -14,18 +15,18 @@ from app.schemas.procedure import PerformedProcedureCreate, ProcedureCreate, Pro
 async def list_procedures(
     db: AsyncSession,
     tenant_id: uuid.UUID,
-    kategorija: str | None = None,
     search: str | None = None,
     skip: int = 0,
     limit: int = 20,
-) -> tuple[list[Procedure], int]:
-    base = select(Procedure).where(
-        Procedure.tenant_id == tenant_id,
-        Procedure.is_active.is_(True),
+) -> tuple[list[dict], int]:
+    base = (
+        select(Procedure, DtsCode.display.label("dts_display"))
+        .outerjoin(DtsCode, Procedure.dts_code_id == DtsCode.id)
+        .where(
+            Procedure.tenant_id == tenant_id,
+            Procedure.is_active.is_(True),
+        )
     )
-
-    if kategorija:
-        base = base.where(Procedure.kategorija == kategorija)
 
     if search:
         escaped = search.replace("%", "\\%").replace("_", "\\_")
@@ -34,7 +35,7 @@ async def list_procedures(
             or_(
                 Procedure.sifra.ilike(pattern),
                 Procedure.naziv.ilike(pattern),
-                Procedure.opis.ilike(pattern),
+                DtsCode.display.ilike(pattern),
             )
         )
 
@@ -42,7 +43,27 @@ async def list_procedures(
     total = (await db.execute(count_q)).scalar_one()
 
     result = await db.execute(base.order_by(Procedure.sifra).offset(skip).limit(limit))
-    return list(result.scalars().all()), total
+    rows = result.all()
+    procedures = []
+    for row in rows:
+        p = row[0]
+        d = {
+            "id": p.id,
+            "sifra": p.sifra,
+            "naziv": p.naziv,
+            "opis": p.opis,
+            "cijena_cents": p.cijena_cents,
+            "trajanje_minuta": p.trajanje_minuta,
+            "kategorija": p.kategorija,
+            "is_active": p.is_active,
+            "tenant_id": p.tenant_id,
+            "dts_code": p.dts_code,
+            "dts_display": row.dts_display,
+            "created_at": p.created_at,
+            "updated_at": p.updated_at,
+        }
+        procedures.append(d)
+    return procedures, total
 
 
 async def create_procedure(
@@ -50,19 +71,38 @@ async def create_procedure(
     tenant_id: uuid.UUID,
     data: ProcedureCreate,
 ) -> Procedure:
+    # Validate DTS code exists
+    dts_result = await db.execute(select(DtsCode).where(DtsCode.code == data.dts_code))
+    dts_code_row = dts_result.scalar_one_or_none()
+    if not dts_code_row:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"DTS šifra '{data.dts_code}' nije pronađena u šifrarniku",
+        )
+
+    # Check tenant doesn't already have this DTS code
     existing = await db.execute(
         select(Procedure).where(
-            Procedure.sifra == data.sifra,
+            Procedure.dts_code == data.dts_code,
             Procedure.tenant_id == tenant_id,
         )
     )
     if existing.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Postupak s tom šifrom već postoji",
+            detail="Postupak s tom DTS šifrom već postoji",
         )
 
-    procedure = Procedure(tenant_id=tenant_id, **data.model_dump())
+    procedure = Procedure(
+        tenant_id=tenant_id,
+        sifra=data.dts_code,
+        naziv=dts_code_row.display,
+        dts_code_id=dts_code_row.id,
+        dts_code=data.dts_code,
+        cijena_cents=data.cijena_cents,
+        trajanje_minuta=data.trajanje_minuta,
+        kategorija="",
+    )
     db.add(procedure)
     await db.flush()
     return procedure
@@ -79,21 +119,6 @@ async def update_procedure(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Postupak nije pronađen")
 
     update_data = data.model_dump(exclude_unset=True)
-
-    if "sifra" in update_data and update_data["sifra"] != procedure.sifra:
-        existing = await db.execute(
-            select(Procedure).where(
-                Procedure.sifra == update_data["sifra"],
-                Procedure.tenant_id == tenant_id,
-                Procedure.id != procedure_id,
-            )
-        )
-        if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Postupak s tom šifrom već postoji",
-            )
-
     for field, value in update_data.items():
         setattr(procedure, field, value)
 
@@ -113,13 +138,63 @@ async def delete_procedure(
     procedure.is_active = False
 
 
+async def get_procedure_by_dts_code(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    dts_code: str,
+) -> Procedure | None:
+    result = await db.execute(
+        select(Procedure).where(
+            Procedure.tenant_id == tenant_id,
+            Procedure.dts_code == dts_code,
+            Procedure.is_active.is_(True),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def ensure_procedure_for_dts(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    dts_code: str,
+) -> Procedure:
+    """Get or auto-create a procedure for the given DTS code."""
+    existing = await get_procedure_by_dts_code(db, tenant_id, dts_code)
+    if existing:
+        return existing
+
+    dts_result = await db.execute(select(DtsCode).where(DtsCode.code == dts_code))
+    dts_row = dts_result.scalar_one_or_none()
+    if not dts_row:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"DTS šifra '{dts_code}' nije pronađena u šifrarniku",
+        )
+
+    procedure = Procedure(
+        tenant_id=tenant_id,
+        sifra=dts_code,
+        naziv=dts_row.display,
+        dts_code_id=dts_row.id,
+        dts_code=dts_code,
+        cijena_cents=0,
+        trajanje_minuta=30,
+        kategorija="",
+    )
+    db.add(procedure)
+    await db.flush()
+    return procedure
+
+
 def _join_performed_query(base):
     return (
         base.outerjoin(Procedure, PerformedProcedure.procedure_id == Procedure.id)
+        .outerjoin(DtsCode, Procedure.dts_code_id == DtsCode.id)
         .outerjoin(User, PerformedProcedure.doktor_id == User.id)
         .add_columns(
             Procedure.naziv.label("procedure_naziv"),
             Procedure.sifra.label("procedure_sifra"),
+            DtsCode.code.label("dts_code"),
             User.ime.label("doktor_ime"),
             User.prezime.label("doktor_prezime"),
         )
@@ -142,6 +217,7 @@ def _performed_row_to_dict(row) -> dict:
         "napomena": pp.napomena,
         "procedure_naziv": row.procedure_naziv,
         "procedure_sifra": row.procedure_sifra,
+        "dts_code": row.dts_code,
         "doktor_ime": row.doktor_ime,
         "doktor_prezime": row.doktor_prezime,
         "created_at": pp.created_at,
@@ -213,7 +289,6 @@ async def create_performed(
     db.add(performed)
     await db.flush()
 
-    # Fetch with joins
     base = select(PerformedProcedure).where(PerformedProcedure.id == performed.id)
     query = _join_performed_query(base)
     result = await db.execute(query)

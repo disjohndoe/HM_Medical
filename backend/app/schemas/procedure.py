@@ -5,12 +5,9 @@ from pydantic import BaseModel, field_validator
 
 
 class ProcedureCreate(BaseModel):
-    sifra: str
-    naziv: str
-    opis: str | None = None
+    dts_code: str
     cijena_cents: int = 0
     trajanje_minuta: int = 30
-    kategorija: str
 
     @field_validator("cijena_cents")
     @classmethod
@@ -37,6 +34,8 @@ class ProcedureRead(BaseModel):
     kategorija: str
     is_active: bool
     tenant_id: UUID
+    dts_code: str | None = None
+    dts_display: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -44,12 +43,8 @@ class ProcedureRead(BaseModel):
 
 
 class ProcedureUpdate(BaseModel):
-    sifra: str | None = None
-    naziv: str | None = None
-    opis: str | None = None
     cijena_cents: int | None = None
     trajanje_minuta: int | None = None
-    kategorija: str | None = None
     is_active: bool | None = None
 
     @field_validator("trajanje_minuta")
@@ -91,6 +86,7 @@ class PerformedProcedureRead(BaseModel):
     napomena: str | None
     procedure_naziv: str | None = None
     procedure_sifra: str | None = None
+    dts_code: str | None = None
     doktor_ime: str | None = None
     doktor_prezime: str | None = None
     tenant_id: UUID

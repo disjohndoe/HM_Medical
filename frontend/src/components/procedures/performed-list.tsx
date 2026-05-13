@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useForm, Controller, useWatch } from "react-hook-form"
 import { z } from "zod"
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema"
@@ -41,13 +41,14 @@ import { TablePagination } from "@/components/shared/table-pagination"
 import {
   usePerformedProcedures,
   useCreatePerformed,
-  useProcedures,
+  useResolveDtsProcedure,
 } from "@/lib/hooks/use-procedures"
+import { useDtsSearch } from "@/lib/hooks/use-cezih"
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { PredracunDialog } from "@/components/procedures/predracun-dialog"
 import { formatDateHR, formatCurrencyEUR } from "@/lib/utils"
-import type { PerformedProcedureCreate } from "@/lib/types"
+import type { PerformedProcedureCreate, CodeSystemItem } from "@/lib/types"
 
 const performedSchema = z.object({
   procedure_id: z.string().min(1, "Postupak je obavezan"),
@@ -71,13 +72,18 @@ export function PerformedList({ patientId }: PerformedListProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(0)
   const { data, isLoading } = usePerformedProcedures(patientId, undefined, undefined, undefined, undefined, page * PAGE_SIZE, PAGE_SIZE)
-  const { data: proceduresData } = useProcedures(undefined, undefined, 0, 100)
   const { data: recordsData } = useMedicalRecords(patientId)
   const createMutation = useCreatePerformed()
+  const resolveMutation = useResolveDtsProcedure()
   const { tipLabelMap } = useRecordTypeMaps()
 
-  const procedures = proceduresData?.items ?? []
   const records = recordsData?.items ?? []
+
+  // DTS search state
+  const [dtsQuery, setDtsQuery] = useState("")
+  const [showDropdown, setShowDropdown] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const { data: dtsResults = [], isLoading: dtsLoading } = useDtsSearch(dtsQuery)
 
   const {
     register,
@@ -91,13 +97,17 @@ export function PerformedList({ patientId }: PerformedListProps) {
   })
 
   const procedureId = useWatch({ control, name: "procedure_id" })
-  const selectedProcedure = procedures.find((p) => p.id === procedureId)
 
+  // Close dropdown on outside click
   useEffect(() => {
-    if (selectedProcedure) {
-      setValue("cijena_eur", selectedProcedure.cijena_cents / 100, { shouldValidate: true })
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
     }
-  }, [selectedProcedure, setValue])
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
+  }, [])
 
   // Clear selection when page changes
   useEffect(() => {
@@ -114,6 +124,8 @@ export function PerformedList({ patientId }: PerformedListProps) {
         napomena: undefined,
         medical_record_id: undefined,
       })
+      setDtsQuery("")
+      setShowDropdown(false)
     }
   }, [formOpen, reset])
 
@@ -148,7 +160,7 @@ export function PerformedList({ patientId }: PerformedListProps) {
     defaultKey: "datum",
     defaultDir: "desc",
     keyAccessors: {
-      postupak: (p) => `${p.procedure_sifra ?? ""} ${p.procedure_naziv ?? ""}`.trim(),
+      postupak: (p) => `${p.dts_code ?? p.procedure_sifra ?? ""} ${p.procedure_naziv ?? ""}`.trim(),
       doktor: (p) => `${p.doktor_prezime ?? ""} ${p.doktor_ime ?? ""}`.trim(),
       cijena: (p) => p.cijena_cents,
       napomena: (p) => p.napomena || "",
@@ -229,7 +241,7 @@ export function PerformedList({ patientId }: PerformedListProps) {
                 <TableCell>{formatDateHR(p.datum)}</TableCell>
                 <TableCell>
                   <span className="font-mono text-xs text-muted-foreground">
-                    {p.procedure_sifra}
+                    {p.dts_code ?? p.procedure_sifra}
                   </span>{" "}
                   <span className="font-medium">{p.procedure_naziv}</span>
                 </TableCell>
@@ -264,38 +276,68 @@ export function PerformedList({ patientId }: PerformedListProps) {
           <DialogHeader>
             <DialogTitle>Dodaj izvršeni postupak</DialogTitle>
             <DialogDescription>
-              Odaberite postupak i unesite podatke
+              Pretražite DTS šifrarnik i zabilježite izvršeni postupak
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Postupak *</Label>
-              <Controller
-                name="procedure_id"
-                control={control}
-                render={({ field }) => {
-                  const selectedProcedure = procedures.find((p) => p.id === field.value)
-                  return (
-                    <Select value={field.value ?? ""} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Odaberite postupak">
-                          {selectedProcedure
-                            ? `[${selectedProcedure.sifra}] ${selectedProcedure.naziv} — ${formatCurrencyEUR(selectedProcedure.cijena_cents / 100)}`
-                            : undefined}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className="min-w-[400px]">
-                        {procedures.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            [{p.sifra}] {p.naziv} — {formatCurrencyEUR(p.cijena_cents / 100)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )
-                }}
-              />
+            <div className="space-y-2" ref={dropdownRef}>
+              <Label>DTS postupak *</Label>
+              {procedureId ? (
+                <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted">
+                  <span className="text-sm">Postupak odabran (DTS)</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setValue("procedure_id", ""); setDtsQuery(""); }}
+                  >
+                    Promijeni
+                  </Button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Input
+                    placeholder="Pretražite DTS postupke (npr. EEG, pregled)..."
+                    value={dtsQuery}
+                    onChange={(e) => { setDtsQuery(e.target.value); setShowDropdown(true); }}
+                    onFocus={() => setShowDropdown(true)}
+                  />
+                  {dtsLoading && (
+                    <div className="absolute right-2 top-2.5">
+                      <LoadingSpinner />
+                    </div>
+                  )}
+                  {showDropdown && dtsQuery.length >= 2 && !procedureId && (
+                    <div className="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-md border bg-popover shadow-md">
+                      {dtsResults.length === 0 && !dtsLoading && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">Nema rezultata</div>
+                      )}
+                      {dtsResults.map((item: CodeSystemItem) => (
+                        <button
+                          key={item.code}
+                          type="button"
+                          className="flex w-full items-start gap-2 px-3 py-2 text-sm hover:bg-accent text-left"
+                          onClick={async () => {
+                            setShowDropdown(false)
+                            setDtsQuery("")
+                            try {
+                              const proc = await resolveMutation.mutateAsync(item.code)
+                              setValue("procedure_id", proc.id, { shouldValidate: true })
+                              setValue("cijena_eur", proc.cijena_cents / 100, { shouldValidate: true })
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : "Greška pri dohvaćanju postupka")
+                            }
+                          }}
+                        >
+                          <span className="font-mono text-xs text-muted-foreground shrink-0">{item.code}</span>
+                          <span className="line-clamp-2">{item.display}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {errors.procedure_id && (
                 <p className="text-sm text-destructive">{errors.procedure_id.message}</p>
               )}
@@ -316,11 +358,7 @@ export function PerformedList({ patientId }: PerformedListProps) {
                   type="number"
                   step="0.01"
                   min="0"
-                  placeholder={
-                    selectedProcedure
-                      ? String(selectedProcedure.cijena_cents / 100)
-                      : "Prema katalogu"
-                  }
+                  placeholder="Prema katalogu"
                   {...register("cijena_eur", { valueAsNumber: true })}
                 />
               </div>

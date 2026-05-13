@@ -12,19 +12,17 @@ import type {
 } from "@/lib/types"
 
 export function useProcedures(
-  kategorija?: string,
   search?: string,
   skip = 0,
   limit = 20,
 ) {
   const params = new URLSearchParams()
-  if (kategorija) params.set("kategorija", kategorija)
   if (search) params.set("search", search)
   params.set("skip", String(skip))
   params.set("limit", String(limit))
 
   return useQuery({
-    queryKey: ["procedures", kategorija, search, skip, limit],
+    queryKey: ["procedures", search, skip, limit],
     queryFn: () =>
       api.get<PaginatedResponse<Procedure>>(`/procedures?${params.toString()}`),
   })
@@ -102,5 +100,16 @@ export function useCreatePerformed() {
       queryClient.invalidateQueries({ queryKey: ["performed-procedures"] })
     },
     onError: (err: Error) => { toast.error(err.message) },
+  })
+}
+
+export function useResolveDtsProcedure() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (dtsCode: string) =>
+      api.post<Procedure>(`/procedures/resolve-dts?dts_code=${encodeURIComponent(dtsCode)}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["procedures"] })
+    },
   })
 }
