@@ -24,7 +24,7 @@ import {
 import { useUploadDocument } from "@/lib/hooks/use-documents"
 import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch } from "@/lib/hooks/use-cezih"
 import { useResolveDtsProcedure, useCreatePerformed, usePerformedProcedures } from "@/lib/hooks/use-procedures"
-import { formatDateHR, formatCurrencyEUR } from "@/lib/utils"
+import { formatDateHR } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
 import { CEZIH_DOC_TYPE_BY_TIP, getAllowedDocTypes } from "@/lib/constants"
 import type { MedicalRecord, MedicalRecordCreate, MedicalRecordUpdate, PreporucenaTerapijaEntry, LijekItem, CodeSystemItem } from "@/lib/types"
@@ -60,7 +60,6 @@ interface PendingProcedure {
   procedure_id: string
   dts_code: string
   dts_display: string
-  cijena_eur: string
   napomena: string
 }
 
@@ -254,7 +253,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           procedure_id: proc.id,
           dts_code: item.code,
           dts_display: item.display,
-          cijena_eur: proc.cijena_cents ? String(proc.cijena_cents / 100) : "",
           napomena: "",
         },
       ])
@@ -275,13 +273,11 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
 
   async function saveProcedures(recordId: string) {
     for (const proc of pendingProcedures) {
-      const cijenaCents = proc.cijena_eur ? Math.round(parseFloat(proc.cijena_eur) * 100) : undefined
       await createPerformed.mutateAsync({
         patient_id: patientId,
         procedure_id: proc.procedure_id,
         medical_record_id: recordId,
         datum: new Date().toISOString().split("T")[0],
-        cijena_cents: cijenaCents,
         napomena: proc.napomena || undefined,
       })
     }
@@ -643,9 +639,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
                         <Trash2 className="h-3 w-3 text-destructive" />
                       </Button>
                     </div>
-                    {p.cijena_cents > 0 && (
-                      <span className="text-xs text-muted-foreground">{formatCurrencyEUR(p.cijena_cents / 100)}</span>
-                    )}
                   </div>
                 ))}
                 {/* Newly added procedures */}
@@ -665,23 +658,12 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
                         <Trash2 className="h-3 w-3 text-destructive" />
                       </Button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="Cijena (EUR)"
-                        value={proc.cijena_eur}
-                        onChange={(e) => handleUpdatePendingProcedure(index, "cijena_eur", e.target.value)}
-                        className="h-7 text-xs"
-                      />
-                      <Input
-                        placeholder="Napomena"
-                        value={proc.napomena}
-                        onChange={(e) => handleUpdatePendingProcedure(index, "napomena", e.target.value)}
-                        className="h-7 text-xs"
-                      />
-                    </div>
+                    <Input
+                      placeholder="Napomena"
+                      value={proc.napomena}
+                      onChange={(e) => handleUpdatePendingProcedure(index, "napomena", e.target.value)}
+                      className="h-7 text-xs"
+                    />
                   </div>
                 ))}
               </div>
