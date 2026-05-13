@@ -96,6 +96,55 @@ def resolve_cezih_identifier(patient) -> tuple[str, str]:
     raise CezihError("Pacijent nema CEZIH identifikator (MBO, CEZIH ID, OIB, EHIC ili putovnica)")
 
 
+def resolve_all_cezih_identifiers(patient) -> list[dict[str, str]]:
+    """Return every CEZIH-acceptable identifier the patient carries, in slice order.
+
+    HZZO Provjera Spremnosti 2026-05-11 rejected a foreigner submission because
+    only the (then-invalid) JID landed in the inner Document Bundle's
+    Patient.identifier — passport and EHIC were on the patient row but never on
+    the wire. For clinical documents we want everything we have so eKarton can
+    match the patient by any of their real-world identifiers.
+
+    Slice order (hr-pacijent profile, all slices are 0..1 and may coexist):
+    MBO, jedinstveni-id (numeric only — strict guard), OIB, EHIC, putovnica.
+
+    Croatian insured patients (with MBO) get just [MBO] — that's canonical and
+    HZZO does not want OIB tacked on for someone who already has insurance.
+    Foreigners get the full set: any subset of {JID, EHIC, putovnica, OIB}.
+
+    Raises CezihError if nothing usable is present.
+    """
+    out: list[dict[str, str]] = []
+    if patient.mbo:
+        out.append({"system": ID_MBO, "value": patient.mbo})
+        return out
+
+    jid = getattr(patient, "cezih_patient_id", None)
+    if jid and jid.isdigit():
+        out.append({"system": ID_JEDINSTVENI, "value": jid})
+
+    oib = getattr(patient, "oib", None)
+    if oib:
+        out.append({"system": ID_OIB, "value": oib})
+
+    ehic = getattr(patient, "ehic_broj", None)
+    if ehic:
+        out.append({"system": ID_EHIC, "value": ehic})
+
+    putovnica = getattr(patient, "broj_putovnice", None)
+    if putovnica:
+        out.append({"system": ID_PUTOVNICA, "value": putovnica})
+
+    if not out:
+        if jid and not jid.isdigit():
+            raise CezihError(
+                "Pacijent ima nevažeći CEZIH identifikator (nije numerički). "
+                "Molim Vas ponovno registrirajte pacijenta u CEZIH (Stranci → Registriraj)."
+            )
+        raise CezihError("Pacijent nema CEZIH identifikator (MBO, CEZIH ID, OIB, EHIC ili putovnica)")
+    return out
+
+
 __all__ = [
     "ID_MBO",
     "ID_OIB",
@@ -107,4 +156,5 @@ __all__ = [
     "_require_identifier_system",
     "_require_identifier_value",
     "resolve_cezih_identifier",
+    "resolve_all_cezih_identifiers",
 ]

@@ -90,30 +90,59 @@ _TITLE_BY_TYPE_CODE = {
 }
 
 
-def _patient_identifier_for_inner_bundle(patient_data: dict) -> dict[str, Any]:
-    """Build Patient.identifier matching one of hr-pacijent slices.
+_ALLOWED_PATIENT_SLICE_SYSTEMS = {ID_MBO, ID_JEDINSTVENI, ID_OIB, ID_EHIC, ID_PUTOVNICA}
 
-    Slice is determined by the system URI from the resolved identifier
-    (set by dispatcher via resolve_cezih_identifier).
+
+def _patient_identifiers_for_inner_bundle(patient_data: dict) -> list[dict[str, Any]]:
+    """Build Patient.identifier[] matching the hr-pacijent slices.
+
+    HZZO Provjera Spremnosti 2026-05-11 rejected a foreigner submission because
+    only one identifier was sent (and at the time it was a CUID-shaped JID).
+    Foreigners now carry passport AND/OR EHIC plus a numeric JID; we emit every
+    slice we have so eKarton can match on any of them.
+
+    Prefers the new `patient_data["identifiers"]` list (from
+    resolve_all_cezih_identifiers); falls back to the single
+    `identifier_system`/`identifier_value` pair set by older dispatcher paths.
     """
+    identifiers = patient_data.get("identifiers")
+    if identifiers:
+        out: list[dict[str, Any]] = []
+        for entry in identifiers:
+            system = entry.get("system")
+            value = entry.get("value")
+            if not system or not value:
+                continue
+            if system not in _ALLOWED_PATIENT_SLICE_SYSTEMS:
+                raise CezihError(
+                    f"Patient identifier system {system!r} not in HR-pacijent slice list "
+                    "(MBO/jedinstveni/OIB/EHIC/putovnica)"
+                )
+            out.append({"system": system, "value": value})
+        if not out:
+            raise CezihError(
+                "patient_data['identifiers'] is empty - resolve_all_cezih_identifiers must return at least one slice"
+            )
+        return out
+
     system = patient_data.get("identifier_system")
     value = patient_data.get("identifier_value") or patient_data.get("mbo")
     if not system or not value:
         raise CezihError(
-            "patient_data missing identifier_system/identifier_value - caller must "
-            "pass output of resolve_cezih_identifier()"
+            "patient_data missing identifiers/identifier_system/identifier_value - caller must "
+            "pass output of resolve_all_cezih_identifiers() or resolve_cezih_identifier()"
         )
-    if system not in {ID_MBO, ID_JEDINSTVENI, ID_OIB, ID_EHIC, ID_PUTOVNICA}:
+    if system not in _ALLOWED_PATIENT_SLICE_SYSTEMS:
         raise CezihError(
             f"Patient identifier system {system!r} not in HR-pacijent slice list "
             "(MBO/jedinstveni/OIB/EHIC/putovnica)"
         )
-    return {"system": system, "value": value}
+    return [{"system": system, "value": value}]
 
 
 def _build_patient_resource(patient_data: dict) -> dict[str, Any]:
     """Build hr-pacijent Patient resource for inner bundle entry."""
-    identifier = _patient_identifier_for_inner_bundle(patient_data)
+    identifiers = _patient_identifiers_for_inner_bundle(patient_data)
     given = (patient_data.get("ime") or "").strip()
     family = (patient_data.get("prezime") or "").strip()
     name = {}
@@ -127,7 +156,7 @@ def _build_patient_resource(patient_data: dict) -> dict[str, Any]:
     resource: dict[str, Any] = {
         "resourceType": "Patient",
         "meta": {"profile": [PROFILE_PATIENT]},
-        "identifier": [identifier],
+        "identifier": identifiers,
         "name": [name],
     }
     if patient_data.get("spol"):

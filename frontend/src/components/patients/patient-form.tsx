@@ -144,6 +144,18 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
   })
 
   async function handleFormSubmit(data: PatientFormData) {
+    // Foreigner guard: existing patient with no MBO must keep at least one of
+    // passport or EHIC. HZZO Provjera Spremnosti 2026-05-11 rejected a foreign
+    // patient where neither was reaching CEZIH because both were blanked out.
+    const isForeigner = isEdit && !patient?.mbo
+    if (isForeigner) {
+      const hasPutovnica = !!data.broj_putovnice?.trim()
+      const hasEhic = !!data.ehic_broj?.trim()
+      if (!hasPutovnica && !hasEhic) {
+        toast.error("Strancu treba broj putovnice ili EHIC kartice za CEZIH operacije.")
+        return
+      }
+    }
     try {
       await onSubmit({
         ...data,

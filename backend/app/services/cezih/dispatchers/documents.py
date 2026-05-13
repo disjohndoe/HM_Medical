@@ -121,6 +121,7 @@ async def send_enalaz(
 
     try:
         identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
+        all_identifiers = real_service.resolve_all_cezih_identifiers(patient)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
@@ -128,6 +129,7 @@ async def send_enalaz(
         "mbo": identifier_value,
         "identifier_system": identifier_system,
         "identifier_value": identifier_value,
+        "identifiers": all_identifiers,
         "ime": patient.ime,
         "prezime": patient.prezime,
     }
@@ -426,12 +428,14 @@ async def dispatch_replace_document(
                 if patient:
                     try:
                         id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+                        all_ids = real_service.resolve_all_cezih_identifiers(patient)
                     except CezihError as e:
                         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
                     patient_data = {
                         "mbo": id_val,
                         "identifier_system": id_sys,
                         "identifier_value": id_val,
+                        "identifiers": all_ids,
                         "ime": patient.ime,
                         "prezime": patient.prezime,
                     }
@@ -539,6 +543,7 @@ async def dispatch_replace_document_with_edit(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
     try:
         id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+        all_ids = real_service.resolve_all_cezih_identifiers(patient)
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
@@ -546,6 +551,7 @@ async def dispatch_replace_document_with_edit(
         "mbo": id_val,
         "identifier_system": id_sys,
         "identifier_value": id_val,
+        "identifiers": all_ids,
         "ime": patient.ime,
         "prezime": patient.prezime,
     }
@@ -686,12 +692,14 @@ async def dispatch_cancel_document(
                 if patient:
                     try:
                         id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+                        all_ids = real_service.resolve_all_cezih_identifiers(patient)
                     except CezihError as e:
                         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
                     patient_data = {
                         "mbo": id_val,
                         "identifier_system": id_sys,
                         "identifier_value": id_val,
+                        "identifiers": all_ids,
                         "ime": patient.ime,
                         "prezime": patient.prezime,
                     }
@@ -810,12 +818,14 @@ async def dispatch_cancel_document_canonical(
                 if patient:
                     try:
                         id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+                        all_ids = real_service.resolve_all_cezih_identifiers(patient)
                     except CezihError as e:
                         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
                     patient_data = {
                         "mbo": id_val,
                         "identifier_system": id_sys,
                         "identifier_value": id_val,
+                        "identifiers": all_ids,
                         "ime": patient.ime,
                         "prezime": patient.prezime,
                     }

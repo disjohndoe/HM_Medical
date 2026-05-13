@@ -288,6 +288,20 @@ class ForeignerRegistrationRequest(BaseModel):
     broj_putovnice: str | None = None
     ehic_broj: str | None = None
 
+    @model_validator(mode="after")
+    def require_passport_or_ehic(self) -> "ForeignerRegistrationRequest":
+        # HZZO Provjera Spremnosti 2026-05-11: foreigners must be identifiable
+        # by passport or EHIC in CEZIH submissions. PMIR returns a JID but
+        # eKarton matches patients by the real-world identifiers, so we cannot
+        # accept a foreigner record without at least one of them.
+        has_putovnica = bool(self.broj_putovnice and self.broj_putovnice.strip())
+        has_ehic = bool(self.ehic_broj and self.ehic_broj.strip())
+        if not (has_putovnica or has_ehic):
+            raise ValueError(
+                "Strancu treba broj putovnice ili EHIC kartice za prijavu u CEZIH."
+            )
+        return self
+
 
 class ForeignerRegistrationResponse(BaseModel):
     success: bool

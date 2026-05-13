@@ -266,11 +266,11 @@ export default function PacijentDetailPage() {
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">Putovnica</dt>
-                      <dd className="font-medium font-mono">{patient.broj_putovnice || "—"}</dd>
+                      <dd className={`font-medium font-mono ${!patient.broj_putovnice && !patient.ehic_broj ? "text-destructive" : ""}`}>{patient.broj_putovnice || "—"}</dd>
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">EHIC</dt>
-                      <dd className="font-medium font-mono">{patient.ehic_broj || "—"}</dd>
+                      <dd className={`font-medium font-mono ${!patient.broj_putovnice && !patient.ehic_broj ? "text-destructive" : ""}`}>{patient.ehic_broj || "—"}</dd>
                     </div>
                     <div>
                       <dt className="text-sm text-muted-foreground">CEZIH ID</dt>
@@ -279,6 +279,12 @@ export default function PacijentDetailPage() {
                   </>
                 )}
               </dl>
+              {!patient.mbo && !patient.broj_putovnice && !patient.ehic_broj && (
+                <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                  Strancu nedostaje broj putovnice i EHIC kartice — CEZIH operacije neće raditi.
+                  Uredite pacijenta i dodajte barem jedan identifikator.
+                </div>
+              )}
             </CardContent>
           </Card>
 
