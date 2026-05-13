@@ -19,10 +19,11 @@ Sections that are emitted:
     - anamneza (1..1) -> Observation
     - slucaj (1..N) -> Condition (dokumentirani-slucaj)
     - ishodPregleda (1..1) -> Observation
+    - preporuceniPostupci (0..1) -> CarePlan (preporuke-za-pacijenta)
 
 Sections deliberately skipped from MVP (max=N, optional):
 - prilozeni-dokumenti (PDF attachments) - separate feature
-- postupci, preporuceniPostupci - require ValueSet bindings we don't have yet
+- postupci (primijenjen-postupak) - require ValueSet bindings we don't have yet
 """
 
 # ruff: noqa: N815 - FHIR spec uses camelCase
@@ -73,6 +74,8 @@ PROFILE_CONDITION = f"{_PROFILE_BASE}/dokumentirani-slucaj"
 PROFILE_ANAMNEZA = f"{_PROFILE_BASE}/anamneza"
 PROFILE_ISHOD = f"{_PROFILE_BASE}/ishod-pregleda"
 PROFILE_DJELATNOST = f"{_PROFILE_BASE}/djelatnost"
+PROFILE_PREPORUKE = f"{_PROFILE_BASE}/preporuke-za-pacijenta"
+SYS_PLANOVI_SKRBI = "http://fhir.cezih.hr/specifikacije/CodeSystem/hr-planovi-skrbi"
 
 # Per HRTipDokumenta (011/012/013) the Composition has a distinct profile.
 _COMPOSITION_PROFILE_BY_TYPE_CODE = {
@@ -402,6 +405,61 @@ def _build_djelatnost_resource(
     }
 
 
+def _format_preporuka_text(preporucena_terapija: list[dict] | None) -> str:
+    """Format preporucena_terapija list into a single description text for CarePlan."""
+    if not preporucena_terapija:
+        return ""
+    parts: list[str] = []
+    for entry in preporucena_terapija:
+        if not isinstance(entry, dict):
+            continue
+        naziv = (entry.get("naziv") or "").strip()
+        if not naziv:
+            continue
+        segments = [naziv]
+        jacina = (entry.get("jacina") or "").strip()
+        if jacina:
+            segments.append(jacina)
+        oblik = (entry.get("oblik") or "").strip()
+        if oblik:
+            segments.append(oblik)
+        line = " ".join(segments)
+        doziranje = (entry.get("doziranje") or "").strip()
+        if doziranje:
+            line += f" - {doziranje}"
+        napomena = (entry.get("napomena") or "").strip()
+        if napomena:
+            line += f". {napomena}"
+        parts.append(line)
+    return "; ".join(parts)
+
+
+def _build_preporuke_careplan(
+    *,
+    description: str,
+    patient_full_url: str,
+) -> dict[str, Any] | None:
+    """Build preporuke-za-pacijenta CarePlan for medicinska-informacija/preporuceniPostupci entry."""
+    if not description or not description.strip():
+        return None
+    return {
+        "resourceType": "CarePlan",
+        "meta": {"profile": [PROFILE_PREPORUKE]},
+        "status": "active",
+        "intent": "proposal",
+        "category": {
+            "coding": [
+                {
+                    "system": SYS_PLANOVI_SKRBI,
+                    "code": "1.1",
+                }
+            ]
+        },
+        "description": description.strip(),
+        "subject": {"reference": patient_full_url},
+    }
+
+
 def _build_composition(
     *,
     document_type_code: str,
@@ -414,6 +472,7 @@ def _build_composition(
     anamneza_full_url: str,
     case_full_url: str,
     ishod_full_url: str,
+    preporuka_full_url: str | None = None,
     composition_date: str,
 ) -> dict[str, Any]:
     """Build Composition resource matching nalaz/izvjesce/otpusno profile."""
@@ -430,6 +489,8 @@ def _build_composition(
         {"reference": case_full_url},
         {"reference": ishod_full_url},
     ]
+    if preporuka_full_url:
+        mi_entries.append({"reference": preporuka_full_url})
 
     return {
         "resourceType": "Composition",
@@ -539,20 +600,6 @@ def build_clinical_document_bundle(
     period_end = composition_date
     onset = record_data.get("created_at") or composition_date
 
-    composition = _build_composition(
-        document_type_code=document_type_code,
-        document_type_display=document_type_display,
-        patient_full_url=patient_full_url,
-        encounter_full_url=encounter_full_url,
-        practitioner_full_url=practitioner_full_url,
-        organization_full_url=organization_full_url,
-        djelatnost_full_url=djelatnost_full_url,
-        anamneza_full_url=anamneza_full_url,
-        case_full_url=case_full_url,
-        ishod_full_url=ishod_full_url,
-        composition_date=composition_date,
-    )
-
     patient = _build_patient_resource(patient_data)
     practitioner = _build_practitioner_resource(practitioner_id, practitioner_name)
     organization = _build_organization_resource(org_code, org_name)
@@ -595,6 +642,32 @@ def build_clinical_document_bundle(
         effective=composition_date,
     )
 
+    # Preporuka text from preporucena_terapija (before composition, so we know the fullUrl).
+    preporuka_text = _format_preporuka_text(record_data.get("preporucena_terapija"))
+    preporuka_careplan = _build_preporuke_careplan(
+        description=preporuka_text,
+        patient_full_url=patient_full_url,
+    )
+    preporuka_full_url: str | None = None
+    if preporuka_careplan:
+        preporuka_full_url = f"urn:uuid:{uuid.uuid4()}"
+
+    # Build composition now that we know preporuka_full_url.
+    composition = _build_composition(
+        document_type_code=document_type_code,
+        document_type_display=document_type_display,
+        patient_full_url=patient_full_url,
+        encounter_full_url=encounter_full_url,
+        practitioner_full_url=practitioner_full_url,
+        organization_full_url=organization_full_url,
+        djelatnost_full_url=djelatnost_full_url,
+        anamneza_full_url=anamneza_full_url,
+        case_full_url=case_full_url,
+        ishod_full_url=ishod_full_url,
+        preporuka_full_url=preporuka_full_url,
+        composition_date=composition_date,
+    )
+
     # Composition MUST be the first entry in a Bundle.type=document per FHIR R4.
     entries: list[dict[str, Any]] = [
         {"fullUrl": composition_full_url, "resource": composition},
@@ -607,6 +680,9 @@ def build_clinical_document_bundle(
         {"fullUrl": case_full_url, "resource": condition},
         {"fullUrl": ishod_full_url, "resource": ishod},
     ]
+
+    if preporuka_careplan:
+        entries.append({"fullUrl": preporuka_full_url, "resource": preporuka_careplan})
 
     bundle: dict[str, Any] = {
         "resourceType": "Bundle",
