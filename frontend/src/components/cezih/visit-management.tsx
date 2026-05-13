@@ -93,6 +93,11 @@ const TIP_POSJETE_LABELS: Record<string, string> = {
   "3": "Hospitalizacija",
 }
 
+const NACIN_PRIJEMA_HINT =
+  "Najčešće „Ostalo“ za redovne dolaske ili „Uputnica PZZ“ kad pacijent dolazi s uputnicom obiteljskog liječnika. „Hitni prijem“ samo u hitnim slučajevima."
+const TIP_POSJETE_HINT =
+  "SKZZ za specijalističke preglede u poliklinici (najčešći izbor), LOM za obiteljsku medicinu, Hospitalizacija ako pacijent ostaje u bolnici (s otpusnim pismom)."
+
 const VISIT_ACTIONS = [
   { value: "close", label: "Zatvori" },
   { value: "reopen", label: "Ponovno otvori" },
@@ -401,6 +406,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">{NACIN_PRIJEMA_HINT}</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Tip posjete</Label>
@@ -414,6 +420,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">{TIP_POSJETE_HINT}</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">
@@ -710,6 +717,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">{NACIN_PRIJEMA_HINT}</p>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Tip posjete</Label>
@@ -723,6 +731,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">{TIP_POSJETE_HINT}</p>
             </div>
             <div className="space-y-1 col-span-2">
               <Label className="text-xs">Razlog</Label>
