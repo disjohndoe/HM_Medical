@@ -447,14 +447,14 @@ def _build_preporuke_careplan(
         "meta": {"profile": [PROFILE_PREPORUKE]},
         "status": "active",
         "intent": "proposal",
-        "category": {
+        "category": [{
             "coding": [
                 {
                     "system": SYS_PLANOVI_SKRBI,
                     "code": "1.1",
                 }
             ]
-        },
+        }],
         "description": description.strip(),
         "subject": {"reference": patient_full_url},
     }
