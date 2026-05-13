@@ -25,7 +25,6 @@ export default function PostupciPage() {
   const [deleteTarget, setDeleteTarget] = useState<Procedure | null>(null)
 
   const { data, isLoading } = useProcedures(
-    undefined,
     search || undefined,
     page * PAGE_SIZE,
     PAGE_SIZE,
