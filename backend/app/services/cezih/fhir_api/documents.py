@@ -1083,6 +1083,8 @@ __all__ = [
     "search_documents",
     "replace_document",
     "_lookup_document_oid",
+    "build_cancel_bundle",
     "cancel_document",
+    "cancel_document_canonical",
     "retrieve_document",
 ]
