@@ -107,7 +107,7 @@ export function useResolveDtsProcedure() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (dtsCode: string) =>
-      api.post<Procedure>(`/procedures/resolve-dts?dts_code=${encodeURIComponent(dtsCode)}`),
+      api.post<Procedure>(`/procedures/resolve-dts?dts_code=${encodeURIComponent(dtsCode)}`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["procedures"] })
     },
