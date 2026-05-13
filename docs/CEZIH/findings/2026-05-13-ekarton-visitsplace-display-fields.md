@@ -102,3 +102,51 @@ The previous draft asked "pod kojom šifrom djelatnosti je djelatnik registriran
 - `backend/app/services/cezih/fhir_api/registries.py` - `find_organizations` + `find_practitioners` extended (commit `edd395c`).
 - `backend/app/schemas/cezih.py` - response models accept new optional `type`, `part_of`, `qualifications` fields.
 - This finding.
+
+## Follow-up 2026-05-13 evening: sent-nalaz correlation
+
+Re-investigated after Bug-1 verification (visit `cmp4awuqc0592hb85zssodv8t`). Cross-referenced our six 2026-05-13 visits for institution `999001464` (doctor `7659059`) against `medical_records.cezih_encounter_id` + `cezih_sent`:
+
+| Visit | Sent nalazi | eKarton row |
+|---|---|---|
+| `cmp46ml2j058whb85ywvhk4wf` | 1 (Z00.0, ref 1590058) | `Polikliničko-konzilijarna zdravstvena zaštita Z00.0` (populated) |
+| `cmp3wi6uk057lhb85ybpanbfk` | 2 (Z00.0 ref 1587383, J20 ref 1588533) | `Polikliničko-konzilijarna zdravstvena zaštita Z00.0•J20` (populated; multi-diagnosis matches multi-doc) |
+| `cmp4awuqc0592hb85zssodv8t` | 0 | `-` |
+| `cmp3ux3g30578hb85cezwfn6c` | 0 | `-` |
+
+Same institution, same doctor, same Encounter shape — the only differentiator is whether an ITI-65 clinical document was submitted for the visit. The 999001464 admin-table gap (above) is real, but eKarton has a populate-from-document fallback: when a `DocumentReference` is attached, eKarton resolves Ustanova + Vrsta posjete from the document's `practiceSetting` (and presumably the document's `sender_org_code` via mCSD) rather than from the absent admin row.
+
+The documents in question were stornoed (`cezih_storno=true`) yet eKarton still renders the populated columns — so the populate-on-submit appears to be sticky after storno (CEZIH retains the index entry).
+
+### What this changes
+
+- Original conclusion stands for the admin-table gap (HZZO helpdesk question still valid).
+- **New, separate finding:** for institution 999001464, "Ustanova/Vrsta posjete = -" on eKarton is **a leading indicator that the visit has no submitted nalaz**, not a CEZIH defect. Until HZZO populates the admin table, this is the workable display path: every visit that should appear with Ustanova/Vrsta posjete must carry at least one submitted clinical document.
+- **No code change required.** This is a domain workflow observation, not a defect.
+
+### Out-of-scope tangents intentionally not pursued
+
+- Whether sending a `practiceSetting`-bearing dummy document at visit creation would close the gap for visits we never expect to produce a real nalaz — premature. Wait for HZZO helpdesk reply on the admin table before adding any auto-document machinery.
+
+## Causal confirmation 2026-05-13 evening
+
+Took one of the "-" visits above (`cmp3ux3g30578hb85cezwfn6c`, 0 nalazi, "-" on eKarton) and sent a single `specijalisticki_nalaz` for it via `POST /api/cezih/e-nalaz` with `encounter_id=cmp3ux3g30578hb85cezwfn6c` + `case_id=cmp3uq8yf0577hb8533h8gwgc`. CEZIH assigned `reference_id=1591763`. Hard-refreshed `eKarton/VisitsPlace`.
+
+Same URL, same institution, same doctor. The visit row flipped from:
+
+```
+13.05.2026 - Z00.0
+  Ustanova:      -
+  Vrsta posjete: -
+```
+
+to:
+
+```
+13.05.2026 E2E card sweep TC12 ... Polikliničko-konzilijarna zdravstvena zaštita
+  Liječnik:      Marko Kovačević
+  Ustanova:      HM DIGITAL ordinacija (999001464)
+  Vrsta posjete: Polikliničko-konzilijarna zdravstvena zaštita
+```
+
+The "-" → populated flip is causal, not just correlational: a single ITI-65 submission against an Encounter that already had `serviceProvider.identifier.value=999001464` is sufficient to populate eKarton's columns. Confirms the populate-from-document fallback path and finalizes the workaround.
