@@ -79,11 +79,26 @@ export interface CascadeDoc {
 
 export class CascadeRequiredError extends Error {
   documents: CascadeDoc[];
+  cascadeRequired: true;
   constructor(message: string, documents: CascadeDoc[]) {
     super(message);
     this.name = "CascadeRequiredError";
     this.documents = documents;
+    this.cascadeRequired = true;
   }
+}
+
+/** Bundle-resilient detection — instanceof can fail across Next.js code-split
+ * chunks if the class definition gets duplicated. Check the tagged property. */
+export function isCascadeRequiredError(
+  err: unknown,
+): err is CascadeRequiredError {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { cascadeRequired?: unknown }).cascadeRequired === true &&
+    Array.isArray((err as { documents?: unknown }).documents)
+  );
 }
 
 function extractErrorMessage(detail: unknown): string {

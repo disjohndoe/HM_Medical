@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { Plus, Loader2, Building2, ExternalLink, Pencil, ChevronDown, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
-import { CascadeRequiredError, type CascadeDoc } from "@/lib/api-client"
+import { isCascadeRequiredError, type CascadeDoc } from "@/lib/api-client"
 
 import { useAuth } from "@/lib/auth"
 
@@ -253,7 +253,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
           setCascadeDialog(null)
         },
         onError: (err) => {
-          if (err instanceof CascadeRequiredError) {
+          if (isCascadeRequiredError(err)) {
             setCascadeDialog({
               visitId,
               periodStart: visit?.period_start,

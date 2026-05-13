@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { api, CascadeRequiredError, CezihApiError, isSigningError } from "@/lib/api-client"
+import { api, CezihApiError, isCascadeRequiredError, isSigningError } from "@/lib/api-client"
 import { clearError, setError } from "@/lib/hooks/use-cezih-error-state"
 import type {
   CaseActionResponse,
@@ -616,7 +616,7 @@ export function useVisitAction() {
       // Cascade-required is not a CEZIH error — the caller opens a confirmation
       // dialog and re-fires the mutation with confirmCascadeDocs=true. Don't
       // toast or persist it as a per-row error.
-      if (err instanceof CascadeRequiredError) {
+      if (isCascadeRequiredError(err)) {
         if (ctx) qc.setQueryData(ctx.queryKey, ctx.prev)
         return
       }
