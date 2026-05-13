@@ -63,11 +63,16 @@ async def _get_procedures_for_record(
         if not row.dts_code:
             continue
         pp = row[0]
+        if not pp.datum:
+            raise CezihError(
+                f"Postupak {row.dts_code} nema datum izvršenja - obavezno za CEZIH "
+                "(Procedure.performedDateTime 1..1)"
+            )
         procedures.append({
             "dts_code": row.dts_code,
             "dts_display": row.dts_display or "",
             "dts_version": row.dts_version or "0.1.0",
-            "performed_date": pp.datum.isoformat() if pp.datum else "",
+            "performed_date": pp.datum.isoformat(),
             "note": pp.napomena,
         })
     return procedures
@@ -195,7 +200,10 @@ async def send_enalaz(
     record_data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
 
     # Fetch performed procedures with DTS codes for the postupci section
-    procedures = await _get_procedures_for_record(db, tenant_id, record_id)
+    try:
+        procedures = await _get_procedures_for_record(db, tenant_id, record_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
     try:
         result = await real_service.send_enalaz(

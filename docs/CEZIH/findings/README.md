@@ -60,6 +60,7 @@ What needs to be done next...
 
 | File | Date | Status | Summary |
 |------|------|--------|---------|
+| [2026-05-13-dts-postupci-section-slicing-violation.md](2026-05-13-dts-postupci-section-slicing-violation.md) | 2026-05-13 | resolved | DTS Procedure refs were emitted as a top-level `Composition.section` with `code="13"`; 011/012/013 profiles close-slice section to codes 12/16/18 only. Code "13" is "SGP podaci" in `document-section` CodeSystem, not "Primijenjeni postupci". Fix: move Procedure refs into `medicinska-informacija.entry:postupci`. Caught pre-submission, would have been HZZO rejection #3 on profile compliance. |
 | [codesystem-mapping.md](codesystem-mapping.md) | 2026-04-09 | active | CEZIH-specific CodeSystems, encounter profiles |
 
 ### Signing (Digital Signature — Detached JWS)

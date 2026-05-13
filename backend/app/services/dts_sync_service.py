@@ -1,9 +1,13 @@
 """DTS (Dijagnostičko-Terapijski Postupci) code sync service.
 
 Syncs DTS procedure codes from CEZIH terminology to local DB.
-Falls back to bootstrap JSON file if CEZIH doesn't return data.
 
-Sync schedule: on startup (if stale) + monthly cron.
+Two distinct paths, no silent fallback between them (per CLAUDE.md "No fallbacks"):
+- seed_dts_from_bootstrap(): one-shot first-boot seed from bundled JSON when the
+  table is empty. Used only by the startup scheduler.
+- sync_dts_codes(): live sync from CEZIH ValueSet/$expand. Raises on failure.
+
+Sync schedule: bootstrap-if-empty on startup, then CEZIH refresh monthly.
 """
 
 import asyncio
@@ -29,21 +33,26 @@ _sync_task: asyncio.Task | None = None
 
 
 async def sync_dts_codes() -> dict:
-    """Sync DTS codes: try CEZIH first, fall back to bootstrap JSON."""
+    """Sync DTS codes from CEZIH ValueSet/$expand. No fallback - raises on failure."""
     concepts = await _fetch_from_cezih()
-    source = "cezih"
-
     if not concepts:
-        concepts = _load_bootstrap()
-        source = "bootstrap"
-
-    if not concepts:
-        logger.warning("DTS sync: no data from CEZIH or bootstrap")
-        return {"source": "none", "count": 0}
-
+        raise RuntimeError(
+            "DTS sync: CEZIH ValueSet/$expand returned no concepts. "
+            "Check CEZIH credentials, VPN, and terminology-services availability."
+        )
     upserted = await _upsert_codes(concepts)
-    logger.info("DTS sync complete: %d codes from %s", upserted, source)
-    return {"source": source, "count": upserted}
+    logger.info("DTS sync complete: %d codes from CEZIH", upserted)
+    return {"source": "cezih", "count": upserted}
+
+
+async def seed_dts_from_bootstrap() -> dict:
+    """One-shot seed from bundled CodeSystem-DTS.json. For first-boot only."""
+    concepts = _load_bootstrap()
+    if not concepts:
+        raise RuntimeError(f"DTS bootstrap: no concepts loaded from {BOOTSTRAP_PATH}")
+    upserted = await _upsert_codes(concepts)
+    logger.info("DTS bootstrap seed complete: %d codes", upserted)
+    return {"source": "bootstrap", "count": upserted}
 
 
 async def search_dts(query: str, limit: int = 20) -> list[dict]:
@@ -66,7 +75,10 @@ async def search_dts(query: str, limit: int = 20) -> list[dict]:
             .limit(limit)
         )
         result = await db.execute(stmt)
-        return [{"code": r.code, "display": r.display, "system": r.system, "version": r.version} for r in result.scalars().all()]
+        return [
+            {"code": r.code, "display": r.display, "system": r.system, "version": r.version}
+            for r in result.scalars().all()
+        ]
 
 
 async def get_dts_count() -> int:
@@ -77,42 +89,36 @@ async def get_dts_count() -> int:
 
 
 async def _fetch_from_cezih() -> list[dict]:
-    """Try to fetch DTS codes from CEZIH ValueSet/$expand."""
-    try:
-        import httpx
+    """Fetch DTS codes from CEZIH ValueSet/$expand. Raises on failure - no silent fallback."""
+    import httpx
 
-        from app.config import settings
-        from app.services.cezih.client import CezihFhirClient
+    from app.config import settings
+    from app.services.cezih.client import CezihFhirClient
 
-        if not settings.CEZIH_CLIENT_ID:
-            logger.info("DTS sync: CEZIH credentials not configured, skipping")
-            return []
+    if not settings.CEZIH_CLIENT_ID:
+        raise RuntimeError("DTS sync: CEZIH_CLIENT_ID not configured")
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            fhir_client = CezihFhirClient(client)
-            resp = await fhir_client.get(
-                "terminology-services/api/v1/ValueSet/$expand",
-                params={
-                    "url": "http://fhir.cezih.hr/specifikacije/ValueSet/postupci",
-                    "_count": "20000",
-                },
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        fhir_client = CezihFhirClient(client)
+        resp = await fhir_client.get(
+            "terminology-services/api/v1/ValueSet/$expand",
+            params={
+                "url": "http://fhir.cezih.hr/specifikacije/ValueSet/postupci",
+                "_count": "20000",
+            },
+        )
+        concepts = []
+        for c in resp.get("expansion", {}).get("contains", []):
+            concepts.append(
+                {
+                    "code": c.get("code", ""),
+                    "display": c.get("display", ""),
+                    "system": c.get("system", DTS_SYSTEM_URL),
+                    "version": c.get("version", DTS_VERSION),
+                }
             )
-            concepts = []
-            for c in resp.get("expansion", {}).get("contains", []):
-                concepts.append(
-                    {
-                        "code": c.get("code", ""),
-                        "display": c.get("display", ""),
-                        "system": c.get("system", DTS_SYSTEM_URL),
-                        "version": c.get("version", DTS_VERSION),
-                    }
-                )
-            if concepts:
-                logger.info("DTS sync: fetched %d codes from CEZIH", len(concepts))
-            return concepts
-    except Exception as e:
-        logger.info("DTS sync: CEZIH fetch failed (%s), will use bootstrap", e)
-        return []
+        logger.info("DTS sync: fetched %d codes from CEZIH", len(concepts))
+        return concepts
 
 
 def _load_bootstrap() -> list[dict]:
@@ -195,18 +201,32 @@ async def _is_sync_fresh(max_days: int = 30) -> bool:
 
 
 async def _sync_loop():
-    """Run sync on startup (if stale), then monthly."""
+    """Bootstrap-if-empty on startup, then CEZIH refresh monthly.
+
+    Bootstrap runs once when the table is empty (e.g. fresh deploy). CEZIH sync
+    runs monthly thereafter. The two are NOT fallbacks for each other - if CEZIH
+    sync fails after bootstrap, the error is logged but bootstrap data stays.
+    """
     await asyncio.sleep(12)  # Wait for DB to be ready (stagger from ICD-10)
 
+    # First-boot seed: if the table is empty, load from bundled JSON.
     try:
-        if await _is_sync_fresh():
-            count = await get_dts_count()
-            logger.info("DTS sync skipped — data is fresh (%d codes, < 30 days)", count)
-        else:
-            result = await sync_dts_codes()
-            logger.info("DTS initial sync: %s", result)
+        if await get_dts_count() == 0:
+            result = await seed_dts_from_bootstrap()
+            logger.info("DTS initial bootstrap: %s", result)
     except Exception:
-        logger.exception("DTS initial sync failed")
+        logger.exception("DTS bootstrap seed failed")
+
+    # Try a live CEZIH sync on startup if data is stale (does not block on failure).
+    try:
+        if not await _is_sync_fresh():
+            result = await sync_dts_codes()
+            logger.info("DTS initial CEZIH sync: %s", result)
+        else:
+            count = await get_dts_count()
+            logger.info("DTS sync skipped - data is fresh (%d codes, < 30 days)", count)
+    except Exception:
+        logger.exception("DTS initial CEZIH sync failed - keeping existing data")
 
     while True:
         await asyncio.sleep(30 * 24 * 3600)
@@ -214,7 +234,7 @@ async def _sync_loop():
             result = await sync_dts_codes()
             logger.info("DTS monthly sync: %s", result)
         except Exception:
-            logger.exception("DTS monthly sync failed")
+            logger.exception("DTS monthly sync failed - keeping existing data")
 
 
 def start_dts_sync_scheduler():

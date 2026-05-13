@@ -537,6 +537,11 @@ def _build_composition(
     title = _TITLE_BY_TYPE_CODE[document_type_code]
     composition_profile = _COMPOSITION_PROFILE_BY_TYPE_CODE[document_type_code]
 
+    # Per 011/012/013 Composition profiles, Composition.section is closed-sliced
+    # by value:code with min:2 max:3. Only three slices are allowed: djelatnost
+    # (code=12), prilozeni-dokumenti (code=16), medicinska-informacija (code=18).
+    # primijenjen-postupak Procedure refs are the `postupci` entry slice INSIDE
+    # medicinska-informacija, NOT a separate top-level section.
     mi_entries = [
         {"reference": anamneza_full_url},
         {"reference": case_full_url},
@@ -544,6 +549,8 @@ def _build_composition(
     ]
     if preporuka_full_url:
         mi_entries.append({"reference": preporuka_full_url})
+    if procedure_full_urls:
+        mi_entries.extend({"reference": url} for url in procedure_full_urls)
 
     sections = [
         {
@@ -573,21 +580,6 @@ def _build_composition(
             "entry": mi_entries,
         },
     ]
-
-    if procedure_full_urls:
-        sections.append({
-            "title": "Primijenjeni postupci",
-            "code": {
-                "coding": [
-                    {
-                        "system": SYS_DOC_SECTION,
-                        "code": "13",
-                        "display": "Primijenjeni postupci",
-                    }
-                ]
-            },
-            "entry": [{"reference": url} for url in procedure_full_urls],
-        })
 
     return {
         "resourceType": "Composition",
