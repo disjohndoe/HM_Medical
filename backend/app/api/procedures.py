@@ -99,6 +99,15 @@ async def create_performed_procedure(
     return await procedure_service.create_performed(db, current_user.tenant_id, data, current_user.id)
 
 
+@router.delete("/performed-procedures/{performed_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_performed_procedure(
+    performed_id: uuid.UUID,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    await procedure_service.delete_performed(db, current_user.tenant_id, performed_id)
+
+
 @router.post("/procedures/resolve-dts", response_model=ProcedureRead)
 async def resolve_dts_procedure(
     dts_code: str = Query(..., description="DTS code to resolve"),

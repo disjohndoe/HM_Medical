@@ -258,6 +258,20 @@ async def list_performed(
     return [_performed_row_to_dict(row) for row in result.all()], total
 
 
+async def delete_performed(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    performed_id: uuid.UUID,
+) -> None:
+    performed = await db.get(PerformedProcedure, performed_id)
+    if not performed or performed.tenant_id != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Izvršeni postupak nije pronađen",
+        )
+    await db.delete(performed)
+
+
 async def create_performed(
     db: AsyncSession,
     tenant_id: uuid.UUID,

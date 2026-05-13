@@ -103,6 +103,17 @@ export function useCreatePerformed() {
   })
 }
 
+export function useDeletePerformed() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/performed-procedures/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["performed-procedures"] })
+    },
+    onError: (err: Error) => { toast.error(err.message) },
+  })
+}
+
 export function useResolveDtsProcedure() {
   const queryClient = useQueryClient()
   return useMutation({

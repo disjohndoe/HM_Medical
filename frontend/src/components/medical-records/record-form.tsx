@@ -23,7 +23,7 @@ import {
 } from "@/lib/hooks/use-medical-records"
 import { useUploadDocument } from "@/lib/hooks/use-documents"
 import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch, useIcd10Search } from "@/lib/hooks/use-cezih"
-import { useResolveDtsProcedure, useCreatePerformed, usePerformedProcedures } from "@/lib/hooks/use-procedures"
+import { useResolveDtsProcedure, useCreatePerformed, useDeletePerformed, usePerformedProcedures } from "@/lib/hooks/use-procedures"
 import { useAppointments } from "@/lib/hooks/use-appointments"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
@@ -113,6 +113,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
 
   // Inline postupci (DTS procedures)
   const createPerformed = useCreatePerformed()
+  const deletePerformed = useDeletePerformed()
   const resolveDts = useResolveDtsProcedure()
   const [dtsQuery, setDtsQuery] = useState("")
   const [dtsSearchOpen, setDtsSearchOpen] = useState(false)
@@ -302,7 +303,14 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
     setPendingProcedures((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
   }
 
-  async function saveProcedures(recordId: string) {
+  async function applyProcedureChanges(recordId: string) {
+    // Delete removed existing procedures FIRST. The CEZIH replace bundle is
+    // built from a DB read of performed_procedures, so anything still in the
+    // table will end up back in the bundle even if the doctor "removed" it
+    // here. Deletion must happen before the bundle is built.
+    for (const id of removedExistingIds) {
+      await deletePerformed.mutateAsync(id)
+    }
     for (const proc of pendingProcedures) {
       await createPerformed.mutateAsync({
         patient_id: patientId,
@@ -329,12 +337,14 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         if (submitOverride) {
           setOverrideSubmitting(true)
           try {
-            // Persist newly added DTS postupci BEFORE triggering CEZIH replace.
-            // The backend builds the postupci section from the performed_procedures
-            // table; if we skip this the new procedures never reach the bundle.
-            if (pendingProcedures.length > 0) {
-              await saveProcedures(record.id)
+            // Sync postupci to DB BEFORE triggering CEZIH replace. The backend
+            // builds the postupci section from a DB read of performed_procedures,
+            // so newly added pending rows must be inserted and any "removed"
+            // existing rows must be deleted before the bundle is built.
+            if (pendingProcedures.length > 0 || removedExistingIds.size > 0) {
+              await applyProcedureChanges(record.id)
               setPendingProcedures([])
+              setRemovedExistingIds(new Set())
             }
             // The override owns the CEZIH replace request - pass the form's
             // current encounter/case selection so the doctor can re-link the
@@ -350,7 +360,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           }
         } else {
           const updated = await updateMutation.mutateAsync({ id: record.id, data: payload })
-          await saveProcedures(record.id)
+          await applyProcedureChanges(record.id)
           toast.success("Zapis ažuriran")
           onSaved?.(updated)
         }
@@ -368,7 +378,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         const created = await createMutation.mutateAsync(payload)
 
         if (pendingProcedures.length > 0) {
-          await saveProcedures(created.id)
+          await applyProcedureChanges(created.id)
         }
 
         if (attachedFile) {
