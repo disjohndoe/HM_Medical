@@ -555,7 +555,7 @@ function ENalazStatusCell({
   const label = item.cezih_storno
     ? "Storniran"
     : isReplaced
-      ? "Zamijenjen"
+      ? "Izmijenjen"
       : isSent
         ? "Poslan"
         : "Neposlan"
