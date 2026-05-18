@@ -909,7 +909,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           <div className="space-y-2">
             <Label>Prilozi</Label>
             <p className="text-xs text-muted-foreground">
-              Datoteke uz nalaz - bit će dostupne u CEZIH eKarton sekciji "Priloženi dokumenti".
+              Datoteke uz nalaz - bit će dostupne u CEZIH eKarton sekciji &ldquo;Priloženi dokumenti&rdquo;.
             </p>
 
             {visibleDocs.length > 0 && (

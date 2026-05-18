@@ -57,7 +57,9 @@ export function ProcedureForm({ open, onOpenChange, procedure }: ProcedureFormPr
     resolver: standardSchemaResolver(procedureSchema),
   })
 
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) {
       if (procedure) {
         setSelectedDts({
@@ -76,7 +78,7 @@ export function ProcedureForm({ open, onOpenChange, procedure }: ProcedureFormPr
         reset({ cijena_eur: 0, trajanje_minuta: 30 })
       }
     }
-  }, [open, procedure, reset])
+  }
 
   // Close dropdown on outside click
   useEffect(() => {

@@ -115,7 +115,9 @@ export function PerformedList({ patientId }: PerformedListProps) {
     setSelectedIds(new Set())
   }, [page])
 
-  useEffect(() => {
+  const [prevFormOpen, setPrevFormOpen] = useState(formOpen)
+  if (formOpen !== prevFormOpen) {
+    setPrevFormOpen(formOpen)
     if (formOpen) {
       reset({
         procedure_id: "",
@@ -127,7 +129,7 @@ export function PerformedList({ patientId }: PerformedListProps) {
       setDtsQuery("")
       setShowDropdown(false)
     }
-  }, [formOpen, reset])
+  }
 
   async function onSubmit(data: PerformedFormData) {
     try {
