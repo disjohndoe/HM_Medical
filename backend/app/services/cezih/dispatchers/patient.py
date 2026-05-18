@@ -74,10 +74,21 @@ async def import_patient_from_cezih(
     oib = idents.get(ID_OIB)
     # ONLY trust an explicit jedinstveni-identifikator-pacijenta from the PDQm
     # response. The previous `cezih_data.get("cezih_id")` fallback in patient.py
-    # picks the first identifier value (often MBO/OIB) when JID is absent — that
+    # picks the first identifier value (often MBO/OIB) when JID is absent - that
     # would write the wrong value into cezih_patient_id. HZZO Provjera Spremnosti
-    # rejected 2026-05-11 over a non-numeric value in this column.
-    cezih_patient_id = idents.get(ID_JEDINSTVENI) or None
+    # rejected 2026-05-11 over a non-numeric value in this column. Strict-shape
+    # guard mirrors pmir.py:242 and cezih.py:745: CEZIH's test HAPI server still
+    # returns stale CUID-shaped JIDs from prior PMIR registrations - refuse to
+    # persist anything non-numeric, log a warning so the residue is visible.
+    raw_jid = idents.get(ID_JEDINSTVENI) or None
+    cezih_patient_id = raw_jid if (raw_jid and raw_jid.isdigit()) else None
+    if raw_jid and not raw_jid.isdigit():
+        logger.warning(
+            "CEZIH PDQm (import_patient_by_mbo) returned non-numeric jedinstveni-identifikator-pacijenta=%r "
+            "for mbo=%r - refusing to persist. Likely CEZIH-side residue from prior PMIR registration.",
+            raw_jid,
+            mbo,
+        )
 
     # Parse date string to date object
     dob = None
@@ -198,10 +209,21 @@ async def import_patient_by_identifier(
     ehic = idents.get(ID_EHIC)
     # ONLY trust an explicit jedinstveni-identifikator-pacijenta from the PDQm
     # response. The previous `cezih_data.get("cezih_id")` fallback in patient.py
-    # picks the first identifier value (often MBO/OIB) when JID is absent — that
+    # picks the first identifier value (often MBO/OIB) when JID is absent - that
     # would write the wrong value into cezih_patient_id. HZZO Provjera Spremnosti
-    # rejected 2026-05-11 over a non-numeric value in this column.
-    cezih_patient_id = idents.get(ID_JEDINSTVENI) or None
+    # rejected 2026-05-11 over a non-numeric value in this column. Strict-shape
+    # guard mirrors pmir.py:242 and cezih.py:745.
+    raw_jid = idents.get(ID_JEDINSTVENI) or None
+    cezih_patient_id = raw_jid if (raw_jid and raw_jid.isdigit()) else None
+    if raw_jid and not raw_jid.isdigit():
+        logger.warning(
+            "CEZIH PDQm (import_patient_by_identifier) returned non-numeric "
+            "jedinstveni-identifikator-pacijenta=%r for %s=%r - refusing to persist. "
+            "Likely CEZIH-side residue from prior PMIR registration.",
+            raw_jid,
+            identifier_type,
+            identifier_value,
+        )
 
     # Duplicate check across all identifier columns — return 409 with the
     # existing patient so the UI can link to it instead of silently failing.
