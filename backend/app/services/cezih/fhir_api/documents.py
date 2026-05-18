@@ -598,8 +598,8 @@ def _extract_reference_display(ref: dict | str | None) -> str:
 def _map_fhir_status(status: str) -> str:
     """Map FHIR DocumentReference status to our domain status."""
     mapping = {
-        "current": "Otvorena",
-        "superseded": "Zatvorena",
+        "current": "Otvoreni",
+        "superseded": "Zatvoreni",
         "entered-in-error": "Pogreška",
     }
     return mapping.get(status, status)

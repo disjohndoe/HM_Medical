@@ -71,8 +71,8 @@ const DOC_STATUS_COLORS: Record<string, string> = {
   current: "bg-green-100 text-green-800",
   superseded: "bg-gray-100 text-gray-800",
   "entered-in-error": "bg-red-100 text-red-800",
-  Otvorena: "bg-green-100 text-green-800",
-  Zatvorena: "bg-gray-100 text-gray-800",
+  Otvoreni: "bg-green-100 text-green-800",
+  Zatvoreni: "bg-gray-100 text-gray-800",
   Pogreška: "bg-red-100 text-red-800",
 }
 
@@ -114,35 +114,6 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     patient_id: hasCezihIdentifier && (docsAll || documentsStatusFilter === "entered-in-error") ? patientId : undefined,
     status: "entered-in-error",
   })
-  // Povijest e-Nalaza: same fan-out shape as the CEZIH dokumenti queries
-  // above, but scoped to type=nalaz so this section only shows the clinic's
-  // own document class. Source is CEZIH (canonical), not the local DB.
-  const [nalaziStatusFilter, setNalaziStatusFilter] = useState(() => {
-    if (typeof window === "undefined") return "current"
-    return localStorage.getItem("ekarton-nalazi-status") || "current"
-  })
-  const nalaziAll = nalaziStatusFilter === "all"
-  // useDocumentSearch enables whenever `patient_id || type` is set. Since we
-  // always want type=nalaz, we must also blank `type` when this slice is gated
-  // off; otherwise CEZIH returns 502 (missing patient.identifier).
-  const nalaziCurrentOn = hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "current")
-  const nalaziSupersededOn = hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "superseded")
-  const nalaziErrorOn = hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "entered-in-error")
-  const nalaziCurrentQuery = useDocumentSearch({
-    patient_id: nalaziCurrentOn ? patientId : undefined,
-    type: nalaziCurrentOn ? "nalaz" : undefined,
-    status: "current",
-  })
-  const nalaziSupersededQuery = useDocumentSearch({
-    patient_id: nalaziSupersededOn ? patientId : undefined,
-    type: nalaziSupersededOn ? "nalaz" : undefined,
-    status: "superseded",
-  })
-  const nalaziErrorQuery = useDocumentSearch({
-    patient_id: nalaziErrorOn ? patientId : undefined,
-    type: nalaziErrorOn ? "nalaz" : undefined,
-    status: "entered-in-error",
-  })
   const retrieveDoc = useRetrieveDocument()
   const insuranceMutation = useInsuranceCheck()
   const { data: localDocs } = useDocuments(patientId)
@@ -180,7 +151,6 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
   // Pagination state — 0-indexed, 10 per page. Not persisted across reloads.
   const [casesPage, setCasesPage] = useState(0)
   const [visitsPage, setVisitsPage] = useState(0)
-  const [nalaziPage, setNalaziPage] = useState(0)
   const [documentsPage, setDocumentsPage] = useState(0)
   const PAGE_SIZE = 10
 
@@ -195,12 +165,6 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     setVisitsStatusFilter(v)
     localStorage.setItem("ekarton-visits-status", v)
     setVisitsPage(0)
-  }
-  const handleNalaziStatusChange = (value: string | null) => {
-    const v = value || "current"
-    setNalaziStatusFilter(v)
-    localStorage.setItem("ekarton-nalazi-status", v)
-    setNalaziPage(0)
   }
   const handleDocumentsStatusChange = (value: string | null) => {
     const v = value || "current"
@@ -284,24 +248,6 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
       : documentsStatusFilter === "entered-in-error"
         ? docsErrorQuery.isLoading
         : docsCurrentQuery.isLoading
-  const nalazi = nalaziAll
-    ? [
-        ...(nalaziCurrentQuery.data ?? []),
-        ...(nalaziSupersededQuery.data ?? []),
-        ...(nalaziErrorQuery.data ?? []),
-      ]
-    : nalaziStatusFilter === "superseded"
-      ? (nalaziSupersededQuery.data ?? [])
-      : nalaziStatusFilter === "entered-in-error"
-        ? (nalaziErrorQuery.data ?? [])
-        : (nalaziCurrentQuery.data ?? [])
-  const nalaziLoading = nalaziAll
-    ? nalaziCurrentQuery.isLoading || nalaziSupersededQuery.isLoading || nalaziErrorQuery.isLoading
-    : nalaziStatusFilter === "superseded"
-      ? nalaziSupersededQuery.isLoading
-      : nalaziStatusFilter === "entered-in-error"
-        ? nalaziErrorQuery.isLoading
-        : nalaziCurrentQuery.isLoading
   const eReceptHistory = summary?.e_recept_history || []
   const statusConfig = insurance?.status_osiguranja
     ? OSIGURANJE_STATUS[insurance.status_osiguranja]
@@ -328,15 +274,11 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
 
   const pagedCases = filteredCases.slice(casesPage * PAGE_SIZE, (casesPage + 1) * PAGE_SIZE)
   const pagedVisits = filteredVisits.slice(visitsPage * PAGE_SIZE, (visitsPage + 1) * PAGE_SIZE)
-  // Documents + Nalazi come from BE already filtered by status; sort newest first then paginate.
+  // Documents come from BE already filtered by status; sort newest first then paginate.
   const sortedDocuments = [...documents].sort(
     (a, b) => (b.datum_izdavanja ?? "").localeCompare(a.datum_izdavanja ?? "")
   )
   const pagedDocuments = sortedDocuments.slice(documentsPage * PAGE_SIZE, (documentsPage + 1) * PAGE_SIZE)
-  const sortedNalazi = [...nalazi].sort(
-    (a, b) => (b.datum_izdavanja ?? "").localeCompare(a.datum_izdavanja ?? "")
-  )
-  const pagedNalazi = sortedNalazi.slice(nalaziPage * PAGE_SIZE, (nalaziPage + 1) * PAGE_SIZE)
 
   return (
     <Card>
@@ -626,12 +568,12 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
 
         <Separator />
 
-        {/* 5. CEZIH dokumenti — status filter, paginated */}
+        {/* 5. e-Nalazi from CEZIH — status filter, paginated */}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <FileSearch className="h-4 w-4" />
-              CEZIH dokumenti
+              e-Nalazi
               {documents.length > 0 && (
                 <Badge variant="outline" className="text-xs ml-1">
                   {documents.length}
@@ -660,7 +602,7 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
           ) : !hasCezihIdentifier ? (
             <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
           ) : documents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nema CEZIH dokumenata za odabrani filter</p>
+            <p className="text-sm text-muted-foreground">Nema e-Nalaza za odabrani filter</p>
           ) : (
             <>
             <div className="space-y-1.5">
@@ -757,84 +699,6 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
           )}
         </div>
 
-        <Separator />
-
-        {/* 7. Povijest e-Nalaza — fetched from CEZIH (type=nalaz), status-filtered, paginated */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <FileText className="h-4 w-4" />
-              Povijest e-Nalaza
-              {nalazi.length > 0 && (
-                <Badge variant="outline" className="text-xs ml-1">
-                  {nalazi.length}
-                </Badge>
-              )}
-            </div>
-            <Select value={nalaziStatusFilter} onValueChange={handleNalaziStatusChange}>
-              <SelectTrigger className="h-7 w-[130px] text-xs">
-                <SelectValue>
-                  {DOC_STATUS_FILTER_OPTIONS.find((o) => o.value === nalaziStatusFilter)?.label || nalaziStatusFilter}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {DOC_STATUS_FILTER_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {nalaziLoading ? (
-            <div className="flex justify-center py-2">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : !hasCezihIdentifier ? (
-            <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
-          ) : nalazi.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nema e-Nalaza za odabrani filter</p>
-          ) : (
-            <>
-              <div className="space-y-1.5">
-                {pagedNalazi.map((n) => (
-                  <div key={n.id} className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                      <Badge className={DOC_STATUS_COLORS[n.status] || "bg-gray-100"}>
-                        {n.status}
-                      </Badge>
-                      <span className="text-sm truncate">{n.svrha}</span>
-                      {n.izdavatelj && (
-                        <span className="text-xs text-muted-foreground">{n.izdavatelj}</span>
-                      )}
-                      {n.datum_izdavanja && (
-                        <span className="text-xs text-muted-foreground">{formatDateHR(n.datum_izdavanja)}</span>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 shrink-0"
-                      onClick={() => handleDownloadPdf(n.id, n.content_url)}
-                      disabled={retrieveDoc.isPending}
-                      title="Preuzmi PDF"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              {sortedNalazi.length > PAGE_SIZE && (
-                <TablePagination
-                  page={nalaziPage}
-                  pageSize={PAGE_SIZE}
-                  total={sortedNalazi.length}
-                  onPageChange={setNalaziPage}
-                />
-              )}
-            </>
-          )}
-        </div>
       </CardContent>
     </Card>
   )

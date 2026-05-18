@@ -898,13 +898,13 @@ export function useReplaceDocument() {
     },
     onSuccess: (_resp, vars) => {
       clearError(vars.referenceId)
-      // Server confirmed - now flip status to Zatvorena. Subsequent
+      // Server confirmed - now flip status to Zatvoreni. Subsequent
       // invalidations refetch from CEZIH for the canonical state.
       const queryFilter = { queryKey: ["cezih", "documents"], exact: false }
       qc.setQueriesData<DocumentSearchItem[]>(queryFilter, (old) => {
         if (!old) return old
         return old.map((d) =>
-          d.id === vars.referenceId ? { ...d, status: "Zatvorena" } : d,
+          d.id === vars.referenceId ? { ...d, status: "Zatvoreni" } : d,
         )
       })
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })

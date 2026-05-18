@@ -109,8 +109,8 @@ export const VISIT_STATUS_FILTER_OPTIONS: readonly { value: string; label: strin
 // parallel calls on the FE and merges the results. Default = "current"
 // preserves the pre-filter eKarton UX.
 export const DOC_STATUS_FILTER_OPTIONS: readonly { value: string; label: string }[] = [
-  { value: "current", label: "Otvorene" },
-  { value: "superseded", label: "Zatvorene" },
+  { value: "current", label: "Otvoreni" },
+  { value: "superseded", label: "Zatvoreni" },
   { value: "entered-in-error", label: "Pogreška" },
   { value: "all", label: "Sve" },
 ] as const;

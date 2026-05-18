@@ -180,12 +180,12 @@ export function DocumentSearch() {
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "")}>
               <SelectTrigger>
                 <SelectValue placeholder="Status">
-                  {{ current: "Otvorena", superseded: "Zatvorena", "entered-in-error": "Pogreška" }[statusFilter] || undefined}
+                  {{ current: "Otvoreni", superseded: "Zatvoreni", "entered-in-error": "Pogreška" }[statusFilter] || undefined}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="current">Otvorena</SelectItem>
-                <SelectItem value="superseded">Zatvorena</SelectItem>
+                <SelectItem value="current">Otvoreni</SelectItem>
+                <SelectItem value="superseded">Zatvoreni</SelectItem>
                 <SelectItem value="entered-in-error">Pogreška</SelectItem>
               </SelectContent>
             </Select>
@@ -277,7 +277,7 @@ export function DocumentSearch() {
                       <Badge
                         variant="outline"
                         className={
-                          doc.status === "Zatvorena"
+                          doc.status === "Zatvoreni"
                             ? "bg-green-100 text-green-800 border-green-200"
                             : doc.status === "Pogreška"
                               ? "bg-red-100 text-red-800 border-red-200"
