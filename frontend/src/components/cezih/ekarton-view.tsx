@@ -122,19 +122,25 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     return localStorage.getItem("ekarton-nalazi-status") || "current"
   })
   const nalaziAll = nalaziStatusFilter === "all"
+  // useDocumentSearch enables whenever `patient_id || type` is set. Since we
+  // always want type=nalaz, we must also blank `type` when this slice is gated
+  // off; otherwise CEZIH returns 502 (missing patient.identifier).
+  const nalaziCurrentOn = hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "current")
+  const nalaziSupersededOn = hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "superseded")
+  const nalaziErrorOn = hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "entered-in-error")
   const nalaziCurrentQuery = useDocumentSearch({
-    patient_id: hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "current") ? patientId : undefined,
-    type: "nalaz",
+    patient_id: nalaziCurrentOn ? patientId : undefined,
+    type: nalaziCurrentOn ? "nalaz" : undefined,
     status: "current",
   })
   const nalaziSupersededQuery = useDocumentSearch({
-    patient_id: hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "superseded") ? patientId : undefined,
-    type: "nalaz",
+    patient_id: nalaziSupersededOn ? patientId : undefined,
+    type: nalaziSupersededOn ? "nalaz" : undefined,
     status: "superseded",
   })
   const nalaziErrorQuery = useDocumentSearch({
-    patient_id: hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "entered-in-error") ? patientId : undefined,
-    type: "nalaz",
+    patient_id: nalaziErrorOn ? patientId : undefined,
+    type: nalaziErrorOn ? "nalaz" : undefined,
     status: "entered-in-error",
   })
   const retrieveDoc = useRetrieveDocument()

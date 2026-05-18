@@ -24,7 +24,6 @@ from app.services.cezih.builders.common import (
 )
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
-from app.services.cezih.fhir_api._pagination import collect_all_pages
 from app.services.cezih.fhir_api.identifiers import _require_identifier_system, _require_identifier_value
 from app.services.cezih.signing import sign_document_bundle
 
@@ -633,6 +632,13 @@ async def search_documents(
         params["date"] = params.get("date", "") + f"&date=le{date_to}" if "date" in params else f"le{date_to}"
     # CEZIH requires status parameter — default to "current" if not specified
     params["status"] = status_filter or "current"
+    # Ask for a single large page up front. CEZIH HAPI's own Bundle.link[rel=next]
+    # is currently broken for searches without a type filter (returns HTTP 400
+    # with empty body when followed), so we cannot paginate via collect_all_pages
+    # without regressing section 5 / Pretraga. _count=200 covers any realistic
+    # outpatient document count for one patient + status combo.
+    # TODO(cezih): follow up with HZZO on next-link bug, then restore paging.
+    params["_count"] = 200
 
     try:
         response = await fhir_client.get("doc-mhd-svc/api/v1/DocumentReference", params=params)
@@ -642,12 +648,14 @@ async def search_documents(
 
     items = []
     if response.get("resourceType") == "Bundle":
-        # Walk Bundle.link[rel=next] so we don't silently truncate at the
-        # first ITI-67 page (~50 entries). collect_all_pages raises
-        # CezihError if the safety cap is hit instead of returning a partial
-        # list, matching the project's no-fallback rule.
-        entries = await collect_all_pages(fhir_client, response)
-        for entry in entries:
+        if any((link or {}).get("relation") == "next" for link in response.get("link") or []):
+            logger.warning(
+                "CEZIH document search returned a next link but pagination is "
+                "disabled due to upstream HAPI bug; results may be truncated "
+                "at %d entries.",
+                len(response.get("entry") or []),
+            )
+        for entry in (response.get("entry") or []):
             doc_ref = entry.get("resource", {})
             try:
                 author = ""
