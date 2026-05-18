@@ -97,15 +97,25 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
   const casesQuery = useRetrieveCases(hasCezihIdentifier ? patientId : "")
   const visitsQuery = useListVisits(hasCezihIdentifier ? patientId : "")
-  // documentsStatusFilter must be declared before docsQuery so the value
-  // flows into useDocumentSearch (each status flip = fresh BE request).
+  // documentsStatusFilter must be declared before the doc queries so the
+  // value can gate each query's enabled state. CEZIH ITI-67 requires a
+  // single status per request, so "all" fans out to 3 parallel calls.
   const [documentsStatusFilter, setDocumentsStatusFilter] = useState(() => {
     if (typeof window === "undefined") return "current"
     return localStorage.getItem("ekarton-documents-status") || "current"
   })
-  const docsQuery = useDocumentSearch({
-    patient_id: hasCezihIdentifier ? patientId : undefined,
-    status: documentsStatusFilter,
+  const docsAll = documentsStatusFilter === "all"
+  const docsCurrentQuery = useDocumentSearch({
+    patient_id: hasCezihIdentifier && (docsAll || documentsStatusFilter === "current") ? patientId : undefined,
+    status: "current",
+  })
+  const docsSupersededQuery = useDocumentSearch({
+    patient_id: hasCezihIdentifier && (docsAll || documentsStatusFilter === "superseded") ? patientId : undefined,
+    status: "superseded",
+  })
+  const docsErrorQuery = useDocumentSearch({
+    patient_id: hasCezihIdentifier && (docsAll || documentsStatusFilter === "entered-in-error") ? patientId : undefined,
+    status: "entered-in-error",
   })
   const retrieveDoc = useRetrieveDocument()
   const insuranceMutation = useInsuranceCheck()
@@ -235,7 +245,24 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
   const insError = insuranceMutation.error
   const cases = casesQuery.data?.cases || []
   const visits = visitsQuery.data?.visits || []
-  const documents = docsQuery.data || []
+  const documents = docsAll
+    ? [
+        ...(docsCurrentQuery.data ?? []),
+        ...(docsSupersededQuery.data ?? []),
+        ...(docsErrorQuery.data ?? []),
+      ]
+    : documentsStatusFilter === "superseded"
+      ? (docsSupersededQuery.data ?? [])
+      : documentsStatusFilter === "entered-in-error"
+        ? (docsErrorQuery.data ?? [])
+        : (docsCurrentQuery.data ?? [])
+  const docsLoading = docsAll
+    ? docsCurrentQuery.isLoading || docsSupersededQuery.isLoading || docsErrorQuery.isLoading
+    : documentsStatusFilter === "superseded"
+      ? docsSupersededQuery.isLoading
+      : documentsStatusFilter === "entered-in-error"
+        ? docsErrorQuery.isLoading
+        : docsCurrentQuery.isLoading
   const eNalazHistory = summary?.e_nalaz_history || []
   const eReceptHistory = summary?.e_recept_history || []
   const statusConfig = insurance?.status_osiguranja
@@ -593,7 +620,7 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
               </SelectContent>
             </Select>
           </div>
-          {docsQuery.isLoading ? (
+          {docsLoading ? (
             <div className="flex justify-center py-2">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>

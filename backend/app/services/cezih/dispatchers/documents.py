@@ -1156,5 +1156,6 @@ __all__ = [
     "dispatch_replace_document",
     "dispatch_replace_document_with_edit",
     "dispatch_cancel_document",
+    "dispatch_cancel_document_canonical",
     "dispatch_retrieve_document",
 ]

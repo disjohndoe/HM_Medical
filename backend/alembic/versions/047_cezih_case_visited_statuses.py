@@ -10,6 +10,7 @@ Revises: 046_add_djelatnost_columns
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "047_cezih_case_visited_statuses"

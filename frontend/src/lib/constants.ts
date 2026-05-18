@@ -111,13 +111,14 @@ export const E_NALAZ_FILTER_OPTIONS: readonly { value: string; label: string }[]
 // CEZIH document status filter. Values map to FHIR DocumentReference.status
 // and are sent to BE as-is. Labels mirror the wording used in the Pretraga
 // dokumenata tab (which BE remaps via _map_fhir_status). CEZIH ITI-67
-// requires a status param, so there is no "Sve" - doctor flips between
-// the three states like in document-search.tsx. Default = "current"
+// requires a single status param per request, so "all" fans out to three
+// parallel calls on the FE and merges the results. Default = "current"
 // preserves the pre-filter eKarton UX.
 export const DOC_STATUS_FILTER_OPTIONS: readonly { value: string; label: string }[] = [
   { value: "current", label: "Otvorene" },
   { value: "superseded", label: "Zatvorene" },
   { value: "entered-in-error", label: "Pogreška" },
+  { value: "all", label: "Sve" },
 ] as const;
 
 export const WORKING_HOURS_START = 6;
