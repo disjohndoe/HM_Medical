@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from app.constants import get_cezih_document_coding
+from app.constants import CEZIH_DOCUMENT_TYPE_SYSTEM, get_cezih_document_coding
 from app.services.cezih.builders.bundles import build_iti65_transaction_bundle
 from app.services.cezih.builders.clinical_document_bundle import build_clinical_document_bundle
 from app.services.cezih.builders.common import (
@@ -625,7 +625,18 @@ async def search_documents(
     if patient_system and patient_value:
         params["patient.identifier"] = f"{patient_system}|{patient_value}"
     if document_type:
-        params["type"] = f"http://fhir.cezih.hr/specifikacije/vrste-dokumenata|{document_type}"
+        # CEZIH stores types in HRTipDokumenta (CEZIH_DOCUMENT_TYPE_SYSTEM)
+        # with codes 011-013 for privatnici, not under "vrste-dokumenata" with
+        # mnemonic strings. The UI passes the alias "nalaz" (per
+        # CEZIH_DOCUMENT_TYPE_MAP) which on the wire must expand to 011 +
+        # 012 - the two clinical-finding privatnik codes. Comma-separated
+        # values give an OR over the type token.
+        if document_type == "nalaz":
+            params["type"] = ",".join(
+                f"{CEZIH_DOCUMENT_TYPE_SYSTEM}|{c}" for c in ("011", "012")
+            )
+        else:
+            params["type"] = f"{CEZIH_DOCUMENT_TYPE_SYSTEM}|{document_type}"
     if date_from:
         params["date"] = f"ge{date_from}"
     if date_to:
