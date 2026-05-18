@@ -47,6 +47,7 @@ import {
   CLINICAL_STATUS_FILTER_OPTIONS,
   VISIT_STATUS_FILTER_OPTIONS,
   E_NALAZ_FILTER_OPTIONS,
+  DOC_STATUS_FILTER_OPTIONS,
 } from "@/lib/constants"
 import { isForeignPatient, type Patient } from "@/lib/types"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
@@ -96,7 +97,16 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
   const casesQuery = useRetrieveCases(hasCezihIdentifier ? patientId : "")
   const visitsQuery = useListVisits(hasCezihIdentifier ? patientId : "")
-  const docsQuery = useDocumentSearch({ patient_id: hasCezihIdentifier ? patientId : undefined })
+  // documentsStatusFilter must be declared before docsQuery so the value
+  // flows into useDocumentSearch (each status flip = fresh BE request).
+  const [documentsStatusFilter, setDocumentsStatusFilter] = useState(() => {
+    if (typeof window === "undefined") return "current"
+    return localStorage.getItem("ekarton-documents-status") || "current"
+  })
+  const docsQuery = useDocumentSearch({
+    patient_id: hasCezihIdentifier ? patientId : undefined,
+    status: documentsStatusFilter,
+  })
   const retrieveDoc = useRetrieveDocument()
   const insuranceMutation = useInsuranceCheck()
   const { tipLabelMap } = useRecordTypeMaps()
@@ -140,6 +150,7 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
   const [casesPage, setCasesPage] = useState(0)
   const [visitsPage, setVisitsPage] = useState(0)
   const [findingsPage, setFindingsPage] = useState(0)
+  const [documentsPage, setDocumentsPage] = useState(0)
   const PAGE_SIZE = 10
 
   const handleCasesStatusChange = (value: string | null) => {
@@ -159,6 +170,12 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     setFindingsStatusFilter(v)
     localStorage.setItem("ekarton-findings-status", v)
     setFindingsPage(0)
+  }
+  const handleDocumentsStatusChange = (value: string | null) => {
+    const v = value || "current"
+    setDocumentsStatusFilter(v)
+    localStorage.setItem("ekarton-documents-status", v)
+    setDocumentsPage(0)
   }
 
   // Auto-check insurance on mount only if no fresh cached data (< 30 min).
@@ -255,6 +272,11 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
   const pagedCases = filteredCases.slice(casesPage * PAGE_SIZE, (casesPage + 1) * PAGE_SIZE)
   const pagedVisits = filteredVisits.slice(visitsPage * PAGE_SIZE, (visitsPage + 1) * PAGE_SIZE)
   const pagedFindings = filteredFindings.slice(findingsPage * PAGE_SIZE, (findingsPage + 1) * PAGE_SIZE)
+  // Documents come from BE already filtered by status, sort newest first then paginate.
+  const sortedDocuments = [...documents].sort(
+    (a, b) => (b.datum_izdavanja ?? "").localeCompare(a.datum_izdavanja ?? "")
+  )
+  const pagedDocuments = sortedDocuments.slice(documentsPage * PAGE_SIZE, (documentsPage + 1) * PAGE_SIZE)
 
   return (
     <Card>
@@ -544,16 +566,32 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
 
         <Separator />
 
-        {/* 5. CEZIH dokumenti */}
+        {/* 5. CEZIH dokumenti — status filter, paginated */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <FileSearch className="h-4 w-4" />
-            CEZIH dokumenti
-            {documents.length > 0 && (
-              <Badge variant="outline" className="text-xs ml-1">
-                {documents.length}
-              </Badge>
-            )}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <FileSearch className="h-4 w-4" />
+              CEZIH dokumenti
+              {documents.length > 0 && (
+                <Badge variant="outline" className="text-xs ml-1">
+                  {documents.length}
+                </Badge>
+              )}
+            </div>
+            <Select value={documentsStatusFilter} onValueChange={handleDocumentsStatusChange}>
+              <SelectTrigger className="h-7 w-[130px] text-xs">
+                <SelectValue>
+                  {DOC_STATUS_FILTER_OPTIONS.find((o) => o.value === documentsStatusFilter)?.label || documentsStatusFilter}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {DOC_STATUS_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {docsQuery.isLoading ? (
             <div className="flex justify-center py-2">
@@ -562,10 +600,11 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
           ) : !hasCezihIdentifier ? (
             <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
           ) : documents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nema CEZIH dokumenata</p>
+            <p className="text-sm text-muted-foreground">Nema CEZIH dokumenata za odabrani filter</p>
           ) : (
+            <>
             <div className="space-y-1.5">
-              {documents.map((d) => (
+              {pagedDocuments.map((d) => (
                 <div key={d.id} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <Badge className={DOC_STATUS_COLORS[d.status] || "bg-gray-100"}>
@@ -615,6 +654,15 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
                 </div>
               ))}
             </div>
+            {sortedDocuments.length > PAGE_SIZE && (
+              <TablePagination
+                page={documentsPage}
+                pageSize={PAGE_SIZE}
+                total={sortedDocuments.length}
+                onPageChange={setDocumentsPage}
+              />
+            )}
+            </>
           )}
         </div>
 

@@ -75,14 +75,19 @@ export const VERIFICATION_STATUS: Record<string, string> = {
 };
 
 // --- eKarton filter dropdowns ---
-// "active" composite = current default (active + recurrence + relapse), preserves UX
-// when a user opens the eKarton without changing filters. "all" shows everything.
+// Labels mirror the wording used in the CEZIH tab tables
+// (CLINICAL_STATUS for Slučajevi, VISIT_STATUS_LABELS for Posjete,
+// _map_fhir_status BE remap for Dokumenti) so a doctor sees the same
+// terminology in both views. "active" / "open" composites are the
+// pre-filter defaults that preserve the original UX.
 
 export const CLINICAL_STATUS_FILTER_OPTIONS: readonly { value: string; label: string }[] = [
   { value: "active", label: "Aktivne" },
-  { value: "recurrence", label: "Recidiv" },
+  { value: "recurrence", label: "Ponavljajuće" },
   { value: "remission", label: "Remisija" },
-  { value: "resolved", label: "Riješene" },
+  { value: "relapse", label: "Relaps" },
+  { value: "resolved", label: "Zatvorene" },
+  { value: "inactive", label: "Neaktivne" },
   { value: "all", label: "Sve" },
 ] as const;
 
@@ -101,6 +106,18 @@ export const E_NALAZ_FILTER_OPTIONS: readonly { value: string; label: string }[]
   { value: "all", label: "Sve" },
   { value: "sent", label: "Poslane" },
   { value: "storno", label: "Stornirane" },
+] as const;
+
+// CEZIH document status filter. Values map to FHIR DocumentReference.status
+// and are sent to BE as-is. Labels mirror the wording used in the Pretraga
+// dokumenata tab (which BE remaps via _map_fhir_status). CEZIH ITI-67
+// requires a status param, so there is no "Sve" - doctor flips between
+// the three states like in document-search.tsx. Default = "current"
+// preserves the pre-filter eKarton UX.
+export const DOC_STATUS_FILTER_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: "current", label: "Otvorene" },
+  { value: "superseded", label: "Zatvorene" },
+  { value: "entered-in-error", label: "Pogreška" },
 ] as const;
 
 export const WORKING_HOURS_START = 6;
