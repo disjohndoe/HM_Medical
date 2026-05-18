@@ -66,7 +66,7 @@ const VISIT_STATUS_LABELS: Record<string, string> = {
   finished: "Završena",
   planned: "Planirana",
   cancelled: "Otkazana",
-  "entered-in-error": "Pogreška",
+  "entered-in-error": "Stornirana",
 }
 
 const DOC_STATUS_COLORS: Record<string, string> = {
@@ -397,7 +397,9 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
               <div className="flex items-center gap-2">
                 <Select value={casesStatusFilter} onValueChange={handleCasesStatusChange}>
                   <SelectTrigger className="h-7 w-[130px] text-xs">
-                    <SelectValue />
+                    <SelectValue>
+                      {CLINICAL_STATUS_FILTER_OPTIONS.find((o) => o.value === casesStatusFilter)?.label || casesStatusFilter}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {CLINICAL_STATUS_FILTER_OPTIONS.map((opt) => (
@@ -479,7 +481,9 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
             {visits.length > 0 && (
               <Select value={visitsStatusFilter} onValueChange={handleVisitsStatusChange}>
                 <SelectTrigger className="h-7 w-[150px] text-xs">
-                  <SelectValue />
+                  <SelectValue>
+                    {VISIT_STATUS_FILTER_OPTIONS.find((o) => o.value === visitsStatusFilter)?.label || visitsStatusFilter}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {VISIT_STATUS_FILTER_OPTIONS.map((opt) => (
@@ -662,7 +666,9 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
             {eNalazHistory.length > 0 && (
               <Select value={findingsStatusFilter} onValueChange={handleFindingsStatusChange}>
                 <SelectTrigger className="h-7 w-[130px] text-xs">
-                  <SelectValue />
+                  <SelectValue>
+                    {E_NALAZ_FILTER_OPTIONS.find((o) => o.value === findingsStatusFilter)?.label || findingsStatusFilter}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {E_NALAZ_FILTER_OPTIONS.map((opt) => (

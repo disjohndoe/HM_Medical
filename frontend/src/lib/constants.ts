@@ -93,7 +93,7 @@ export const VISIT_STATUS_FILTER_OPTIONS: readonly { value: string; label: strin
   { value: "planned", label: "Planirane" },
   { value: "finished", label: "Završene" },
   { value: "cancelled", label: "Otkazane" },
-  { value: "entered-in-error", label: "Pogreška" },
+  { value: "entered-in-error", label: "Stornirane" },
   { value: "all", label: "Sve" },
 ] as const;
 
