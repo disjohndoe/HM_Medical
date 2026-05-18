@@ -279,9 +279,10 @@ export default function PacijentDetailPage() {
                   </>
                 )}
               </dl>
-              {!patient.mbo && !patient.broj_putovnice && !patient.ehic_broj && (
+              {!hasCezihIdentifier(patient) && (
                 <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
-                  Strancu nedostaje broj putovnice i EHIC kartice — CEZIH operacije neće raditi.
+                  Pacijentu nedostaje jedan od CEZIH identifikatora (OIB, MBO, EHIC, broj putovnice).
+                  CEZIH operacije neće raditi ukoliko pacijentu ne dodate jedan od ovih identifikatora.
                   Uredite pacijenta i dodajte barem jedan identifikator.
                 </div>
               )}
