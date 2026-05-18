@@ -82,3 +82,9 @@ caddy_config/
 backend/C*/
 bug-report-email*.txt
 klijenti/
+
+# One-off importers (local rehearsal only)
+backend/scripts/import_podgajski_sample.py
+
+# Local scratch
+.tmp/

@@ -344,7 +344,7 @@ Exposes: backend :8000, frontend :3000, PostgreSQL :5433. No Caddy, hot reload e
 
 ### Mandatory Testing Workflow — PROD ONLY
 
-**All testing is done on prod (app.hmdigital.hr) via Chrome MCP + SSH. Do NOT test on localhost.**
+**All feature testing is done on prod (app.hmdigital.hr) via Chrome MCP + SSH. Do NOT test features on localhost.**
 
 Workflow for every code change:
 
@@ -360,6 +360,31 @@ Workflow for every code change:
    ```bash
    ssh root@178.104.169.150 "cd /opt/medical-mvp && docker compose logs backend --tail 100"
    ```
+
+### Heavy Data Operations — LOCAL FIRST, then prod
+
+**Carve-out from the prod-only rule.** Heavy operations - data imports, patient migrations, bulk inserts/updates, schema rewrites, anything that touches many rows or rewrites real data - MUST be rehearsed locally first.
+
+Workflow:
+
+1. **Write the script** and commit it to `backend/scripts/` (or appropriate location) - no ad-hoc one-liners.
+2. **Run locally first** against the dev docker-compose stack with representative data:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+   # run the script against local DB on :5433
+   ```
+3. **Verify locally**: row counts, spot-check rows, check for orphans (missing tenant_id, broken FKs, missing MBO/OID linkages), run app smoke test against the resulting DB.
+4. **Only after local run is clean**, run the same script against prod via SSH, or import the prepared output file.
+
+**Why:** Bad import on prod can corrupt tenant data, break CEZIH linkages (MBO, OIDs, refIDs), or silently drop rows. The cost of a 10-minute local rehearsal is trivial compared to hours of prod recovery.
+
+**Applies to:**
+- Patient/MBO imports from CSV, Excel, other PMS systems
+- Schema migrations that backfill data (alembic + data fixup)
+- Bulk updates to tenant_id, role, or CEZIH identifiers
+- Anything in `backend/scripts/` that touches >100 rows or rewrites real data
+
+**Does NOT apply to:** regular feature E2E testing (stays prod-only), small fixes, single-record edits, normal app development.
 
 ### Production
 
