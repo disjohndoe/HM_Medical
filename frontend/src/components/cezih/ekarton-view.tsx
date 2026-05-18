@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react"
 import {
   AlertTriangle,
   Calendar,
-  CheckCircle2,
   Download,
   FileSearch,
   FileText,
@@ -46,11 +45,9 @@ import {
   CLINICAL_STATUS_COLORS,
   CLINICAL_STATUS_FILTER_OPTIONS,
   VISIT_STATUS_FILTER_OPTIONS,
-  E_NALAZ_FILTER_OPTIONS,
   DOC_STATUS_FILTER_OPTIONS,
 } from "@/lib/constants"
 import { isForeignPatient, type Patient } from "@/lib/types"
-import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
 
 
@@ -117,9 +114,31 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     patient_id: hasCezihIdentifier && (docsAll || documentsStatusFilter === "entered-in-error") ? patientId : undefined,
     status: "entered-in-error",
   })
+  // Povijest e-Nalaza: same fan-out shape as the CEZIH dokumenti queries
+  // above, but scoped to type=nalaz so this section only shows the clinic's
+  // own document class. Source is CEZIH (canonical), not the local DB.
+  const [nalaziStatusFilter, setNalaziStatusFilter] = useState(() => {
+    if (typeof window === "undefined") return "current"
+    return localStorage.getItem("ekarton-nalazi-status") || "current"
+  })
+  const nalaziAll = nalaziStatusFilter === "all"
+  const nalaziCurrentQuery = useDocumentSearch({
+    patient_id: hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "current") ? patientId : undefined,
+    type: "nalaz",
+    status: "current",
+  })
+  const nalaziSupersededQuery = useDocumentSearch({
+    patient_id: hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "superseded") ? patientId : undefined,
+    type: "nalaz",
+    status: "superseded",
+  })
+  const nalaziErrorQuery = useDocumentSearch({
+    patient_id: hasCezihIdentifier && (nalaziAll || nalaziStatusFilter === "entered-in-error") ? patientId : undefined,
+    type: "nalaz",
+    status: "entered-in-error",
+  })
   const retrieveDoc = useRetrieveDocument()
   const insuranceMutation = useInsuranceCheck()
-  const { tipLabelMap } = useRecordTypeMaps()
   const { data: localDocs } = useDocuments(patientId)
   const importCezih = useImportCezihDocument()
 
@@ -151,15 +170,11 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     if (typeof window === "undefined") return "open"
     return localStorage.getItem("ekarton-visits-status") || "open"
   })
-  const [findingsStatusFilter, setFindingsStatusFilter] = useState(() => {
-    if (typeof window === "undefined") return "all"
-    return localStorage.getItem("ekarton-findings-status") || "all"
-  })
 
   // Pagination state — 0-indexed, 10 per page. Not persisted across reloads.
   const [casesPage, setCasesPage] = useState(0)
   const [visitsPage, setVisitsPage] = useState(0)
-  const [findingsPage, setFindingsPage] = useState(0)
+  const [nalaziPage, setNalaziPage] = useState(0)
   const [documentsPage, setDocumentsPage] = useState(0)
   const PAGE_SIZE = 10
 
@@ -175,11 +190,11 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     localStorage.setItem("ekarton-visits-status", v)
     setVisitsPage(0)
   }
-  const handleFindingsStatusChange = (value: string | null) => {
-    const v = value || "all"
-    setFindingsStatusFilter(v)
-    localStorage.setItem("ekarton-findings-status", v)
-    setFindingsPage(0)
+  const handleNalaziStatusChange = (value: string | null) => {
+    const v = value || "current"
+    setNalaziStatusFilter(v)
+    localStorage.setItem("ekarton-nalazi-status", v)
+    setNalaziPage(0)
   }
   const handleDocumentsStatusChange = (value: string | null) => {
     const v = value || "current"
@@ -263,7 +278,24 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
       : documentsStatusFilter === "entered-in-error"
         ? docsErrorQuery.isLoading
         : docsCurrentQuery.isLoading
-  const eNalazHistory = summary?.e_nalaz_history || []
+  const nalazi = nalaziAll
+    ? [
+        ...(nalaziCurrentQuery.data ?? []),
+        ...(nalaziSupersededQuery.data ?? []),
+        ...(nalaziErrorQuery.data ?? []),
+      ]
+    : nalaziStatusFilter === "superseded"
+      ? (nalaziSupersededQuery.data ?? [])
+      : nalaziStatusFilter === "entered-in-error"
+        ? (nalaziErrorQuery.data ?? [])
+        : (nalaziCurrentQuery.data ?? [])
+  const nalaziLoading = nalaziAll
+    ? nalaziCurrentQuery.isLoading || nalaziSupersededQuery.isLoading || nalaziErrorQuery.isLoading
+    : nalaziStatusFilter === "superseded"
+      ? nalaziSupersededQuery.isLoading
+      : nalaziStatusFilter === "entered-in-error"
+        ? nalaziErrorQuery.isLoading
+        : nalaziCurrentQuery.isLoading
   const eReceptHistory = summary?.e_recept_history || []
   const statusConfig = insurance?.status_osiguranja
     ? OSIGURANJE_STATUS[insurance.status_osiguranja]
@@ -279,11 +311,6 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     if (visitsStatusFilter === "open") return status === "in-progress" || status === "planned"
     return status === visitsStatusFilter
   }
-  const matchesFindingStatus = (storno: boolean) => {
-    if (findingsStatusFilter === "all") return true
-    if (findingsStatusFilter === "sent") return !storno
-    return storno
-  }
 
   const filteredCases = cases
     .filter((c) => matchesCaseStatus(c.clinical_status))
@@ -292,18 +319,18 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
   const filteredVisits = visits
     .filter((v) => matchesVisitStatus(v.status))
     .sort((a, b) => (b.period_start ?? "").localeCompare(a.period_start ?? ""))
-  const filteredFindings = eNalazHistory
-    .filter((n) => matchesFindingStatus(n.cezih_storno))
-    .sort((a, b) => (b.datum ?? "").localeCompare(a.datum ?? ""))
 
   const pagedCases = filteredCases.slice(casesPage * PAGE_SIZE, (casesPage + 1) * PAGE_SIZE)
   const pagedVisits = filteredVisits.slice(visitsPage * PAGE_SIZE, (visitsPage + 1) * PAGE_SIZE)
-  const pagedFindings = filteredFindings.slice(findingsPage * PAGE_SIZE, (findingsPage + 1) * PAGE_SIZE)
-  // Documents come from BE already filtered by status, sort newest first then paginate.
+  // Documents + Nalazi come from BE already filtered by status; sort newest first then paginate.
   const sortedDocuments = [...documents].sort(
     (a, b) => (b.datum_izdavanja ?? "").localeCompare(a.datum_izdavanja ?? "")
   )
   const pagedDocuments = sortedDocuments.slice(documentsPage * PAGE_SIZE, (documentsPage + 1) * PAGE_SIZE)
+  const sortedNalazi = [...nalazi].sort(
+    (a, b) => (b.datum_izdavanja ?? "").localeCompare(a.datum_izdavanja ?? "")
+  )
+  const pagedNalazi = sortedNalazi.slice(nalaziPage * PAGE_SIZE, (nalaziPage + 1) * PAGE_SIZE)
 
   return (
     <Card>
@@ -726,88 +753,77 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
 
         <Separator />
 
-        {/* 7. Povijest e-Nalaza — status filter, paginated */}
+        {/* 7. Povijest e-Nalaza — fetched from CEZIH (type=nalaz), status-filtered, paginated */}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <FileText className="h-4 w-4" />
               Povijest e-Nalaza
-              {eNalazHistory.length > 0 && (
+              {nalazi.length > 0 && (
                 <Badge variant="outline" className="text-xs ml-1">
-                  {filteredFindings.length}/{eNalazHistory.length}
+                  {nalazi.length}
                 </Badge>
               )}
             </div>
-            {eNalazHistory.length > 0 && (
-              <Select value={findingsStatusFilter} onValueChange={handleFindingsStatusChange}>
-                <SelectTrigger className="h-7 w-[130px] text-xs">
-                  <SelectValue>
-                    {E_NALAZ_FILTER_OPTIONS.find((o) => o.value === findingsStatusFilter)?.label || findingsStatusFilter}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {E_NALAZ_FILTER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <Select value={nalaziStatusFilter} onValueChange={handleNalaziStatusChange}>
+              <SelectTrigger className="h-7 w-[130px] text-xs">
+                <SelectValue>
+                  {DOC_STATUS_FILTER_OPTIONS.find((o) => o.value === nalaziStatusFilter)?.label || nalaziStatusFilter}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {DOC_STATUS_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          {filteredFindings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {eNalazHistory.length > 0 ? "Nema e-Nalaza za odabrani filter" : "Nema poslanih e-Nalaza"}
-            </p>
+          {nalaziLoading ? (
+            <div className="flex justify-center py-2">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : !hasCezihIdentifier ? (
+            <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
+          ) : nalazi.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nema e-Nalaza za odabrani filter</p>
           ) : (
             <>
               <div className="space-y-1.5">
-                {pagedFindings.map((n) => (
-                  <div key={n.record_id} className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Badge
-                        variant="outline"
-                        className={
-                          n.cezih_storno
-                            ? "bg-red-100 text-red-800 border-red-200"
-                            : "bg-green-100 text-green-800 border-green-200"
-                        }
-                      >
-                        {n.cezih_storno ? "Storniran" : "Poslan"}
+                {pagedNalazi.map((n) => (
+                  <div key={n.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                      <Badge className={DOC_STATUS_COLORS[n.status] || "bg-gray-100"}>
+                        {n.status}
                       </Badge>
-                      <span className="text-sm text-muted-foreground">
-                        {tipLabelMap[n.tip] || n.tip}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDateTimeHR(n.datum)}
-                      </span>
-                      {n.cezih_signed && (
-                        <div className="flex items-center gap-1" title={`Potpisano: ${formatDateTimeHR(n.cezih_signed_at || "")}`}>
-                          <CheckCircle2 className="h-3 w-3 text-green-600" />
-                        </div>
+                      <span className="text-sm truncate">{n.svrha}</span>
+                      {n.izdavatelj && (
+                        <span className="text-xs text-muted-foreground">{n.izdavatelj}</span>
+                      )}
+                      {n.datum_izdavanja && (
+                        <span className="text-xs text-muted-foreground">{formatDateHR(n.datum_izdavanja)}</span>
                       )}
                     </div>
-                    {n.reference_id && !n.cezih_storno && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 shrink-0"
-                        onClick={() => handleDownloadPdf(n.reference_id!, undefined, n.document_oid ?? undefined)}
-                        disabled={retrieveDoc.isPending}
-                        title="Preuzmi PDF"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 shrink-0"
+                      onClick={() => handleDownloadPdf(n.id, n.content_url)}
+                      disabled={retrieveDoc.isPending}
+                      title="Preuzmi PDF"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 ))}
               </div>
-              {filteredFindings.length > PAGE_SIZE && (
+              {sortedNalazi.length > PAGE_SIZE && (
                 <TablePagination
-                  page={findingsPage}
+                  page={nalaziPage}
                   pageSize={PAGE_SIZE}
-                  total={filteredFindings.length}
-                  onPageChange={setFindingsPage}
+                  total={sortedNalazi.length}
+                  onPageChange={setNalaziPage}
                 />
               )}
             </>

@@ -24,6 +24,7 @@ from app.services.cezih.builders.common import (
 )
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
+from app.services.cezih.fhir_api._pagination import collect_all_pages
 from app.services.cezih.fhir_api.identifiers import _require_identifier_system, _require_identifier_value
 from app.services.cezih.signing import sign_document_bundle
 
@@ -641,7 +642,12 @@ async def search_documents(
 
     items = []
     if response.get("resourceType") == "Bundle":
-        for entry in response.get("entry", []):
+        # Walk Bundle.link[rel=next] so we don't silently truncate at the
+        # first ITI-67 page (~50 entries). collect_all_pages raises
+        # CezihError if the safety cap is hit instead of returning a partial
+        # list, matching the project's no-fallback rule.
+        entries = await collect_all_pages(fhir_client, response)
+        for entry in entries:
             doc_ref = entry.get("resource", {})
             try:
                 author = ""

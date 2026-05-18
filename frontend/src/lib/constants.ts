@@ -102,12 +102,6 @@ export const VISIT_STATUS_FILTER_OPTIONS: readonly { value: string; label: strin
   { value: "all", label: "Sve" },
 ] as const;
 
-export const E_NALAZ_FILTER_OPTIONS: readonly { value: string; label: string }[] = [
-  { value: "all", label: "Sve" },
-  { value: "sent", label: "Poslane" },
-  { value: "storno", label: "Stornirane" },
-] as const;
-
 // CEZIH document status filter. Values map to FHIR DocumentReference.status
 // and are sent to BE as-is. Labels mirror the wording used in the Pretraga
 // dokumenata tab (which BE remaps via _map_fhir_status). CEZIH ITI-67
