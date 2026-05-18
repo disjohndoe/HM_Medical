@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { TablePagination } from "@/components/shared/table-pagination"
 import {
   usePatientCezihSummary,
   useRetrieveCases,
@@ -37,7 +38,16 @@ import {
   useInsuranceCheck,
 } from "@/lib/hooks/use-cezih"
 import { useDocuments, useImportCezihDocument } from "@/lib/hooks/use-documents"
-import { OSIGURANJE_STATUS, ICD_CHAPTERS, COUNTRY_HR, CLINICAL_STATUS, CLINICAL_STATUS_COLORS } from "@/lib/constants"
+import {
+  OSIGURANJE_STATUS,
+  ICD_CHAPTERS,
+  COUNTRY_HR,
+  CLINICAL_STATUS,
+  CLINICAL_STATUS_COLORS,
+  CLINICAL_STATUS_FILTER_OPTIONS,
+  VISIT_STATUS_FILTER_OPTIONS,
+  E_NALAZ_FILTER_OPTIONS,
+} from "@/lib/constants"
 import { isForeignPatient, type Patient } from "@/lib/types"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
@@ -107,6 +117,48 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     const v = !value || value === "__all__" ? "" : value
     setIcdFilter(v)
     localStorage.setItem("ekarton-icd-filter", v)
+    setCasesPage(0)
+  }
+
+  // Status filters — persisted in localStorage. Defaults preserve the
+  // pre-filter UX (Aktivne / Aktualne / Sve) so nothing changes for a
+  // user who never touches the dropdowns.
+  const [casesStatusFilter, setCasesStatusFilter] = useState(() => {
+    if (typeof window === "undefined") return "active"
+    return localStorage.getItem("ekarton-cases-status") || "active"
+  })
+  const [visitsStatusFilter, setVisitsStatusFilter] = useState(() => {
+    if (typeof window === "undefined") return "open"
+    return localStorage.getItem("ekarton-visits-status") || "open"
+  })
+  const [findingsStatusFilter, setFindingsStatusFilter] = useState(() => {
+    if (typeof window === "undefined") return "all"
+    return localStorage.getItem("ekarton-findings-status") || "all"
+  })
+
+  // Pagination state — 0-indexed, 10 per page. Not persisted across reloads.
+  const [casesPage, setCasesPage] = useState(0)
+  const [visitsPage, setVisitsPage] = useState(0)
+  const [findingsPage, setFindingsPage] = useState(0)
+  const PAGE_SIZE = 10
+
+  const handleCasesStatusChange = (value: string | null) => {
+    const v = value || "all"
+    setCasesStatusFilter(v)
+    localStorage.setItem("ekarton-cases-status", v)
+    setCasesPage(0)
+  }
+  const handleVisitsStatusChange = (value: string | null) => {
+    const v = value || "all"
+    setVisitsStatusFilter(v)
+    localStorage.setItem("ekarton-visits-status", v)
+    setVisitsPage(0)
+  }
+  const handleFindingsStatusChange = (value: string | null) => {
+    const v = value || "all"
+    setFindingsStatusFilter(v)
+    localStorage.setItem("ekarton-findings-status", v)
+    setFindingsPage(0)
   }
 
   // Auto-check insurance on mount only if no fresh cached data (< 30 min).
@@ -173,11 +225,36 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
     ? OSIGURANJE_STATUS[insurance.status_osiguranja]
     : null
 
-  const activeCases = cases.filter((c) => c.clinical_status !== "resolved")
-  const filteredCases = activeCases.filter((c) => matchesIcdFilter(c.icd_code, icdFilter))
-  const activeVisits = visits
-    .filter((v) => v.status === "in-progress" || v.status === "planned")
+  const matchesCaseStatus = (clinicalStatus: string) => {
+    if (casesStatusFilter === "all") return true
+    if (casesStatusFilter === "active") return clinicalStatus !== "resolved"
+    return clinicalStatus === casesStatusFilter
+  }
+  const matchesVisitStatus = (status: string) => {
+    if (visitsStatusFilter === "all") return true
+    if (visitsStatusFilter === "open") return status === "in-progress" || status === "planned"
+    return status === visitsStatusFilter
+  }
+  const matchesFindingStatus = (storno: boolean) => {
+    if (findingsStatusFilter === "all") return true
+    if (findingsStatusFilter === "sent") return !storno
+    return storno
+  }
+
+  const filteredCases = cases
+    .filter((c) => matchesCaseStatus(c.clinical_status))
+    .filter((c) => matchesIcdFilter(c.icd_code, icdFilter))
+    .sort((a, b) => (b.onset_date ?? "").localeCompare(a.onset_date ?? ""))
+  const filteredVisits = visits
+    .filter((v) => matchesVisitStatus(v.status))
     .sort((a, b) => (b.period_start ?? "").localeCompare(a.period_start ?? ""))
+  const filteredFindings = eNalazHistory
+    .filter((n) => matchesFindingStatus(n.cezih_storno))
+    .sort((a, b) => (b.datum ?? "").localeCompare(a.datum ?? ""))
+
+  const pagedCases = filteredCases.slice(casesPage * PAGE_SIZE, (casesPage + 1) * PAGE_SIZE)
+  const pagedVisits = filteredVisits.slice(visitsPage * PAGE_SIZE, (visitsPage + 1) * PAGE_SIZE)
+  const pagedFindings = filteredFindings.slice(findingsPage * PAGE_SIZE, (findingsPage + 1) * PAGE_SIZE)
 
   return (
     <Card>
@@ -304,33 +381,47 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
 
         <Separator />
 
-        {/* 3. Aktivne dijagnoze — with ICD chapter filter */}
+        {/* 3. Dijagnoze — status + ICD chapter filters, paginated */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Stethoscope className="h-4 w-4" />
-              Aktivne dijagnoze
-              {activeCases.length > 0 && (
+              Dijagnoze
+              {cases.length > 0 && (
                 <Badge variant="outline" className="text-xs ml-1">
-                  {icdFilter ? `${filteredCases.length}/${activeCases.length}` : activeCases.length}
+                  {filteredCases.length}/{cases.length}
                 </Badge>
               )}
             </div>
-            {activeCases.length > 0 && (
-              <Select value={icdFilter || "__all__"} onValueChange={handleIcdFilterChange}>
-                <SelectTrigger className="h-7 w-[180px] text-xs">
-                  <SelectValue placeholder="Sve dijagnoze">
-                    {ICD_CHAPTERS.find((ch) => (ch.prefix || "__all__") === (icdFilter || "__all__"))?.label || "Sve dijagnoze"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {ICD_CHAPTERS.map((ch) => (
-                    <SelectItem key={ch.prefix || "__all__"} value={ch.prefix || "__all__"} className="text-xs">
-                      {ch.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {cases.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Select value={casesStatusFilter} onValueChange={handleCasesStatusChange}>
+                  <SelectTrigger className="h-7 w-[130px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CLINICAL_STATUS_FILTER_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={icdFilter || "__all__"} onValueChange={handleIcdFilterChange}>
+                  <SelectTrigger className="h-7 w-[180px] text-xs">
+                    <SelectValue placeholder="Sve dijagnoze">
+                      {ICD_CHAPTERS.find((ch) => (ch.prefix || "__all__") === (icdFilter || "__all__"))?.label || "Sve dijagnoze"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ICD_CHAPTERS.map((ch) => (
+                      <SelectItem key={ch.prefix || "__all__"} value={ch.prefix || "__all__"} className="text-xs">
+                        {ch.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </div>
           {casesQuery.isLoading ? (
@@ -341,37 +432,63 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
             <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
           ) : filteredCases.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {icdFilter && activeCases.length > 0 ? "Nema dijagnoza za odabrano područje" : "Nema aktivnih dijagnoza"}
+              {cases.length > 0 ? "Nema dijagnoza za odabrane filtere" : "Nema dijagnoza"}
             </p>
           ) : (
-            <div className="space-y-1.5">
-              {filteredCases.map((c) => (
-                <div key={c.case_id} className="flex items-center gap-2 flex-wrap">
-                  <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100 text-gray-600"}>
-                    {CLINICAL_STATUS[c.clinical_status] || c.clinical_status || "Nema"}
-                  </Badge>
-                  <span className="font-mono text-sm">{c.icd_code}</span>
-                  <span className="text-sm text-muted-foreground">{c.icd_display}</span>
-                  {c.onset_date && (
-                    <span className="text-xs text-muted-foreground">· od {formatDateHR(c.onset_date)}</span>
-                  )}
-                </div>
-              ))}
-            </div>
+            <>
+              <div className="space-y-1.5">
+                {pagedCases.map((c) => (
+                  <div key={c.case_id} className="flex items-center gap-2 flex-wrap">
+                    <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100 text-gray-600"}>
+                      {CLINICAL_STATUS[c.clinical_status] || c.clinical_status || "Nema"}
+                    </Badge>
+                    <span className="font-mono text-sm">{c.icd_code}</span>
+                    <span className="text-sm text-muted-foreground">{c.icd_display}</span>
+                    {c.onset_date && (
+                      <span className="text-xs text-muted-foreground">· od {formatDateHR(c.onset_date)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {filteredCases.length > PAGE_SIZE && (
+                <TablePagination
+                  page={casesPage}
+                  pageSize={PAGE_SIZE}
+                  total={filteredCases.length}
+                  onPageChange={setCasesPage}
+                />
+              )}
+            </>
           )}
         </div>
 
         <Separator />
 
-        {/* 4. Aktivne posjete */}
+        {/* 4. Posjete — status filter, paginated */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Calendar className="h-4 w-4" />
-            Aktivne posjete
-            {activeVisits.length > 0 && (
-              <Badge variant="outline" className="text-xs ml-1">
-                {activeVisits.length}
-              </Badge>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Calendar className="h-4 w-4" />
+              Posjete
+              {visits.length > 0 && (
+                <Badge variant="outline" className="text-xs ml-1">
+                  {filteredVisits.length}/{visits.length}
+                </Badge>
+              )}
+            </div>
+            {visits.length > 0 && (
+              <Select value={visitsStatusFilter} onValueChange={handleVisitsStatusChange}>
+                <SelectTrigger className="h-7 w-[150px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VISIT_STATUS_FILTER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
           {visitsQuery.isLoading ? (
@@ -380,32 +497,44 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
             </div>
           ) : !hasCezihIdentifier ? (
             <p className="text-sm text-muted-foreground">Nema CEZIH identifikatora — dohvat nije moguć</p>
-          ) : activeVisits.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nema aktivnih posjeta</p>
+          ) : filteredVisits.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {visits.length > 0 ? "Nema posjeta za odabrani filter" : "Nema posjeta"}
+            </p>
           ) : (
-            <div className="space-y-1.5">
-              {activeVisits.map((v) => {
-                const label =
-                  v.reason ||
-                  v.tip_posjete_display ||
-                  v.vrsta_posjete_display ||
-                  v.visit_type_display ||
-                  "Posjeta"
-                return (
-                  <div key={v.visit_id} className="flex items-center gap-2 flex-wrap">
-                    <Badge className={VISIT_STATUS_COLORS[v.status] || "bg-gray-100"}>
-                      {VISIT_STATUS_LABELS[v.status] || v.status}
-                    </Badge>
-                    <span className="text-sm">{label}</span>
-                    {v.period_start && (
-                      <span className="text-xs text-muted-foreground">
-                        {formatDateTimeHR(v.period_start)}
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <>
+              <div className="space-y-1.5">
+                {pagedVisits.map((v) => {
+                  const label =
+                    v.reason ||
+                    v.tip_posjete_display ||
+                    v.vrsta_posjete_display ||
+                    v.visit_type_display ||
+                    "Posjeta"
+                  return (
+                    <div key={v.visit_id} className="flex items-center gap-2 flex-wrap">
+                      <Badge className={VISIT_STATUS_COLORS[v.status] || "bg-gray-100"}>
+                        {VISIT_STATUS_LABELS[v.status] || v.status}
+                      </Badge>
+                      <span className="text-sm">{label}</span>
+                      {v.period_start && (
+                        <span className="text-xs text-muted-foreground">
+                          {formatDateTimeHR(v.period_start)}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              {filteredVisits.length > PAGE_SIZE && (
+                <TablePagination
+                  page={visitsPage}
+                  pageSize={PAGE_SIZE}
+                  total={filteredVisits.length}
+                  onPageChange={setVisitsPage}
+                />
+              )}
+            </>
           )}
         </div>
 
@@ -518,61 +647,89 @@ export function EkartonView({ patientId, patient, hasCezihIdentifier, alergije }
 
         <Separator />
 
-        {/* 7. Povijest e-Nalaza */}
+        {/* 7. Povijest e-Nalaza — status filter, paginated */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <FileText className="h-4 w-4" />
-            Povijest e-Nalaza
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <FileText className="h-4 w-4" />
+              Povijest e-Nalaza
+              {eNalazHistory.length > 0 && (
+                <Badge variant="outline" className="text-xs ml-1">
+                  {filteredFindings.length}/{eNalazHistory.length}
+                </Badge>
+              )}
+            </div>
             {eNalazHistory.length > 0 && (
-              <Badge variant="outline" className="text-xs ml-1">
-                {eNalazHistory.length}
-              </Badge>
+              <Select value={findingsStatusFilter} onValueChange={handleFindingsStatusChange}>
+                <SelectTrigger className="h-7 w-[130px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {E_NALAZ_FILTER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
-          {eNalazHistory.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nema poslanih e-Nalaza</p>
+          {filteredFindings.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {eNalazHistory.length > 0 ? "Nema e-Nalaza za odabrani filter" : "Nema poslanih e-Nalaza"}
+            </p>
           ) : (
-            <div className="space-y-1.5">
-              {eNalazHistory.map((n) => (
-                <div key={n.record_id} className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Badge
-                      variant="outline"
-                      className={
-                        n.cezih_storno
-                          ? "bg-red-100 text-red-800 border-red-200"
-                          : "bg-green-100 text-green-800 border-green-200"
-                      }
-                    >
-                      {n.cezih_storno ? "Storniran" : "Poslan"}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground">
-                      {tipLabelMap[n.tip] || n.tip}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDateTimeHR(n.datum)}
-                    </span>
-                    {n.cezih_signed && (
-                      <div className="flex items-center gap-1" title={`Potpisano: ${formatDateTimeHR(n.cezih_signed_at || "")}`}>
-                        <CheckCircle2 className="h-3 w-3 text-green-600" />
-                      </div>
+            <>
+              <div className="space-y-1.5">
+                {pagedFindings.map((n) => (
+                  <div key={n.record_id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Badge
+                        variant="outline"
+                        className={
+                          n.cezih_storno
+                            ? "bg-red-100 text-red-800 border-red-200"
+                            : "bg-green-100 text-green-800 border-green-200"
+                        }
+                      >
+                        {n.cezih_storno ? "Storniran" : "Poslan"}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        {tipLabelMap[n.tip] || n.tip}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDateTimeHR(n.datum)}
+                      </span>
+                      {n.cezih_signed && (
+                        <div className="flex items-center gap-1" title={`Potpisano: ${formatDateTimeHR(n.cezih_signed_at || "")}`}>
+                          <CheckCircle2 className="h-3 w-3 text-green-600" />
+                        </div>
+                      )}
+                    </div>
+                    {n.reference_id && !n.cezih_storno && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 shrink-0"
+                        onClick={() => handleDownloadPdf(n.reference_id!, undefined, n.document_oid ?? undefined)}
+                        disabled={retrieveDoc.isPending}
+                        title="Preuzmi PDF"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
                     )}
                   </div>
-                  {n.reference_id && !n.cezih_storno && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 shrink-0"
-                      onClick={() => handleDownloadPdf(n.reference_id!, undefined, n.document_oid ?? undefined)}
-                      disabled={retrieveDoc.isPending}
-                      title="Preuzmi PDF"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {filteredFindings.length > PAGE_SIZE && (
+                <TablePagination
+                  page={findingsPage}
+                  pageSize={PAGE_SIZE}
+                  total={filteredFindings.length}
+                  onPageChange={setFindingsPage}
+                />
+              )}
+            </>
           )}
         </div>
       </CardContent>

@@ -74,6 +74,35 @@ export const VERIFICATION_STATUS: Record<string, string> = {
   "entered-in-error": "Pogreška unosa",
 };
 
+// --- eKarton filter dropdowns ---
+// "active" composite = current default (active + recurrence + relapse), preserves UX
+// when a user opens the eKarton without changing filters. "all" shows everything.
+
+export const CLINICAL_STATUS_FILTER_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: "active", label: "Aktivne" },
+  { value: "recurrence", label: "Recidiv" },
+  { value: "remission", label: "Remisija" },
+  { value: "resolved", label: "Riješene" },
+  { value: "all", label: "Sve" },
+] as const;
+
+// Default = "open" composite = in-progress + planned, preserves current UX.
+export const VISIT_STATUS_FILTER_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: "open", label: "Aktualne" },
+  { value: "in-progress", label: "U tijeku" },
+  { value: "planned", label: "Planirane" },
+  { value: "finished", label: "Završene" },
+  { value: "cancelled", label: "Otkazane" },
+  { value: "entered-in-error", label: "Pogreška" },
+  { value: "all", label: "Sve" },
+] as const;
+
+export const E_NALAZ_FILTER_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: "all", label: "Sve" },
+  { value: "sent", label: "Poslane" },
+  { value: "storno", label: "Stornirane" },
+] as const;
+
 export const WORKING_HOURS_START = 6;
 export const WORKING_HOURS_END = 21;
 export const SLOT_GRANULARITY = 15;

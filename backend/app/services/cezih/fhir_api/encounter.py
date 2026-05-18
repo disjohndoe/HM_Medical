@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from app.services.cezih.client import CezihFhirClient
+from app.services.cezih.fhir_api._pagination import collect_all_pages
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +18,22 @@ async def list_visits(
     """List encounters/visits for a patient (QEDm Encounter query).
 
     GET /ihe-qedm-services/api/v1/Encounter?patient.identifier={system_uri}|{value}
+
+    Follows CEZIH's Bundle.link[rel=next] so patients with long visit histories
+    are not silently truncated at the default page size (~50).
     """
     fhir_client = CezihFhirClient(client)
     patient_mbo = value  # kept as dict-key for back-compat with UI/mirror rows
     params = {
         "patient.identifier": f"{system_uri}|{value}",
+        "_count": "100",
     }
     response = await fhir_client.get("ihe-qedm-services/api/v1/Encounter", params=params)
 
     visits: list[dict] = []
     if response.get("resourceType") == "Bundle":
-        for entry in response.get("entry", []):
+        all_entries = await collect_all_pages(fhir_client, response)
+        for entry in all_entries:
             enc = entry.get("resource", {})
             visit_id = enc.get("id", "")
             for ident in enc.get("identifier", []):

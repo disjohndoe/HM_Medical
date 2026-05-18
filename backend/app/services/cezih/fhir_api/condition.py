@@ -14,6 +14,7 @@ from app.services.cezih.builders.condition import (
 )
 from app.services.cezih.client import CezihFhirClient
 from app.services.cezih.exceptions import CezihError
+from app.services.cezih.fhir_api._pagination import collect_all_pages
 from app.services.cezih.message_builder import (
     CASE_ACTION_MAP,
     CASE_EVENT_PROFILE,
@@ -102,16 +103,22 @@ async def retrieve_cases(
     system_uri: str,
     value: str,
 ) -> list[dict]:
-    """Retrieve existing cases for a patient (TC15, QEDm)."""
+    """Retrieve existing cases for a patient (TC15, QEDm).
+
+    Follows CEZIH's Bundle.link[rel=next] so patients with long case histories
+    are not silently truncated at the default page size (~50).
+    """
     fhir_client = CezihFhirClient(client)
     params = {
         "patient.identifier": f"{system_uri}|{value}",
+        "_count": "100",
     }
     response = await fhir_client.get("ihe-qedm-services/api/v1/Condition", params=params)
 
     cases = []
     if response.get("resourceType") == "Bundle":
-        for entry in response.get("entry", []):
+        all_entries = await collect_all_pages(fhir_client, response)
+        for entry in all_entries:
             cond = entry.get("resource", {})
             case_id = ""
             for ident in cond.get("identifier", []):

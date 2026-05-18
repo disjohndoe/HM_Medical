@@ -296,10 +296,11 @@ class CezihFhirClient:
         timeout: int | None = None,
         accept: str | None = None,
         content_type: str | None = None,
+        absolute_url: str | None = None,
         _attempt: int = 0,
     ) -> dict | bytes:
         signing_method = await self._get_signing_method()
-        url = self._full_url(path, signing_method)
+        url = absolute_url if absolute_url else self._full_url(path, signing_method)
         oauth2_url = self._get_oauth2_url(signing_method)
         timeout = timeout or settings.CEZIH_TIMEOUT
         max_attempts = settings.CEZIH_RETRY_ATTEMPTS
@@ -359,6 +360,7 @@ class CezihFhirClient:
                 params=params,
                 json_body=json_body,
                 timeout=timeout,
+                absolute_url=absolute_url,
                 _attempt=_attempt + 1,
             )
 
@@ -372,6 +374,7 @@ class CezihFhirClient:
                 params=params,
                 json_body=json_body,
                 timeout=timeout,
+                absolute_url=absolute_url,
                 _attempt=_attempt + 1,
             )
 
@@ -426,6 +429,29 @@ class CezihFhirClient:
         accept: str | None = None,
     ) -> dict | bytes:
         return await self.request("GET", path, params=params, timeout=timeout, accept=accept)
+
+    async def get_absolute(
+        self,
+        url: str,
+        *,
+        timeout: int | None = None,
+        accept: str | None = None,
+    ) -> dict:
+        """GET an already-formed absolute URL (e.g. Bundle.link[rel=next]).
+
+        Bypasses _full_url so CEZIH-returned pagination URLs are honored as-is.
+        Auth, agent routing, and 401/5xx retry semantics from request() apply.
+        """
+        result = await self.request(
+            "GET",
+            path="",
+            timeout=timeout,
+            accept=accept,
+            absolute_url=url,
+        )
+        if isinstance(result, bytes):
+            raise CezihError("Neočekivani binarni odgovor na paginacijski poziv.")
+        return result
 
     async def post(self, path: str, *, json_body: dict | None = None) -> dict:
         result = await self.request("POST", path, json_body=json_body)
