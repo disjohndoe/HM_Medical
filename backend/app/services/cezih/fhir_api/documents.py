@@ -792,53 +792,69 @@ async def replace_document(
     }
 
 
+def _extract_oid_from_docref(doc_ref: dict) -> str:
+    """Extract masterIdentifier OID from a DocumentReference resource.
+
+    Tries content[].attachment.url (base64 data param) first, then
+    masterIdentifier.value as a fallback.
+    """
+    for content in doc_ref.get("content", []):
+        url = content.get("attachment", {}).get("url", "")
+        if not url:
+            continue
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        data_val = qs.get("data", [""])[0]
+        if data_val:
+            decoded = base64.b64decode(data_val).decode("utf-8", errors="replace")
+            for part in decoded.split("&"):
+                if part.startswith("documentUniqueId="):
+                    uid = part.split("=", 1)[1]
+                    if "|" in uid:
+                        return uid.split("|", 1)[1]
+    val = doc_ref.get("masterIdentifier", {}).get("value", "")
+    if val.startswith("urn:oid:"):
+        return val
+    return ""
+
+
 async def _lookup_document_oid(
     fhir_client: CezihFhirClient,
     reference_id: str,
     patient_mbo: str,
     identifier_system: str,
 ) -> str:
-    """Look up a document's OID from CEZIH via ITI-67 search.
+    """Look up a document's OID from CEZIH via ITI-67.
 
-    CEZIH content_url contains base64-encoded data param with the OID:
-    documentUniqueId=urn:ietf:rfc:3986|urn:oid:2.16.840.1.113883.2.7.50.2.1.XXXXXX
+    Strategy:
+      1. Direct GET DocumentReference/{id} - works regardless of status, finds
+         predecessors that CEZIH has flipped to superseded after an ITI-65 replace.
+      2. Fallback: patient-scoped search (used to find anyway when direct GET fails).
     """
+    try:
+        doc_ref = await fhir_client.get(f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}")
+        if isinstance(doc_ref, dict) and doc_ref.get("resourceType") == "DocumentReference":
+            oid = _extract_oid_from_docref(doc_ref)
+            if oid:
+                logger.info("TC20: Resolved OID for document %s via direct GET: %s", reference_id, oid)
+                return oid
+    except Exception as e:
+        logger.warning("TC20: Direct GET DocumentReference/%s failed, falling back to search: %s", reference_id, e)
+
     try:
         params = {
             "patient.identifier": f"{identifier_system}|{patient_mbo}",
-            "status": "current",
         }
         response = await fhir_client.get("doc-mhd-svc/api/v1/DocumentReference", params=params)
         for entry in response.get("entry", []):
             doc_ref = entry.get("resource", {})
             if doc_ref.get("id") == reference_id:
-                # Extract OID from content_url base64 data param
-                for content in doc_ref.get("content", []):
-                    url = content.get("attachment", {}).get("url", "")
-                    if not url:
-                        continue
-                    parsed = urlparse(url)
-                    qs = parse_qs(parsed.query)
-                    data_val = qs.get("data", [""])[0]
-                    if data_val:
-                        decoded = base64.b64decode(data_val).decode("utf-8", errors="replace")
-                        # Format: documentUniqueId=urn:ietf:rfc:3986|urn:oid:X.X.X&position=0
-                        for part in decoded.split("&"):
-                            if part.startswith("documentUniqueId="):
-                                uid = part.split("=", 1)[1]
-                                # Extract the urn:oid: part after the pipe
-                                if "|" in uid:
-                                    oid = uid.split("|", 1)[1]
-                                    logger.info("TC20: Resolved OID for document %s: %s", reference_id, oid)
-                                    return oid
-                # Fallback: check masterIdentifier directly
-                master_id = doc_ref.get("masterIdentifier", {})
-                val = master_id.get("value", "")
-                if val.startswith("urn:oid:"):
-                    logger.info("TC20: Found OID from masterIdentifier for %s: %s", reference_id, val)
-                    return val
+                oid = _extract_oid_from_docref(doc_ref)
+                if oid:
+                    logger.info("TC20: Resolved OID for document %s via search: %s", reference_id, oid)
+                    return oid
     except Exception as e:
-        logger.warning("TC20: OID lookup failed for document %s: %s", reference_id, e)
+        logger.warning("TC20: OID search lookup failed for document %s: %s", reference_id, e)
 
     return ""
 
