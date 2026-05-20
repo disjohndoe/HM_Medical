@@ -988,9 +988,9 @@ async def dispatch_visit_action(
                                             "system": "http://ent.hr/fhir/CodeSystem/message-error-type",
                                             "code": "ERR_ENCOUNTER_2001",
                                             "display": (
-                                                "Posjeta ima aktivne dokumente "
-                                                "koje aplikacija ne može "
-                                                "automatski stornirati"
+                                                "Prvo stornirajte sve nalaze "
+                                                "ove posjete, pa ponovo "
+                                                "pokušajte storno posjete"
                                             ),
                                         }
                                     ],

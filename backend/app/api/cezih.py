@@ -969,10 +969,16 @@ async def replace_document_with_edit(
 async def cancel_document(
     request: Request,
     reference_id: str,
-    canonical: bool = False,
+    canonical: bool = True,
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
+    # canonical=True (default) sends the 2-entry HRCancelDocumentBundle with
+    # status=entered-in-error - this is the only path that actually flips the
+    # doc to stornoed on CEZIH. The legacy replace-style path (canonical=False)
+    # creates a successor with status=current and leaves the original active
+    # on CEZIH, even though our local mirror marks cezih_storno=true. That
+    # silent divergence triggers ERR_ENCOUNTER_2001 on later visit storno.
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
