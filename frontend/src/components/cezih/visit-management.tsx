@@ -389,7 +389,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
           </ul>
         </div>
         <Dialog open={showCreate} onOpenChange={handleOpenCreate}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Nova posjeta</DialogTitle>
             </DialogHeader>

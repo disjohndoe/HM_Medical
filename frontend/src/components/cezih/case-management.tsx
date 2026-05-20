@@ -272,7 +272,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
             <Plus className="h-4 w-4 mr-1" />
             Novi slučaj
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Kreiranje novog slučaja</DialogTitle>
             </DialogHeader>
