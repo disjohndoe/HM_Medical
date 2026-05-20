@@ -1145,6 +1145,83 @@ async def dispatch_retrieve_document(
     return result
 
 
+async def dispatch_cancel_document_by_ref_from_cezih(
+    reference_id: str,
+    *,
+    patient_identifier_system: str,
+    patient_identifier_value: str,
+    patient_ime: str = "",
+    patient_prezime: str = "",
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
+    http_client=None,
+    org_code: str = "",
+    practitioner_id: str | None = None,
+    practitioner_name: str = "",
+    org_name: str = "",
+    encounter_id: str = "",
+    case_id: str = "",
+) -> dict:
+    """Canonical-cancel a CEZIH DocumentReference that is not in our local mirror.
+
+    Used by the visit-storno cascade retry when CEZIH's ERR_ENCOUNTER_2001
+    lists predecessor refs (forgotten on ITI-65 replace - we overwrite
+    cezih_reference_id with the successor and lose the old one). The lower-level
+    cancel_document_canonical handles OID lookup via ITI-67 when not provided,
+    so we only need to supply patient + practitioner + org context.
+    """
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
+
+    patient_data = {
+        "mbo": patient_identifier_value,
+        "identifier_system": patient_identifier_system,
+        "identifier_value": patient_identifier_value,
+        "ime": patient_ime,
+        "prezime": patient_prezime,
+    }
+    record_data = {
+        "tip": "nalaz",
+        "sadrzaj": "",
+        "created_at": _now_iso(),
+    }
+
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(db, tenant_id, user_id)
+
+    try:
+        result = await real_service.cancel_document_canonical(
+            http_client,
+            reference_id,
+            patient_data=patient_data,
+            record_data=record_data,
+            org_code=org_code,
+            practitioner_id=practitioner_id,
+            encounter_id=encounter_id,
+            case_id=case_id,
+            practitioner_name=practitioner_name,
+            original_document_oid="",
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
+            org_name=org_name,
+        )
+    except CezihError as e:
+        _raise_cezih_error(e)
+
+    await _write_audit(
+        db,
+        tenant_id,
+        user_id,
+        action="e_nalaz_cancel_predecessor",
+        details={
+            "reference_id": reference_id,
+            "new_reference_id": result.get("new_reference_id"),
+            "reason": "visit_storno_cascade_retry",
+        },
+    )
+    await db.commit()
+    return result
+
+
 __all__ = [
     "_get_medical_record",
     "_get_medical_record_by_id",
@@ -1157,5 +1234,6 @@ __all__ = [
     "dispatch_replace_document_with_edit",
     "dispatch_cancel_document",
     "dispatch_cancel_document_canonical",
+    "dispatch_cancel_document_by_ref_from_cezih",
     "dispatch_retrieve_document",
 ]
