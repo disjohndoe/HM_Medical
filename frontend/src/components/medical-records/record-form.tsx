@@ -76,7 +76,6 @@ interface PendingProcedure {
   procedure_id: string
   dts_code: string
   dts_display: string
-  napomena: string
 }
 
 export function RecordForm({ open, onOpenChange, patientId, record, onSaved, submitLabel, submitOverride, mode, title, subtitle, hasCezihIdentifier }: RecordFormProps) {
@@ -361,7 +360,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           procedure_id: proc.id,
           dts_code: item.code,
           dts_display: item.display,
-          napomena: "",
         },
       ])
       setDtsSearchOpen(false)
@@ -373,10 +371,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
 
   function handleRemovePendingProcedure(index: number) {
     setPendingProcedures((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  function handleUpdatePendingProcedure(index: number, field: keyof PendingProcedure, value: string) {
-    setPendingProcedures((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
   }
 
   async function applyProcedureChanges(recordId: string) {
@@ -393,7 +387,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
         procedure_id: proc.procedure_id,
         medical_record_id: recordId,
         datum: new Date().toISOString().split("T")[0],
-        napomena: proc.napomena || undefined,
       })
     }
   }
@@ -879,7 +872,7 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
                 ))}
                 {/* Newly added procedures */}
                 {pendingProcedures.map((proc, index) => (
-                  <div key={`pending-${index}`} className="rounded-lg border border-dashed p-2 space-y-2">
+                  <div key={`pending-${index}`} className="rounded-lg border border-dashed p-2">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
                         <span className="font-mono text-xs text-muted-foreground">{proc.dts_code}</span>
@@ -894,12 +887,6 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
                         <Trash2 className="h-3 w-3 text-destructive" />
                       </Button>
                     </div>
-                    <Input
-                      placeholder="Napomena"
-                      value={proc.napomena}
-                      onChange={(e) => handleUpdatePendingProcedure(index, "napomena", e.target.value)}
-                      className="h-7 text-xs"
-                    />
                   </div>
                 ))}
               </div>
