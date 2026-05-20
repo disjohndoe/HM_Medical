@@ -346,6 +346,11 @@ def build_cancel_bundle(
     # no profile assertion) was rejected with Validation_VAL_Profile_NotSlice.
     doc_ref_dict: dict = {
         "resourceType": "DocumentReference",
+        "meta": {
+            "profile": [
+                "http://fhir.cezih.hr/specifikacije/StructureDefinition/HR.MinimalDocumentReference"
+            ],
+        },
         "masterIdentifier": {
             "use": "usual",
             "system": "urn:ietf:rfc:3986",
