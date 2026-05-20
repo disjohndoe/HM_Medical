@@ -894,6 +894,13 @@ async def dispatch_visit_action(
         )
     event_code = action_info["code"]
 
+    # Mirror the case linkage into Encounter.diagnosis on 1.3/1.4 to match the
+    # official sample in docs/CEZIH/Posjete/. 1.5 reopen uses a stripped builder
+    # and does not carry diagnosis.
+    local_visit_dict = await _read_local_visit_as_dict(db, tenant_id, visit_id) or {}
+    visit_case_ids = local_visit_dict.get("diagnosis_case_ids") or []
+    visit_case_id = visit_case_ids[0] if visit_case_ids else None
+
     # Storno cascade self-heal: CEZIH may reject visit cancel with ERR_ENCOUNTER_2001
     # listing predecessor DocumentRefs we don't track locally (ITI-65 replace
     # supersedes via relatesTo but leaves the predecessor's status=current, so
@@ -930,6 +937,7 @@ async def dispatch_visit_action(
                     practitioner_id=practitioner_id,
                     org_code=org_code or "",
                     period_start=period_start,
+                    diagnosis_case_id=visit_case_id,
                 )
             bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get(event_code)
             profile_urls = (
