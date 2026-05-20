@@ -300,9 +300,10 @@ async def _upsert_cezih_visit_from_response(
             )
             db.add(row)
         else:
-            if remote_status:
+            if remote_status and row.status != "entered-in-error":
                 row.status = remote_status
-            row.period_end = remote_period_end
+            if not (row.status == "entered-in-error" and row.period_end and not remote_period_end):
+                row.period_end = remote_period_end
             if remote_sp_code:
                 row.service_provider_code = remote_sp_code
             if remote_practitioner_ids:
