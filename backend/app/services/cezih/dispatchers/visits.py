@@ -1015,6 +1015,7 @@ async def dispatch_visit_action(
                     practitioner_name=practitioner_name or "",
                     org_name=org_name or "",
                     encounter_id=visit_id,
+                    case_id=visit_case_id or "",
                 )
 
             await _write_audit(
