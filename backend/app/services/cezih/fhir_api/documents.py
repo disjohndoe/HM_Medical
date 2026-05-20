@@ -823,14 +823,37 @@ async def _lookup_document_oid(
     reference_id: str,
     patient_mbo: str,
     identifier_system: str,
+    version_id: str | None = None,
 ) -> str:
     """Look up a document's OID from CEZIH via ITI-67.
 
     Strategy:
-      1. Direct GET DocumentReference/{id} - works regardless of status, finds
-         predecessors that CEZIH has flipped to superseded after an ITI-65 replace.
-      2. Fallback: patient-scoped search (used to find anyway when direct GET fails).
+      1. If version_id provided: vread `DocumentReference/{id}/_history/{vid}` -
+         only path that returns superseded predecessor refs (plain read returns
+         404 once CEZIH flips status out of `current`).
+      2. Direct GET DocumentReference/{id} (read) - covers current refs.
+      3. Fallback: patient-scoped search. CEZIH requires both `patient.identifier`
+         AND `status`; use `status=current,superseded` to cover both lifecycle states.
     """
+    if version_id:
+        try:
+            doc_ref = await fhir_client.get(
+                f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}/_history/{version_id}"
+            )
+            if isinstance(doc_ref, dict) and doc_ref.get("resourceType") == "DocumentReference":
+                oid = _extract_oid_from_docref(doc_ref)
+                if oid:
+                    logger.info(
+                        "TC20: Resolved OID for document %s/_history/%s via vread: %s",
+                        reference_id, version_id, oid,
+                    )
+                    return oid
+        except Exception as e:
+            logger.warning(
+                "TC20: vread DocumentReference/%s/_history/%s failed, falling back: %s",
+                reference_id, version_id, e,
+            )
+
     try:
         doc_ref = await fhir_client.get(f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}")
         if isinstance(doc_ref, dict) and doc_ref.get("resourceType") == "DocumentReference":
@@ -844,6 +867,7 @@ async def _lookup_document_oid(
     try:
         params = {
             "patient.identifier": f"{identifier_system}|{patient_mbo}",
+            "status": "current,superseded",
         }
         response = await fhir_client.get("doc-mhd-svc/api/v1/DocumentReference", params=params)
         for entry in response.get("entry", []):
@@ -974,6 +998,7 @@ async def cancel_document_canonical(
     case_id: str = "",
     practitioner_name: str = "",
     original_document_oid: str = "",
+    version_id: str | None = None,
     org_name: str = "",
 ) -> dict:
     """Cancel/storno via canonical HRCancelDocumentBundle (2-entry, status=entered-in-error).
@@ -981,6 +1006,10 @@ async def cancel_document_canonical(
     Lightweight alternative to the replace-style cancel_document(). No OID
     generation, no inner Document Bundle, no signing. Tests the canonical
     Klinicki Dokumenti IG profile that was never validated against live CEZIH.
+
+    `version_id` is the history version for refs that CEZIH has already flipped
+    out of `status=current` (i.e. predecessors after an ITI-65 replace) - vread
+    is the only way to fetch them.
     """
     fhir_client = CezihFhirClient(client)
 
@@ -990,6 +1019,7 @@ async def cancel_document_canonical(
             reference_id,
             _require_identifier_value(patient_data),
             identifier_system=_require_identifier_system(patient_data),
+            version_id=version_id,
         )
     if not original_document_oid:
         raise CezihError(

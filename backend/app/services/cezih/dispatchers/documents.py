@@ -1148,6 +1148,7 @@ async def dispatch_retrieve_document(
 async def dispatch_cancel_document_by_ref_from_cezih(
     reference_id: str,
     *,
+    version: str | None = None,
     patient_identifier_system: str,
     patient_identifier_value: str,
     patient_ime: str = "",
@@ -1200,6 +1201,7 @@ async def dispatch_cancel_document_by_ref_from_cezih(
             case_id=case_id,
             practitioner_name=practitioner_name,
             original_document_oid="",
+            version_id=version,
             djelatnost_code=djelatnost_code,
             djelatnost_display=djelatnost_display,
             org_name=org_name,
@@ -1214,6 +1216,7 @@ async def dispatch_cancel_document_by_ref_from_cezih(
         action="e_nalaz_cancel_predecessor",
         details={
             "reference_id": reference_id,
+            "version_id": version,
             "new_reference_id": result.get("new_reference_id"),
             "reason": "visit_storno_cascade_retry",
         },

@@ -19,7 +19,7 @@ from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_a
 from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
 from app.services.cezih.exceptions import CezihError, CezihFhirError
 
-_ENCOUNTER_2001_REF_RE = re.compile(r"DocumentReference/(\d+)(?:/_history/\d+)?")
+_ENCOUNTER_2001_REF_RE = re.compile(r"DocumentReference/(\d+)(?:/_history/(\d+))?")
 
 
 def _extract_cezih_error_code(err: CezihError) -> str:
@@ -41,13 +41,14 @@ def _extract_cezih_error_code(err: CezihError) -> str:
     return ""
 
 
-def _parse_blocking_refs_from_encounter_2001(err: CezihError) -> list[str]:
-    """Extract DocumentReference IDs from an ERR_ENCOUNTER_2001 error.
+def _parse_blocking_refs_from_encounter_2001(err: CezihError) -> list[tuple[str, str | None]]:
+    """Extract (DocumentReference ID, version) pairs from an ERR_ENCOUNTER_2001 error.
 
     CEZIH puts the blocking list in OperationOutcome.issue[].details.text as
-    "Additional info: [DocumentReference/1622724/_history/2, ...]". We also
-    scan diagnostics and message as a fallback. Returns unique refs in order
-    of first appearance.
+    "Additional info: [DocumentReference/1622724/_history/2, ...]". Version is
+    needed because CEZIH MHD `read` returns 404 for superseded refs - `vread`
+    by version is required. Also scans diagnostics and message as a fallback.
+    Returns unique (ref, version) tuples in order of first appearance.
     """
     parts: list[str] = []
     if isinstance(err, CezihFhirError):
@@ -64,12 +65,13 @@ def _parse_blocking_refs_from_encounter_2001(err: CezihError) -> list[str]:
     text_blob = " ".join(p for p in parts if p)
 
     seen: set[str] = set()
-    out: list[str] = []
+    out: list[tuple[str, str | None]] = []
     for m in _ENCOUNTER_2001_REF_RE.finditer(text_blob):
         ref = m.group(1)
+        version = m.group(2)
         if ref not in seen:
             seen.add(ref)
-            out.append(ref)
+            out.append((ref, version))
     return out
 
 
@@ -980,15 +982,22 @@ async def dispatch_visit_action(
                 "visit_storno: ERR_ENCOUNTER_2001 listed %d additional ref(s) not in local "
                 "cascade - cancelling and retrying",
                 len(missing_refs),
-                extra={"visit_id": visit_id, "missing_refs": missing_refs, "attempt": attempt},
+                extra={
+                    "visit_id": visit_id,
+                    "missing_refs": [
+                        {"ref": r, "version": v} for r, v in missing_refs
+                    ],
+                    "attempt": attempt,
+                },
             )
 
             from app.services.cezih.dispatchers.documents import (
                 dispatch_cancel_document_by_ref_from_cezih,
             )
-            for ref in missing_refs:
+            for ref, version in missing_refs:
                 await dispatch_cancel_document_by_ref_from_cezih(
                     ref,
+                    version=version,
                     patient_identifier_system=_sys,
                     patient_identifier_value=identifier_value,
                     patient_ime=patient.ime or "",
@@ -1011,7 +1020,9 @@ async def dispatch_visit_action(
                 action="visit_storno_cascade_retry",
                 details={
                     "visit_id": visit_id,
-                    "missing_refs": missing_refs,
+                    "missing_refs": [
+                        {"ref": r, "version": v} for r, v in missing_refs
+                    ],
                     "attempt": attempt + 1,
                 },
             )
