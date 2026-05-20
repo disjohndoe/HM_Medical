@@ -968,11 +968,12 @@ async def dispatch_visit_action(
             if blocking:
                 ref_list = ", ".join(r for r, _ in blocking)
                 msg = (
-                    f"Posjeta se ne može stornirati - CEZIH prijavljuje aktivne dokumente "
-                    f"koje aplikacija ne može automatski stornirati (referencije: {ref_list}). "
-                    f"Molimo kontaktirajte HM Digital podršku (info@hmdigital.hr) - "
-                    f"navedene referencije moramo ručno neutralizirati u CEZIH-u "
-                    f"prije nego što se posjeta može stornirati."
+                    "Posjeta se ne može stornirati dok CEZIH evidentira aktivne "
+                    "dokumente vezane uz nju. Otvorite karton pacijenta, prijeđite "
+                    "u e-Nalaze, i stornirajte sve nalaze koji pripadaju ovoj "
+                    "posjeti, pa pokušajte ponovno. Ako pogreška ostane, kontaktirajte "
+                    f"podršku (info@hmdigital.hr) - reference koje CEZIH navodi kao "
+                    f"blokirajuće: {ref_list}."
                 )
                 wrapped = CezihFhirError(
                     msg,
