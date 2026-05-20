@@ -903,136 +903,109 @@ async def dispatch_visit_action(
     visit_case_ids = local_visit_dict.get("diagnosis_case_ids") or []
     visit_case_id = visit_case_ids[0] if visit_case_ids else None
 
-    # Storno cascade self-heal: CEZIH may reject visit cancel with ERR_ENCOUNTER_2001
-    # listing predecessor DocumentRefs we don't track locally (ITI-65 replace
-    # supersedes via relatesTo but leaves the predecessor's status=current, so
-    # the preflight against our mirror misses them). On that specific error,
-    # parse the listed refs, canonical-cancel each, and retry the visit storno
-    # once. Other errors bubble up unchanged.
-    MAX_CASCADE_RETRIES = 1
-    attempt = 0
-    result: dict | None = None
-    while True:
-        try:
-            if event_code == "1.5":
-                # Reopen has different fields — only identifier, status, class, serviceProvider
-                encounter = build_encounter_reopen(
-                    encounter_id=visit_id,
-                    nacin_prijema=nacin_prijema,
-                    org_code=org_code or "",
+    try:
+        if event_code == "1.5":
+            # Reopen has different fields — only identifier, status, class, serviceProvider
+            encounter = build_encounter_reopen(
+                encounter_id=visit_id,
+                nacin_prijema=nacin_prijema,
+                org_code=org_code or "",
+            )
+        else:
+            builder_map: dict[str, Callable[..., dict]] = {
+                "1.3": build_encounter_close,
+                "1.4": build_encounter_cancel,
+            }
+            builder_fn = builder_map.get(event_code)
+            if not builder_fn:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Nema builder funkcije za event code {event_code}",
                 )
-            else:
-                builder_map: dict[str, Callable[..., dict]] = {
-                    "1.3": build_encounter_close,
-                    "1.4": build_encounter_cancel,
-                }
-                builder_fn = builder_map.get(event_code)
-                if not builder_fn:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Nema builder funkcije za event code {event_code}",
-                    )
-                encounter = builder_fn(
-                    encounter_id=visit_id,
-                    patient_mbo=identifier_value,
-                    nacin_prijema=nacin_prijema,
-                    practitioner_id=practitioner_id,
-                    org_code=org_code or "",
-                    period_start=period_start,
-                    diagnosis_case_id=visit_case_id,
+            encounter = builder_fn(
+                encounter_id=visit_id,
+                patient_mbo=identifier_value,
+                nacin_prijema=nacin_prijema,
+                practitioner_id=practitioner_id,
+                org_code=org_code or "",
+                period_start=period_start,
+                diagnosis_case_id=visit_case_id,
+            )
+        bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get(event_code)
+        profile_urls = (
+            {
+                "bundle": bundle_profile,
+                "header": PROFILE_ENCOUNTER_MSG_HEADER,
+                "resource": PROFILE_ENCOUNTER,
+            }
+            if bundle_profile
+            else None
+        )
+        bundle = await build_message_bundle(
+            event_code,
+            encounter,
+            sender_org_code=org_code,
+            author_practitioner_id=practitioner_id,
+            source_oid=source_oid,
+            profile_urls=profile_urls,
+        )
+        bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
+        result = await fhir_client.process_message("encounter-services/api/v1", bundle)
+    except CezihError as e:
+        # ERR_ENCOUNTER_2001 lists DocumentReferences CEZIH still considers active
+        # on this Encounter. The FE cascade preflight already cancels everything in
+        # our local mirror, so when this fires we're looking at refs we don't track
+        # (predecessors of an ITI-65 replace, docs created by another system, etc.).
+        # We can't auto-cancel them: CEZIH refuses canonical cancel on superseded
+        # predecessors with ERR_DOM_10035 ("Target resource is not in valid status").
+        # Surface a clear, actionable error listing the blocking refs and instruct
+        # the doctor to contact support — there is no in-app remediation path.
+        if (
+            action == "storno"
+            and _extract_cezih_error_code(e) == "ERR_ENCOUNTER_2001"
+        ):
+            blocking = _parse_blocking_refs_from_encounter_2001(e)
+            if blocking:
+                ref_list = ", ".join(r for r, _ in blocking)
+                msg = (
+                    f"Posjeta se ne može stornirati - CEZIH prijavljuje aktivne dokumente "
+                    f"koje aplikacija ne može automatski stornirati (referencije: {ref_list}). "
+                    f"Molimo kontaktirajte HM Digital podršku (info@hmdigital.hr) - "
+                    f"navedene referencije moramo ručno neutralizirati u CEZIH-u "
+                    f"prije nego što se posjeta može stornirati."
                 )
-            bundle_profile = ENCOUNTER_EVENT_PROFILE_MAP.get(event_code)
-            profile_urls = (
-                {
-                    "bundle": bundle_profile,
-                    "header": PROFILE_ENCOUNTER_MSG_HEADER,
-                    "resource": PROFILE_ENCOUNTER,
-                }
-                if bundle_profile
-                else None
-            )
-            bundle = await build_message_bundle(
-                event_code,
-                encounter,
-                sender_org_code=org_code,
-                author_practitioner_id=practitioner_id,
-                source_oid=source_oid,
-                profile_urls=profile_urls,
-            )
-            bundle = await add_signature(bundle, practitioner_id, http_client=http_client)
-            result = await fhir_client.process_message("encounter-services/api/v1", bundle)
-            break
-        except CezihError as e:
-            # The retry fires on CEZIH's ERR_ENCOUNTER_2001 regardless of
-            # whether the FE-side preflight surfaced a cascade dialog. Predecessor
-            # refs (post-ITI-65-replace) are not in our local mirror so the
-            # preflight cannot list them; CEZIH itself is the authorization
-            # signal here by naming the exact blocking refs on this Encounter.
-            is_retryable_cascade = (
-                action == "storno"
-                and attempt < MAX_CASCADE_RETRIES
-                and _extract_cezih_error_code(e) == "ERR_ENCOUNTER_2001"
-            )
-            if not is_retryable_cascade:
-                await record_cezih_error("visit", local_visit_id, tenant_id, e)
-                _raise_cezih_error(e)
-
-            missing_refs = _parse_blocking_refs_from_encounter_2001(e)
-            if not missing_refs:
-                await record_cezih_error("visit", local_visit_id, tenant_id, e)
-                _raise_cezih_error(e)
-
-            logger.warning(
-                "visit_storno: ERR_ENCOUNTER_2001 listed %d additional ref(s) not in local "
-                "cascade - cancelling and retrying",
-                len(missing_refs),
-                extra={
-                    "visit_id": visit_id,
-                    "missing_refs": [
-                        {"ref": r, "version": v} for r, v in missing_refs
-                    ],
-                    "attempt": attempt,
-                },
-            )
-
-            from app.services.cezih.dispatchers.documents import (
-                dispatch_cancel_document_by_ref_from_cezih,
-            )
-            for ref, version in missing_refs:
-                await dispatch_cancel_document_by_ref_from_cezih(
-                    ref,
-                    version=version,
-                    patient_identifier_system=_sys,
-                    patient_identifier_value=identifier_value,
-                    patient_ime=patient.ime or "",
-                    patient_prezime=patient.prezime or "",
-                    db=db,
-                    user_id=user_id,
-                    tenant_id=tenant_id,
-                    http_client=http_client,
-                    org_code=org_code or "",
-                    practitioner_id=practitioner_id,
-                    practitioner_name=practitioner_name or "",
-                    org_name=org_name or "",
-                    encounter_id=visit_id,
-                    case_id=visit_case_id or "",
+                wrapped = CezihFhirError(
+                    msg,
+                    status_code=e.status_code if isinstance(e, CezihFhirError) else 400,
+                    operation_outcome={
+                        "resourceType": "OperationOutcome",
+                        "issue": [
+                            {
+                                "severity": "error",
+                                "code": "business-rule",
+                                "details": {
+                                    "coding": [
+                                        {
+                                            "system": "http://ent.hr/fhir/CodeSystem/message-error-type",
+                                            "code": "ERR_ENCOUNTER_2001",
+                                            "display": (
+                                                "Posjeta ima aktivne dokumente "
+                                                "koje aplikacija ne može "
+                                                "automatski stornirati"
+                                            ),
+                                        }
+                                    ],
+                                    "text": msg,
+                                },
+                                "diagnostics": f"Blocking refs: {ref_list}",
+                            }
+                        ],
+                    },
                 )
-
-            await _write_audit(
-                db,
-                tenant_id,
-                user_id,
-                action="visit_storno_cascade_retry",
-                details={
-                    "visit_id": visit_id,
-                    "missing_refs": [
-                        {"ref": r, "version": v} for r, v in missing_refs
-                    ],
-                    "attempt": attempt + 1,
-                },
-            )
-            attempt += 1
-            # loop continues — rebuild + resign + resend visit storno
+                await record_cezih_error("visit", local_visit_id, tenant_id, wrapped)
+                _raise_cezih_error(wrapped)
+        await record_cezih_error("visit", local_visit_id, tenant_id, e)
+        _raise_cezih_error(e)
     await clear_cezih_error("visit", local_visit_id, tenant_id, session=db)
     await _write_audit(
         db,
