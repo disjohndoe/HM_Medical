@@ -337,6 +337,9 @@ def build_cancel_bundle(
     patient_display = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip()
     doc_uuid = str(uuid.uuid4())
 
+    # Match canonical Bundle-ITI-65-Cancel.json (cezih.hr.klinicki-dokumenti v0.3):
+    # no `category`, no `practiceSetting` - closed-slice validation under
+    # HRMinimalProvideDocumentBundle rejects extra slices when status=entered-in-error.
     doc_ref_dict: dict = {
         "resourceType": "DocumentReference",
         "masterIdentifier": {
@@ -360,19 +363,7 @@ def build_cancel_bundle(
                     "display": coding["display"],
                 }
             ],
-            "text": coding["display"],
         },
-        "category": [
-            {
-                "coding": [
-                    {
-                        "system": coding["system"],
-                        "code": coding["code"],
-                        "display": coding["display"],
-                    }
-                ]
-            }
-        ],
         "subject": {
             "type": "Patient",
             "identifier": {
@@ -429,19 +420,12 @@ def build_cancel_bundle(
             "display": org_name or f"Ustanova {org_code}",
         }
 
+    # Canonical cancel context: period + encounter only. No practiceSetting -
+    # HRCancelDocumentBundle does not include djelatnost on the cancel doc.
     context: dict = {
         "period": {
             "start": record_data.get("created_at", _now_iso()),
             "end": _now_iso(),
-        },
-        "practiceSetting": {
-            "coding": [
-                {
-                    "system": "http://fhir.cezih.hr/specifikacije/CodeSystem/djelatnosti-zz",
-                    "code": djelatnost_code,
-                    "display": djelatnost_display,
-                }
-            ]
         },
     }
     if encounter_id:
@@ -481,12 +465,28 @@ def build_cancel_bundle(
     ]
 
     doc_ref_dict["_uuid"] = doc_uuid
+    if coding.get("display"):
+        doc_ref_dict["description"] = coding["display"]
 
     bundle_dict = build_iti65_transaction_bundle(
         [doc_ref_dict],
         sender_org_code=org_code,
         author_practitioner_id=practitioner_id,
     )
+
+    # Strip meta.profile and ITI-65 designationType extension to match the
+    # canonical Bundle-ITI-65-Cancel.json - cancel bundles are validated more
+    # permissively when no profile is asserted, and the designationType slice
+    # only exists on HRMinimalSubmissionSet which we are not asserting.
+    bundle_dict.pop("meta", None)
+    for entry in bundle_dict.get("entry", []):
+        resource = entry.get("resource", {})
+        if resource.get("resourceType") == "List":
+            resource.pop("meta", None)
+            resource["extension"] = [
+                ext for ext in resource.get("extension", [])
+                if not ext.get("url", "").endswith("/ihe-designationType")
+            ]
 
     return bundle_dict
 
