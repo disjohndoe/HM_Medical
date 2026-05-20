@@ -963,9 +963,13 @@ async def dispatch_visit_action(
             result = await fhir_client.process_message("encounter-services/api/v1", bundle)
             break
         except CezihError as e:
+            # The retry fires on CEZIH's ERR_ENCOUNTER_2001 regardless of
+            # whether the FE-side preflight surfaced a cascade dialog. Predecessor
+            # refs (post-ITI-65-replace) are not in our local mirror so the
+            # preflight cannot list them; CEZIH itself is the authorization
+            # signal here by naming the exact blocking refs on this Encounter.
             is_retryable_cascade = (
                 action == "storno"
-                and confirm_cascade_docs
                 and attempt < MAX_CASCADE_RETRIES
                 and _extract_cezih_error_code(e) == "ERR_ENCOUNTER_2001"
             )
