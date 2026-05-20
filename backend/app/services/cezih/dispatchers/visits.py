@@ -966,15 +966,13 @@ async def dispatch_visit_action(
         ):
             blocking = _parse_blocking_refs_from_encounter_2001(e)
             if blocking:
-                ref_list = ", ".join(r for r, _ in blocking)
                 msg = (
                     "Posjeta se ne može stornirati dok CEZIH evidentira aktivne "
                     "dokumente vezane uz nju. Otvorite karton pacijenta, prijeđite "
                     "u e-Nalaze, i stornirajte sve nalaze koji pripadaju ovoj "
-                    "posjeti, pa pokušajte ponovno. Ako pogreška ostane, kontaktirajte "
-                    f"podršku (info@hmdigital.hr) - reference koje CEZIH navodi kao "
-                    f"blokirajuće: {ref_list}."
+                    "posjeti, pa pokušajte ponovno."
                 )
+                ref_list = ", ".join(r for r, _ in blocking)
                 wrapped = CezihFhirError(
                     msg,
                     status_code=e.status_code if isinstance(e, CezihFhirError) else 400,
