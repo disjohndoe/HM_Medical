@@ -133,15 +133,25 @@ async def retrieve_cases(
             # Extract note from Condition.note[0].text
             notes = cond.get("note", [])
             note_text = notes[0].get("text", "") if notes else ""
+            # CEZIH returns a full ISO onset/abatement (e.g.
+            # "2026-03-10T00:00:00+01:00"), but our mirror stores date-only —
+            # matching locally-created cases (strftime "%Y-%m-%d") and the
+            # narrow onset_date column. A FHIR date prefix is <=10 chars, so
+            # slicing both normalises the format and guarantees no overflow.
+            onset_raw = cond.get("onsetDateTime") or ""
+            abatement_raw = cond.get("abatementDateTime") or ""
             cases.append(
                 {
                     "case_id": case_id,
                     "icd_code": coding.get("code", ""),
-                    "icd_display": coding.get("display", ""),
+                    # Defensive cap: icd_display is free text from CEZIH and the
+                    # column is bounded (String(300)); never let untrusted input
+                    # overflow and 500 the whole list.
+                    "icd_display": (coding.get("display") or "")[:300],
                     "clinical_status": cl_coding.get("code", ""),
                     "verification_status": ver_coding.get("code") or None,
-                    "onset_date": cond.get("onsetDateTime", ""),
-                    "abatement_date": cond.get("abatementDateTime") or None,
+                    "onset_date": onset_raw[:10],
+                    "abatement_date": abatement_raw[:10] or None,
                     "note": note_text or None,
                     # QEDm read on its own cannot tell who created the case;
                     # dispatch_retrieve_cases sets the persisted `registered`
