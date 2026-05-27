@@ -362,6 +362,10 @@ class VisitItem(BaseModel):
     last_error_display: str | None = None
     last_error_diagnostics: str | None = None
     last_error_at: datetime | None = None
+    # True when this visit carries a REPLACED e-Nalaz: CEZIH cannot storno such a
+    # visit (ERR_ENCOUNTER_2001 <-> ERR_DOM_10035 deadlock), so the FE hides the
+    # storno option. See docs/CEZIH/findings/2026-05-27-visit-storno-replaced-doc-deadlock.md.
+    has_replaced_document: bool = False
 
 
 class VisitsListResponse(BaseModel):

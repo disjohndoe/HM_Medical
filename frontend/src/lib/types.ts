@@ -890,6 +890,9 @@ export interface VisitItem {
   last_error_display?: string | null;
   last_error_diagnostics?: string | null;
   last_error_at?: string | null;
+  // True when the visit carries a REPLACED e-Nalaz. CEZIH cannot storno such a
+  // visit (predecessor deadlock), so the storno action is hidden for it.
+  has_replaced_document?: boolean;
   // Frontend-only: set when inserted optimistically after a create/update/action
   // mutation. CEZIH QEDm is eventually consistent so the real record may take
   // several seconds to appear in GET /cezih/visits. Lost on natural refetch.

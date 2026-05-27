@@ -347,7 +347,13 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     if (isOptimistic(v)) return []
     if (v.status === "entered-in-error" || v.status === "cancelled") return []
     if (isExternalVisit(v)) return []
-    if (v.status === "in-progress") return VISIT_ACTIONS.filter((a) => a.value === "close" || a.value === "storno")
+    // A visit whose e-Nalaz was replaced can never be storno'd on CEZIH
+    // (predecessor deadlock, no client fix). Hide the storno option silently;
+    // close stays available as the normal terminal action.
+    if (v.status === "in-progress")
+      return VISIT_ACTIONS.filter(
+        (a) => a.value === "close" || (a.value === "storno" && !v.has_replaced_document),
+      )
     if (v.status === "finished") return VISIT_ACTIONS.filter((a) => a.value === "reopen")
     return []
   }

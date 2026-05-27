@@ -139,6 +139,71 @@ async def _list_active_cezih_docs_for_visit(
     ]
 
 
+async def _encounters_with_replaced_docs(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    patient_id: UUID,
+) -> set[str]:
+    """Set of Encounter ids (for one patient) that carry a REPLACED e-Nalaz.
+
+    A visit whose nalaz was replaced (TC19) can never be storno'd on CEZIH: the
+    1.4 is blocked by ERR_ENCOUNTER_2001 on the superseded predecessors, which
+    CEZIH itself refuses to cancel (ERR_DOM_10035). It is a confirmed CEZIH-side
+    deadlock with no client remedy (see
+    docs/CEZIH/findings/2026-05-27-visit-storno-replaced-doc-deadlock.md), so we
+    use this to suppress the storno option entirely. `cezih_last_replaced_at` is
+    stamped on every replace; we do NOT filter on cezih_storno because cancelling
+    the live head does not clear the superseded predecessors that block the 1.4.
+    """
+    if not db or not tenant_id:
+        return set()
+    try:
+        from app.models.medical_record import MedicalRecord
+
+        res = await db.execute(
+            select(MedicalRecord.cezih_encounter_id)
+            .where(
+                MedicalRecord.tenant_id == tenant_id,
+                MedicalRecord.patient_id == patient_id,
+                MedicalRecord.cezih_encounter_id.is_not(None),
+                MedicalRecord.cezih_reference_id.is_not(None),
+                MedicalRecord.cezih_last_replaced_at.is_not(None),
+            )
+            .distinct()
+        )
+        return {row[0] for row in res.all() if row[0]}
+    except SQLAlchemyError as exc:
+        logger.warning("Failed to read replaced-doc encounters: %s", exc)
+        return set()
+
+
+async def _encounter_has_replaced_doc(
+    db: AsyncSession | None,
+    tenant_id: UUID | None,
+    cezih_visit_id: str,
+) -> bool:
+    """True if this single Encounter carries a replaced e-Nalaz (storno deadlock)."""
+    if not db or not tenant_id or not cezih_visit_id:
+        return False
+    try:
+        from app.models.medical_record import MedicalRecord
+
+        res = await db.execute(
+            select(MedicalRecord.id)
+            .where(
+                MedicalRecord.tenant_id == tenant_id,
+                MedicalRecord.cezih_encounter_id == cezih_visit_id,
+                MedicalRecord.cezih_reference_id.is_not(None),
+                MedicalRecord.cezih_last_replaced_at.is_not(None),
+            )
+            .limit(1)
+        )
+        return res.first() is not None
+    except SQLAlchemyError as exc:
+        logger.warning("Failed to check replaced-doc for visit %s: %s", cezih_visit_id, exc)
+        return False
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -340,7 +405,7 @@ async def _upsert_cezih_visit_from_response(
         raise
 
 
-def _serialize_visit_row(row) -> dict:
+def _serialize_visit_row(row, *, has_replaced_document: bool = False) -> dict:
     tip = row.tip_posjete or ""
     vrsta = row.vrsta_posjete or ""
     admission = row.admission_type or ""
@@ -366,6 +431,7 @@ def _serialize_visit_row(row) -> dict:
         "last_error_display": row.last_error_display,
         "last_error_diagnostics": row.last_error_diagnostics,
         "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
+        "has_replaced_document": has_replaced_document,
     }
 
 
@@ -386,7 +452,10 @@ async def _read_local_visit_as_dict(
             )
         )
         row = result.scalar_one_or_none()
-        return _serialize_visit_row(row) if row else None
+        if not row:
+            return None
+        has_replaced = await _encounter_has_replaced_doc(db, tenant_id, cezih_visit_id)
+        return _serialize_visit_row(row, has_replaced_document=has_replaced)
     except SQLAlchemyError as exc:
         logger.warning("Failed to re-read local CezihVisit mirror: %s", exc)
         return None
@@ -416,7 +485,11 @@ async def _list_local_visits_as_dicts(
             .order_by(CezihVisit.period_start.desc().nullslast(), CezihVisit.created_at.desc())
         )
         rows = result.scalars().all()
-        return [_serialize_visit_row(row) for row in rows]
+        replaced = await _encounters_with_replaced_docs(db, tenant_id, patient_id)
+        return [
+            _serialize_visit_row(row, has_replaced_document=row.cezih_visit_id in replaced)
+            for row in rows
+        ]
     except SQLAlchemyError as exc:
         logger.warning("Failed to read local CezihVisit mirror: %s", exc)
         return []
@@ -866,6 +939,33 @@ async def dispatch_visit_action(
     local_visit_id = await _lookup_local_visit_id(db, tenant_id, visit_id)
 
     if action == "storno":
+        # A visit whose e-Nalaz was replaced (TC19) can never be storno'd on
+        # CEZIH: the 1.4 deadlocks on the superseded predecessors (ERR_ENCOUNTER_2001
+        # <-> ERR_DOM_10035) with no client remedy. The FE already hides the storno
+        # option for these visits; this is the defensive net for stale tabs / direct
+        # API calls. Silently no-op: do NOT call CEZIH (which also avoids needlessly
+        # cancelling the live head doc and leaving the visit half-changed), do NOT
+        # surface an error. Audit-only so the suppression is traceable.
+        if await _encounter_has_replaced_doc(db, tenant_id, visit_id):
+            logger.info(
+                "Visit %s storno suppressed: carries a replaced e-Nalaz "
+                "(CEZIH ERR_ENCOUNTER_2001/ERR_DOM_10035 deadlock) — no-op",
+                visit_id,
+            )
+            await _write_audit(
+                db,
+                tenant_id,
+                user_id,
+                action="visit_storno_suppressed",
+                details={"visit_id": visit_id, "reason": "replaced_document_deadlock"},
+            )
+            current = await _read_local_visit_as_dict(db, tenant_id, visit_id)
+            return {
+                "success": True,
+                "visit_id": visit_id,
+                "status": (current or {}).get("status", ""),
+                "visit": current,
+            }
         blocking_docs = await _list_active_cezih_docs_for_visit(db, tenant_id, visit_id)
         if blocking_docs:
             if not confirm_cascade_docs:
@@ -995,50 +1095,37 @@ async def dispatch_visit_action(
         # We do NOT auto-convert storno -> close: they mean different things (storno =
         # "never happened", close = "happened and is done") and substituting silently
         # would be a forbidden fallback.
+        # Fallback for a replaced doc the local guard above could not see (e.g. the
+        # nalaz was replaced by another system, so cezih_last_replaced_at is unset).
+        # The cascade preflight already cancelled every locally-known active doc, so
+        # an ERR_ENCOUNTER_2001 that STILL fires can only be the superseded-predecessor
+        # deadlock. Swallow it silently — no error surfaced, no error badge persisted —
+        # exactly like the primary guard. All other CEZIH errors raise as before.
         if (
             action == "storno"
             and _extract_cezih_error_code(e) == "ERR_ENCOUNTER_2001"
+            and _parse_blocking_refs_from_encounter_2001(e)
         ):
-            blocking = _parse_blocking_refs_from_encounter_2001(e)
-            if blocking:
-                msg = (
-                    "Ova se posjeta ne može stornirati na CEZIH-u jer sadrži e-Nalaz "
-                    "koji je bio izmijenjen (zamijenjen novom verzijom) - CEZIH ne "
-                    "dopušta storniranje prijašnjih verzija dokumenta. Ako je posjeta "
-                    "uredno obavljena, umjesto storna ju zatvorite (status Završena) i "
-                    "po potrebi završite slučaj. Ako je unesena greškom, javite se podršci."
-                )
-                ref_list = ", ".join(r for r, _ in blocking)
-                wrapped = CezihFhirError(
-                    msg,
-                    status_code=e.status_code if isinstance(e, CezihFhirError) else 400,
-                    operation_outcome={
-                        "resourceType": "OperationOutcome",
-                        "issue": [
-                            {
-                                "severity": "error",
-                                "code": "business-rule",
-                                "details": {
-                                    "coding": [
-                                        {
-                                            "system": "http://ent.hr/fhir/CodeSystem/message-error-type",
-                                            "code": "ERR_ENCOUNTER_2001",
-                                            "display": (
-                                                "Posjeta sadrži izmijenjeni e-Nalaz "
-                                                "čije prijašnje verzije CEZIH ne "
-                                                "dopušta stornirati"
-                                            ),
-                                        }
-                                    ],
-                                    "text": msg,
-                                },
-                                "diagnostics": f"Blocking refs: {ref_list}",
-                            }
-                        ],
-                    },
-                )
-                await record_cezih_error("visit", local_visit_id, tenant_id, wrapped)
-                _raise_cezih_error(wrapped)
+            logger.info(
+                "Visit %s storno suppressed (post-CEZIH ERR_ENCOUNTER_2001): replaced "
+                "e-Nalaz predecessor deadlock — no-op",
+                visit_id,
+            )
+            await clear_cezih_error("visit", local_visit_id, tenant_id, session=db)
+            await _write_audit(
+                db,
+                tenant_id,
+                user_id,
+                action="visit_storno_suppressed",
+                details={"visit_id": visit_id, "reason": "replaced_document_deadlock_runtime"},
+            )
+            current = await _read_local_visit_as_dict(db, tenant_id, visit_id)
+            return {
+                "success": True,
+                "visit_id": visit_id,
+                "status": (current or {}).get("status", ""),
+                "visit": current,
+            }
         await record_cezih_error("visit", local_visit_id, tenant_id, e)
         _raise_cezih_error(e)
     await clear_cezih_error("visit", local_visit_id, tenant_id, session=db)

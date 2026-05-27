@@ -192,3 +192,38 @@ scenario, not a regression** — the green sweeps are still valid for what they 
   `ERR_ENCOUNTER_2001` ↔ `ERR_DOM_10035` pair: is visit storno intended to be
   possible after a document replace, or is close+resolve the only supported terminal
   state in that case? Deferential "molim Vas" register.
+
+## Resolution (shipped 2026-05-27) — hide storno, BE silent no-op
+
+Since the storno is unfixable client-side and ENT/HZZO has not responded, we stopped
+surfacing the dead-end error and instead make the storno option simply **unavailable**
+for affected visits — no message, badge, or explanation shown to the doctor.
+
+- **Detection (local, no CEZIH call):** a visit has a replaced doc iff a `MedicalRecord`
+  on its `cezih_encounter_id` has `cezih_last_replaced_at IS NOT NULL`
+  (`cezih_storno` is *not* filtered — cancelling the head never clears the superseded
+  predecessors). Surfaced as `VisitItem.has_replaced_document` via
+  `_encounters_with_replaced_docs` / `_encounter_has_replaced_doc` in
+  `dispatchers/visits.py`.
+- **Frontend:** `getAvailableActions` (visit-management.tsx) drops `storno` when
+  `has_replaced_document` is set; `Zatvori` (1.3, confirmed working) stays.
+- **Backend net (stale tab / direct API):** the `action=="storno"` branch of
+  `dispatch_visit_action` now short-circuits when `_encounter_has_replaced_doc` is true —
+  logs, writes a `visit_storno_suppressed` audit row, and returns the unchanged visit
+  **without calling CEZIH** (which also stops the old behaviour of cascading-cancel the
+  live head doc and then failing the 1.4, leaving the visit half-changed). The previous
+  honest-message handler for a runtime `ERR_ENCOUNTER_2001` (replaced doc we couldn't see
+  locally, e.g. replaced by another system) was converted to the same silent no-op.
+
+### Simplifier evidence that this is a backend-only rule (no spec basis)
+
+- `Brisanje posjete` / `Storniranje dokumenata` / `Zamjena dokumenata` IG pages document
+  only the happy path; **no document-precondition** for visit cancel, no mention of
+  superseded/`_history`.
+- `StructureDefinition-hr-cancel-encounter-message` has **zero invariants** about
+  documents.
+- `CodeSystem-message-error-type` (publisher Ericsson Nikola Tesla, last updated
+  2023-01-26) is a **stub**: codes `1`/`2` only. **`ERR_ENCOUNTER_2001` and
+  `ERR_DOM_10035` are absent from the published terminology entirely.**
+- Latest published `cezih.hr.encounter-management` = 0.2.3 (= the local copy); nothing
+  newer documents this.
