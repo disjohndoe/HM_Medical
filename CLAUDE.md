@@ -254,11 +254,29 @@ AKD card (local JWS)   Certilia (push to mobile)
 - Transaction bundle: 3 entries (SubmissionSet + DocumentReference + Binary), no signing, OID from registry
 - Document types: HRTipDokumenta 011-013 for privatnici
 
-**Document cancel (TC20):**
-- Cancel = ITI-65 replace with `status=current` + relatesTo OID
-- CEZIH rejects `entered-in-error` status (ERR_DOM_10057)
-- CEZIH resolves relatesTo by OID only — literal `DocumentReference/{id}` fails
-- OID extracted from ITI-67 content_url base64 data param
+**Document cancel (TC20) — CORRECTED 2026-05-27 (prior text here was wrong):**
+- Cancel = ITI-65 **`HRCancelDocumentBundle`** (2-entry: MessageHeader + DocumentReference),
+  `masterIdentifier` = the doc's master OID + `status=entered-in-error`. NOT a `replaces`/
+  `status=current` bundle. (Verified live: visit + e-Nalaz storno both go through with
+  `entered-in-error`; matches `cezih.hr.klinicki-dokumenti` `Bundle-ITI-65-Cancel.json` and the
+  shipping `cancel_document_canonical` in `backend/app/services/cezih/fhir_api/documents.py`.)
+- The old "CEZIH rejects entered-in-error (ERR_DOM_10057)" note was false and is removed.
+- Resolve the LIVE current ref/OID from CEZIH (ITI-67) immediately before cancel; never cancel a
+  stored OID (a superseded/already-eie target returns `ERR_DOM_10035`). Cancel is idempotent: a
+  target already `entered-in-error` is treated as success (no-op).
+- OID extracted from ITI-67 content_url base64 data param.
+
+**Doctor-facing e-Nalaz edit ("Uredi i zamijeni") — entered-in-error line (2026-05-27):**
+- The edit does NOT use ITI-65 `replace` (which sets the predecessor `superseded` and then
+  PERMANENTLY deadlocks visit storno: visit-cancel demands every doc `entered-in-error`
+  [`ERR_ENCOUNTER_2001`] but a `superseded` doc refuses cancellation [`ERR_DOM_10035`]).
+- Instead: **submit-new (NO `relatesTo`, `status=current`, same visit+case via
+  `context.encounter`+`context.related`) + cancel-old (`entered-in-error`)**. End state:
+  old=eie, new=current+case-linked, NO `superseded` → patient keeps a visible active nalaz AND
+  the visit stornos cleanly. The doc-to-doc correction link is kept LOCAL-only, never on the wire.
+- `appends` was tried and rejected: CEZIH files an `appends` doc as a non-current addendum, so the
+  NEW doc came back `superseded` (live-confirmed) — same deadlock + no active doc. Hence no relatesTo.
+- `replace_document` + `PUT /e-nalaz/{ref}/replace-with-edit` stay intact for the TC19 cert test.
 
 **PMIR foreigner registration (TC11):**
 - Pre-flight GET required before POST (Keycloak mTLS session establishment)
