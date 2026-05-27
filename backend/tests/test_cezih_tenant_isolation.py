@@ -13,7 +13,24 @@ import httpx
 import pytest
 
 BASE_URL = "http://localhost:8000/api"
-pytestmark = pytest.mark.asyncio
+
+
+def _live_backend_available() -> bool:
+    """These are integration tests against a LIVE backend on :8000 (docker compose up).
+    Skip the whole module when that server isn't reachable so the unit suite stays green."""
+    import socket
+
+    try:
+        with socket.create_connection(("localhost", 8000), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.skipif(not _live_backend_available(), reason="live backend on :8000 not running"),
+]
 
 # Unique suffix per test run to avoid email collisions
 _RUN_ID = uuid.uuid4().hex[:6]
@@ -71,6 +88,7 @@ async def _register_clinic(client: httpx.AsyncClient, name: str, email: str) -> 
             "password": "Test1234!",
             "ime": "Admin",
             "prezime": name.split()[0],
+            "terms_accepted": True,
         },
         headers={"X-Forwarded-For": fake_ip},
     )

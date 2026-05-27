@@ -7,7 +7,7 @@ async def test_create_patient(client: AsyncClient, auth_headers: dict[str, str])
     payload = {
         "ime": "Ana",
         "prezime": "Testić",
-        "oib": "63789320451",
+        "oib": "99999900162",
         "mbo": "123456789",
         "datum_rodjenja": "1995-05-20",
         "spol": "Z",
@@ -19,7 +19,7 @@ async def test_create_patient(client: AsyncClient, auth_headers: dict[str, str])
     data = resp.json()
     assert data["ime"] == "Ana"
     assert data["prezime"] == "Testić"
-    assert data["oib"] == "63789320451"
+    assert data["oib"] == "99999900162"
     assert data["mbo"] == "123456789"
     assert data["spol"] == "Z"
     assert "id" in data
@@ -42,7 +42,7 @@ async def test_create_patient_invalid_mbo(client: AsyncClient, auth_headers: dic
     payload = {
         "ime": "Bad",
         "prezime": "MBO",
-        "oib": "63789320451",
+        "oib": "99999900162",
         "mbo": "123",  # wrong length
     }
     resp = await client.post("/api/patients", json=payload, headers=auth_headers)
@@ -54,7 +54,7 @@ async def test_create_patient_duplicate_oib(client: AsyncClient, auth_headers: d
     payload = {
         "ime": "Prvi",
         "prezime": "Pacijent",
-        "oib": "63789320451",
+        "oib": "99999900162",
         "mbo": "111111111",
     }
     resp1 = await client.post("/api/patients", json=payload, headers=auth_headers)
@@ -91,7 +91,7 @@ async def test_delete_patient(client: AsyncClient, auth_headers: dict[str, str])
     payload = {
         "ime": "Za",
         "prezime": "Brisanje",
-        "oib": "63789320451",
+        "oib": "99999900162",
     }
     create_resp = await client.post("/api/patients", json=payload, headers=auth_headers)
     patient_id = create_resp.json()["id"]
@@ -134,6 +134,7 @@ async def test_tenant_isolation(client: AsyncClient, auth_headers: dict[str, str
             "password": "Other1234!",
             "ime": "Drugi",
             "prezime": "Admin",
+            "terms_accepted": True,
         },
     )
     other_token = reg.json()["access_token"]

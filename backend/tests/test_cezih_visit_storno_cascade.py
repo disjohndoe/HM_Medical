@@ -19,6 +19,7 @@ from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.services.cezih import service as real_service
 from app.services.cezih.dispatchers.visits import (
     _list_active_cezih_docs_for_visit,
     dispatch_visit_action,
@@ -53,7 +54,7 @@ async def _seed(db: AsyncSession) -> tuple[Tenant, Patient, User]:
         prezime="Testić",
         mbo="500604936",
         datum_rodjenja=date(1990, 1, 1),
-        spol="F",
+        spol="Z",
     )
     db.add(user)
     db.add(patient)
@@ -142,7 +143,15 @@ async def test_list_active_docs_filters_storno_missing_ref_and_other_visits(
     assert docs[0]["datum"] == "2026-05-01"
 
 
-async def test_storno_with_active_docs_unconfirmed_raises_409(db_session: AsyncSession):
+async def test_storno_with_active_docs_unconfirmed_raises_409(db_session: AsyncSession, monkeypatch):
+    # Storno first asks CEZIH (ITI-67) which docs still tie to the Encounter, then
+    # unions with the local mirror. Stub the CEZIH call (no live backend in unit
+    # tests) so the blocker comes purely from the local active doc below.
+    async def _no_cezih_docs(http_client, *, encounter_id, patient_system, patient_value):
+        return []
+
+    monkeypatch.setattr(real_service, "list_active_documents_on_encounter", _no_cezih_docs)
+
     tenant, patient, user = await _seed(db_session)
     db_session.add(
         MedicalRecord(

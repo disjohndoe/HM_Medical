@@ -12,7 +12,7 @@ async def test_create_medical_record(client: AsyncClient, auth_headers: dict[str
     payload = {
         "patient_id": test_patient_id,
         "datum": date.today().isoformat(),
-        "tip": "Pregled",
+        "tip": "nalaz",
         "dijagnoza_mkb": "J06.9",
         "dijagnoza_tekst": "Akutna infekcija gornjih dišnih putova",
         "sadrzaj": "Pacijent se javlja zbog kašlja i temperature. Faringijski zid hiperemičan.",
@@ -20,7 +20,7 @@ async def test_create_medical_record(client: AsyncClient, auth_headers: dict[str
     resp = await client.post("/api/medical-records", json=payload, headers=auth_headers)
     assert resp.status_code == 201
     data = resp.json()
-    assert data["tip"] == "Pregled"
+    assert data["tip"] == "nalaz"
     assert data["dijagnoza_mkb"] == "J06.9"
     assert data["cezih_sent"] is False
     assert "id" in data
@@ -33,7 +33,7 @@ async def test_create_medical_record_short_sadrzaj(
     payload = {
         "patient_id": test_patient_id,
         "datum": date.today().isoformat(),
-        "tip": "Pregled",
+        "tip": "nalaz",
         "sadrzaj": "kratko",  # < 10 chars after strip
     }
     resp = await client.post("/api/medical-records", json=payload, headers=auth_headers)
@@ -45,7 +45,7 @@ async def test_get_medical_record(client: AsyncClient, auth_headers: dict[str, s
     payload = {
         "patient_id": test_patient_id,
         "datum": date.today().isoformat(),
-        "tip": "Pregled",
+        "tip": "nalaz",
         "sadrzaj": "Detaljan nalaz pregleda pacijenta s opisom nalaza.",
     }
     create_resp = await client.post("/api/medical-records", json=payload, headers=auth_headers)
@@ -53,7 +53,7 @@ async def test_get_medical_record(client: AsyncClient, auth_headers: dict[str, s
 
     resp = await client.get(f"/api/medical-records/{record_id}", headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json()["tip"] == "Pregled"
+    assert resp.json()["tip"] == "nalaz"
 
 
 @pytest.mark.asyncio
@@ -61,7 +61,7 @@ async def test_update_medical_record(client: AsyncClient, auth_headers: dict[str
     payload = {
         "patient_id": test_patient_id,
         "datum": date.today().isoformat(),
-        "tip": "Pregled",
+        "tip": "nalaz",
         "sadrzaj": "Inicijalni nalaz pregleda pacijenta.",
     }
     create_resp = await client.post("/api/medical-records", json=payload, headers=auth_headers)
@@ -93,8 +93,8 @@ async def test_filter_medical_records_by_patient(
     payload = {
         "patient_id": test_patient_id,
         "datum": date.today().isoformat(),
-        "tip": "Liječenje",
-        "sadrzaj": "Liječenje akutnog bronhitisa mukolitičkom terapijom.",
+        "tip": "epikriza",
+        "sadrzaj": "epikriza akutnog bronhitisa mukolitičkom terapijom.",
     }
     await client.post("/api/medical-records", json=payload, headers=auth_headers)
 

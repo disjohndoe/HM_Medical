@@ -10,6 +10,7 @@ async def test_register_success(client: AsyncClient):
         "password": "NewPass123!",
         "ime": "Novi",
         "prezime": "Korisnik",
+        "terms_accepted": True,
     }
     resp = await client.post("/api/auth/register", json=payload)
     assert resp.status_code == 201
@@ -29,6 +30,7 @@ async def test_register_duplicate_email(client: AsyncClient):
         "password": "Pass123!",
         "ime": "Prvi",
         "prezime": "Korisnik",
+        "terms_accepted": True,
     }
     resp1 = await client.post("/api/auth/register", json=payload)
     assert resp1.status_code == 201
@@ -46,6 +48,7 @@ async def test_register_invalid_email(client: AsyncClient):
         "password": "Pass123!",
         "ime": "Bad",
         "prezime": "Email",
+        "terms_accepted": True,
     }
     resp = await client.post("/api/auth/register", json=payload)
     assert resp.status_code == 422
@@ -59,6 +62,7 @@ async def test_login_success(client: AsyncClient):
         "password": "LoginPass1!",
         "ime": "Login",
         "prezime": "Test",
+        "terms_accepted": True,
     }
     await client.post("/api/auth/register", json=reg_payload)
 
@@ -77,6 +81,7 @@ async def test_login_wrong_password(client: AsyncClient):
         "password": "CorrectPass1!",
         "ime": "Wrong",
         "prezime": "Pass",
+        "terms_accepted": True,
     }
     await client.post("/api/auth/register", json=reg_payload)
 
