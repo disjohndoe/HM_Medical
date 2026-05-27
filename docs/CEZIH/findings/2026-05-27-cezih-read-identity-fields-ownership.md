@@ -83,9 +83,10 @@ conditions (identifikator-slucaja | recorder HZJZ | asserter HZJZ | encounter):
 ```
 
 ## Evidence
-- Temporary diagnostic: `GET /cezih/_diag/ownership?patient_id=…` (admin, read-only) in
-  `api/cezih.py` — dumps raw `author`/`custodian` (docs) and `recorder`/`asserter`/`encounter`
-  (conditions) + tenant šifra + ID systems. **Remove once the ownership classifier ships.**
+- Temporary diagnostic `GET /cezih/_diag/ownership?patient_id=…` (admin, read-only) was used to
+  capture the raw `author`/`custodian` (docs) and `recorder`/`asserter`/`encounter` (conditions)
+  samples above, then **removed** once the ownership classifier shipped and was prod-verified
+  (commit after 5eebc44). The live topology tool that remains is `GET /cezih/_diag/doc-chains`.
 - Builders that set these on the create side: `fhir_api/documents.py` (author/custodian),
   `message_builder` / `builders/condition.py` (recorder/asserter; note `asserter` is dropped for
   case 2.2/2.6 per `2026-04-21-cezih-2.1-asserter-drop.md`, but read-back still shows it).
