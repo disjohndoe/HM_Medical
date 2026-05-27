@@ -913,7 +913,6 @@ async def dispatch_visit_action(
     org_name: str = "",
     source_oid: str | None = None,
     confirm_cascade_docs: bool = False,
-    _diag_no_suppress: bool = False,  # TEMP DIAGNOSTIC — remove after TC20 1.4-unblock test
 ) -> dict:
     """Perform an action on a visit (TC14): close, storno, reopen.
 
@@ -947,7 +946,7 @@ async def dispatch_visit_action(
         # API calls. Silently no-op: do NOT call CEZIH (which also avoids needlessly
         # cancelling the live head doc and leaving the visit half-changed), do NOT
         # surface an error. Audit-only so the suppression is traceable.
-        if not _diag_no_suppress and await _encounter_has_replaced_doc(db, tenant_id, visit_id):
+        if await _encounter_has_replaced_doc(db, tenant_id, visit_id):
             logger.info(
                 "Visit %s storno suppressed: carries a replaced e-Nalaz "
                 "(CEZIH ERR_ENCOUNTER_2001/ERR_DOM_10035 deadlock) — no-op",
@@ -1109,8 +1108,7 @@ async def dispatch_visit_action(
         # deadlock. Swallow it silently — no error surfaced, no error badge persisted —
         # exactly like the primary guard. All other CEZIH errors raise as before.
         if (
-            not _diag_no_suppress
-            and action == "storno"
+            action == "storno"
             and _extract_cezih_error_code(e) == "ERR_ENCOUNTER_2001"
             and _parse_blocking_refs_from_encounter_2001(e)
         ):
