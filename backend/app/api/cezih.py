@@ -1018,9 +1018,15 @@ async def diag_cancel_by_oid(
     from app.models.patient import Patient
     from app.services.cezih import service as real_service
     from app.services.cezih.client import CezihFhirClient
+    from app.services.cezih.dispatchers.common import _require_audit_params
     from app.services.cezih.dispatchers.documents import _resolve_djelatnost
     from app.services.cezih.exceptions import CezihError, CezihFhirError
     from app.services.cezih.fhir_api.documents import build_cancel_bundle
+
+    # Set audit context so OAuth routes through the agent (tenant) and the
+    # signing method resolves per-user — without this the client falls back to
+    # a direct OAuth POST the server cannot reach (30s timeout).
+    _require_audit_params(db, current_user.id, current_user.tenant_id)
 
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != current_user.tenant_id:
@@ -1049,7 +1055,7 @@ async def diag_cancel_by_oid(
         org_name=org_name,
     )
     logger.info("DIAG cancel-by-oid: ref=%s oid=%s patient=%s", ref, oid, patient_id)
-    client = CezihFhirClient(_http_client(request))
+    client = CezihFhirClient(_http_client(request), tenant_id=current_user.tenant_id)
     try:
         resp = await client.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle)
         return {"ok": True, "ref": ref, "oid": oid, "response": resp}
