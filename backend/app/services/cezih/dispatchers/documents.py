@@ -1059,6 +1059,84 @@ async def dispatch_retrieve_document(
     return result
 
 
+# ===========================================================================
+# TEMP DEBUG — controlled test: can a SUPERSEDED predecessor be set
+# entered-in-error by its OWN master OID (no head resolution)?
+# Settles whether the visit-storno-replaced-doc deadlock is fundamental
+# (ERR_DOM_10035) or whether the reverted self-heal just targeted the wrong OID.
+# REMOVE after the test (this function + its endpoint in api/cezih.py).
+# See docs/CEZIH/findings/2026-05-27-visit-storno-replaced-doc-deadlock.md.
+# ===========================================================================
+async def dispatch_DEBUG_cancel_predecessor_by_own_oid(  # noqa: N802
+    reference_id: str,
+    patient_mbo: str,
+    *,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
+    http_client=None,
+    org_code: str = "",
+    practitioner_id: str | None = None,
+    practitioner_name: str = "",
+    org_name: str = "",
+) -> dict:
+    from app.services.cezih.client import CezihFhirClient
+    from app.services.cezih.fhir_api.documents import (
+        _extract_oid_from_docref,
+        build_cancel_bundle,
+    )
+
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
+    identifier_system = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
+    fhir_client = CezihFhirClient(http_client)
+
+    # 1) find the target ref in the current,superseded search and take ITS OWN oid
+    resp = await fhir_client.get(
+        "doc-mhd-svc/api/v1/DocumentReference",
+        params={
+            "patient.identifier": f"{identifier_system}|{patient_mbo}",
+            "status": "current,superseded",
+            "_count": 200,
+        },
+    )
+    own_oid = ""
+    own_status = ""
+    for entry in resp.get("entry") or []:
+        doc = entry.get("resource") or {}
+        if doc.get("resourceType") == "DocumentReference" and doc.get("id", "") == reference_id:
+            own_oid = _extract_oid_from_docref(doc)
+            own_status = (doc.get("status") or "").lower()
+            break
+    logger.info(
+        "DEBUG cancel-predecessor: ref=%s own_status=%s own_oid=%s",
+        reference_id, own_status, own_oid,
+    )
+    if not own_oid:
+        return {"found": False, "reference_id": reference_id, "status": own_status}
+
+    # 2) build a cancel targeting THAT EXACT oid (NO head resolution) and POST
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(db, tenant_id, user_id)
+    bundle_dict = build_cancel_bundle(
+        patient_data={"mbo": patient_mbo, "identifier_system": identifier_system,
+                      "identifier_value": patient_mbo, "ime": "", "prezime": ""},
+        record_data={"tip": "nalaz", "sadrzaj": "", "created_at": _now_iso()},
+        original_document_oid=own_oid,
+        djelatnost_code=djelatnost_code,
+        djelatnost_display=djelatnost_display,
+        practitioner_id=practitioner_id,
+        practitioner_name=practitioner_name,
+        org_code=org_code,
+        org_name=org_name,
+    )
+    try:
+        response = await fhir_client.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle_dict)
+    except CezihError as e:
+        logger.warning("DEBUG cancel-predecessor: CEZIH rejected own-oid cancel: %s", getattr(e, "message", e))
+        _raise_cezih_error(e)
+    return {"found": True, "reference_id": reference_id, "own_status": own_status,
+            "own_oid": own_oid, "cezih_response": response}
+
+
 __all__ = [
     "_get_medical_record",
     "_get_medical_record_by_id",
@@ -1071,4 +1149,5 @@ __all__ = [
     "dispatch_replace_document_with_edit",
     "dispatch_cancel_document_canonical",
     "dispatch_retrieve_document",
+    "dispatch_DEBUG_cancel_predecessor_by_own_oid",
 ]

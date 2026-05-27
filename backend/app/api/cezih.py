@@ -994,6 +994,34 @@ async def cancel_document(
     )
 
 
+@router.post("/_debug/cancel-predecessor/{reference_id}")
+async def DEBUG_cancel_predecessor(  # noqa: N802
+    request: Request,
+    reference_id: str,
+    patient_mbo: str,
+    current_user: User = Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    # TEMP DEBUG — settle the visit-storno-replaced-doc deadlock empirically:
+    # cancel a SUPERSEDED predecessor by its OWN master OID (no head resolution).
+    # 200 => deadlock is solvable; ERR_DOM_10035 => fundamental. REMOVE after test.
+    await check_cezih_access(db, current_user.tenant_id)
+    org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
+    return await cezih.dispatch_DEBUG_cancel_predecessor_by_own_oid(
+        reference_id,
+        patient_mbo,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
+        org_code=org_code,
+        practitioner_id=current_user.practitioner_id,
+        practitioner_name=practitioner_name,
+        org_name=org_name,
+    )
+
+
 @router.get("/e-nalaz/{reference_id}/document")
 async def retrieve_document(
     request: Request,
