@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.cezih import service as real_service
 from app.services.cezih.dispatchers.cases import _lookup_patient_id
-from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
+from app.services.cezih.dispatchers.common import (
+    _raise_cezih_error,
+    _require_audit_params,
+    _write_audit,
+    assert_case_registered_on_cezih,
+)
 from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
 from app.services.cezih.exceptions import CezihError, CezihFhirError
 
@@ -589,6 +594,14 @@ async def dispatch_create_visit(
             detail="Pacijent ima aktivnih slučajeva — molim odaberite jedan slučaj kod kreiranja posjete.",
         )
 
+    # Picking a case is enforced above; this ensures the picked case actually
+    # exists on CEZIH (not a seed/local-only id) before it goes into the
+    # posjeta↔slučaj link.
+    try:
+        case_id = await assert_case_registered_on_cezih(db, tenant_id, patient_id, case_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     try:
         identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
     except CezihError as e:
@@ -719,6 +732,15 @@ async def dispatch_update_visit(
         merged_case = None
     else:
         merged_case = diagnosis_case_id
+
+    # Block unregistered/seed case ids from the updated posjeta↔slučaj link.
+    if merged_case:
+        try:
+            merged_case = await assert_case_registered_on_cezih(
+                db, tenant_id, patient_id, merged_case
+            )
+        except CezihError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
     # Reason: None preserves, "" clears, value sets.
     if reason is None:

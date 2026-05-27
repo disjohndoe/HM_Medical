@@ -14,7 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.constants import CEZIH_ELIGIBLE_TYPES, get_cezih_document_coding
 from app.services.cezih import service as real_service
 from app.services.cezih.builders.common import _now_iso
-from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
+from app.services.cezih.dispatchers.common import (
+    _raise_cezih_error,
+    _require_audit_params,
+    _write_audit,
+    assert_case_registered_on_cezih,
+)
 from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
 from app.services.cezih.exceptions import CezihError, CezihFhirError, CezihSigningError
 from app.services.cezih.validation import validate_doc_type_djelatnost
@@ -276,6 +281,14 @@ async def send_enalaz(
         djelatnost_code,
         is_exam_tenant=await _is_exam_tenant(db, tenant_id),
     )
+
+    # Never thread a case id that CEZIH has no registered slučaj for (seed/
+    # local-only cases) into the nalaz↔slučaj link - it produces "Posjeta nije
+    # povezana sa Slučajem". Raises CezihError if unregistered.
+    try:
+        case_id = await assert_case_registered_on_cezih(db, tenant_id, patient_id, case_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
     record_data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
 
@@ -732,6 +745,12 @@ async def dispatch_replace_document_with_edit(
         encounter_id = record.cezih_encounter_id
     if not case_id and record.cezih_case_id:
         case_id = record.cezih_case_id
+
+    # Block unregistered/seed case ids from the replaced bundle's slučaj link.
+    try:
+        case_id = await assert_case_registered_on_cezih(db, tenant_id, patient_id, case_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
     # Use stored OID if available — avoids unreliable ITI-67 lookup
     stored_oid = record.cezih_document_oid or "" if record else ""
