@@ -839,6 +839,130 @@ async def replace_document(
     }
 
 
+async def amend_document(
+    client: httpx.AsyncClient,
+    original_reference_id: str,
+    patient_data: dict,
+    record_data: dict,
+    *,
+    djelatnost_code: str,
+    djelatnost_display: str,
+    practitioner_id: str | None = None,
+    org_code: str = "",
+    encounter_id: str = "",
+    case_id: str = "",
+    practitioner_name: str = "",
+    original_document_oid: str = "",
+    org_name: str = "",
+    procedures: list[dict] | None = None,
+    attachments: list[dict] | None = None,
+) -> dict:
+    """Submit an *amended* clinical document (the "entered-in-error line" edit).
+
+    Parallel to replace_document, but builds relatesTo.code="appends" instead of
+    "replaces". Per IHE MHD ITI-65 only `replaces` (RPLC) supersedes the target —
+    `appends` (APND) leaves the old document `current`. We deliberately want the
+    old doc to stay `current` (not `superseded`) so the caller can then cancel it
+    to `entered-in-error`, avoiding the superseded↔storno deadlock
+    (ERR_ENCOUNTER_2001 ↔ ERR_DOM_10035). The returned old_document_oid /
+    old_reference_id are the LIVE-resolved head — the dispatcher cancels exactly
+    that version, never a stale stored OID. Do NOT route TC19 here; replace stays.
+    """
+    fhir_client = CezihFhirClient(client)
+
+    # Resolve the LIVE current head before building relatesTo — same stale-OID
+    # guard as replace_document. We append to whatever CEZIH currently holds as
+    # the head, never a value our DB has already moved past.
+    identifier_value = _require_identifier_value(patient_data)
+    identifier_system = _require_identifier_system(patient_data)
+    live = await _resolve_live_document_head(
+        fhir_client, original_reference_id, identifier_system, identifier_value
+    )
+
+    if live["state"] == "entered-in-error":
+        raise CezihError(
+            f"e-Nalaz {original_reference_id} je storniran na CEZIH-u i ne može se "
+            "uređivati. Osvježite prikaz."
+        )
+    if live["state"] == "superseded" and not live.get("oid"):
+        raise CezihError(
+            f"e-Nalaz {original_reference_id} je zamijenjen novijom verzijom, a "
+            "CEZIH nije vratio trenutnu verziju. Osvježite prikaz i uredite "
+            "aktualni e-Nalaz iz liste."
+        )
+
+    if live.get("reference_id"):
+        original_reference_id = live["reference_id"]
+    original_document_oid = live.get("oid") or original_document_oid
+
+    if not original_document_oid:
+        original_document_oid = await _lookup_document_oid(
+            fhir_client,
+            original_reference_id,
+            identifier_value,
+            identifier_system=identifier_system,
+        )
+
+    if original_document_oid:
+        oid_value = (
+            original_document_oid
+            if original_document_oid.startswith("urn:oid:")
+            else f"urn:oid:{original_document_oid}"
+        )
+        relates_to = {
+            "code": "appends",
+            "target": {
+                "type": "DocumentReference",
+                "identifier": {
+                    "system": "urn:ietf:rfc:3986",
+                    "value": oid_value,
+                },
+            },
+        }
+    else:
+        relates_to = {
+            "code": "appends",
+            "target": {
+                "reference": f"DocumentReference/{original_reference_id}",
+            },
+        }
+
+    bundle_dict, new_oid = await _build_document_bundle(
+        fhir_client,
+        patient_data,
+        record_data,
+        djelatnost_code=djelatnost_code,
+        djelatnost_display=djelatnost_display,
+        practitioner_id=practitioner_id,
+        org_code=org_code,
+        encounter_id=encounter_id,
+        case_id=case_id,
+        practitioner_name=practitioner_name,
+        org_name=org_name,
+        relates_to=relates_to,
+        use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
+        procedures=procedures,
+        attachments=attachments,
+    )
+
+    response = await fhir_client.post(
+        "doc-mhd-svc/api/v1/iti-65-service",
+        json_body=bundle_dict,
+    )
+
+    ref_id = _extract_ref_id_from_response(response)
+    if not ref_id:
+        ref_id = f"FHIR-A-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+
+    return {
+        "success": True,
+        "new_reference_id": ref_id,
+        "new_document_oid": new_oid,
+        "old_reference_id": original_reference_id,
+        "old_document_oid": original_document_oid,
+    }
+
+
 def _extract_oid_from_docref(doc_ref: dict) -> str:
     """Extract masterIdentifier OID from a DocumentReference resource.
 
@@ -1310,6 +1434,7 @@ __all__ = [
     "_map_fhir_status",
     "search_documents",
     "replace_document",
+    "amend_document",
     "_lookup_document_oid",
     "build_cancel_bundle",
     "cancel_document_canonical",

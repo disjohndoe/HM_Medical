@@ -875,6 +875,273 @@ async def dispatch_replace_document_with_edit(
     return result
 
 
+async def dispatch_edit_document_via_amend(
+    original_reference_id: str,
+    record_id: UUID,
+    patient_id: UUID,
+    edits: dict,
+    *,
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
+    http_client=None,
+    org_code: str = "",
+    practitioner_id: str | None = None,
+    practitioner_name: str = "",
+    encounter_id: str = "",
+    case_id: str = "",
+    org_name: str = "",
+) -> dict:
+    """Doctor-facing edit via the "entered-in-error line" (avoids the
+    superseded↔storno deadlock).
+
+    Instead of an ITI-65 *replace* (which sets the old doc to `superseded` and
+    permanently blocks visit storno — ERR_ENCOUNTER_2001 ↔ ERR_DOM_10035), this:
+
+      1. Submits the edited content as a NEW DocumentReference with
+         relatesTo.code="appends" → old doc stays `current` (per IHE MHD ITI-65).
+      2. Cancels the OLD doc to `entered-in-error` (canonical 2-entry cancel,
+         carrying context.encounter + context.related).
+
+    End state on CEZIH: old=`entered-in-error`, new=`current` with a visible
+    relatesTo(appends) link. **No `superseded` doc anywhere** → a later visit
+    storno succeeds. Verified-correct ordering: submit-new FIRST (link target is
+    `current`/valid), then cancel-old.
+
+    Partial-failure rule (project "No fallbacks / no fake success"): if step (2)
+    fails after step (1) succeeded, the record is repointed to the NEW doc (the
+    authoritative latest, already on CEZIH) and a clear coded error is raised so
+    a human retires the leftover OLD doc. That transient state is two `current`
+    docs — degraded but NOT deadlocked (both are cancellable). We never report
+    success when the old version is still active. replace_document/TC19 untouched.
+    """
+    from app.models.patient import Patient
+
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
+
+    record = await _get_medical_record(db, tenant_id, patient_id, record_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medicinski zapis nije pronađen")
+
+    if record.cezih_reference_id != original_reference_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Referenca e-Nalaza ne odgovara trenutnoj verziji zapisa. Osvježite prikaz i pokušajte ponovno.",
+        )
+
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+    try:
+        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+        all_ids = real_service.resolve_all_cezih_identifiers(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    patient_data = {
+        "mbo": id_val,
+        "identifier_system": id_sys,
+        "identifier_value": id_val,
+        "identifiers": all_ids,
+        "ime": patient.ime,
+        "prezime": patient.prezime,
+    }
+
+    # Capture the OLD (pre-edit) content for the cancel-old bundle BEFORE merging
+    # edits — the cancel must represent the document being retired, not the new one.
+    old_record_data = {
+        "tip": record.tip,
+        "dijagnoza_mkb": record.dijagnoza_mkb,
+        "dijagnoza_tekst": record.dijagnoza_tekst,
+        "sadrzaj": record.sadrzaj or "",
+        "preporucena_terapija": record.preporucena_terapija,
+        "created_at": record.created_at.isoformat() if record.created_at else None,
+    }
+
+    # Merge proposed edits over current record state for the NEW appended doc.
+    def _pick(key: str, fallback):
+        val = edits.get(key)
+        return val if val is not None else fallback
+
+    new_tip = _pick("tip", record.tip)
+    new_dijagnoza_mkb = _pick("dijagnoza_mkb", record.dijagnoza_mkb)
+    new_dijagnoza_tekst = _pick("dijagnoza_tekst", record.dijagnoza_tekst)
+    new_sadrzaj = _pick("sadrzaj", record.sadrzaj)
+    new_preporucena = _pick("preporucena_terapija", record.preporucena_terapija)
+
+    record_data = {
+        "tip": new_tip,
+        "dijagnoza_mkb": new_dijagnoza_mkb,
+        "dijagnoza_tekst": new_dijagnoza_tekst,
+        "sadrzaj": new_sadrzaj,
+        "preporucena_terapija": new_preporucena,
+        "created_at": record.created_at.isoformat() if record.created_at else _now_iso(),
+    }
+
+    if not practitioner_id and record.doktor_id:
+        practitioner_id = str(record.doktor_id)
+    if not encounter_id and record.cezih_encounter_id:
+        encounter_id = record.cezih_encounter_id
+    if not case_id and record.cezih_case_id:
+        case_id = record.cezih_case_id
+
+    # Same authoring rule as send/replace: block unregistered/seed/closed case ids
+    # from the appended bundle's slučaj link.
+    try:
+        case_id = await assert_case_registered_on_cezih(
+            db, tenant_id, patient_id, case_id, require_active=True
+        )
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    stored_oid = record.cezih_document_oid or ""
+
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(
+        db, tenant_id, record.doktor_id or user_id
+    )
+
+    validate_doc_type_djelatnost(
+        get_cezih_document_coding(new_tip)["code"],
+        djelatnost_code,
+        is_exam_tenant=await _is_exam_tenant(db, tenant_id),
+    )
+
+    # Carry the procedures + attachments into the appended bundle, same as replace
+    # — otherwise the amended doc silently drops every postupak/prilog.
+    try:
+        procedures = await _get_procedures_for_record(db, tenant_id, record_id)
+        attachments = await _load_attachments_for_record(db, tenant_id, record_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    # --- Step 1: submit-new (appends → live OLD head) ---
+    try:
+        amend_result = await real_service.amend_document(
+            http_client,
+            original_reference_id,
+            patient_data,
+            record_data,
+            practitioner_id=practitioner_id,
+            org_code=org_code,
+            encounter_id=encounter_id,
+            case_id=case_id,
+            practitioner_name=practitioner_name,
+            original_document_oid=stored_oid,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
+            org_name=org_name,
+            procedures=procedures,
+            attachments=attachments,
+        )
+    except CezihError as e:
+        # Nothing created on CEZIH; old doc untouched/current. Clean failure.
+        await record_cezih_error("medical_record", record_id, tenant_id, e)
+        _raise_cezih_error(e)
+
+    new_ref = amend_result.get("new_reference_id")
+    new_oid = amend_result.get("new_document_oid", "")
+    # The LIVE-resolved old head amend_document actually appended to — cancel
+    # exactly that version (not a stale stored OID → avoids ERR_DOM_10035).
+    old_ref_live = amend_result.get("old_reference_id") or original_reference_id
+    old_oid_live = amend_result.get("old_document_oid") or stored_oid
+
+    # Apply the edits + repoint the local record to the NEW doc now. The new doc
+    # is the authoritative current version on CEZIH; do this before the cancel so
+    # that even a partial failure leaves the DB pointing at the live latest (and
+    # a retry amends off the new head, not the old — no doc proliferation).
+    for attr in ("tip", "dijagnoza_mkb", "dijagnoza_tekst", "sadrzaj", "preporucena_terapija"):
+        val = edits.get(attr)
+        if val is not None:
+            setattr(record, attr, val)
+    if edits.get("datum") is not None:
+        record.datum = edits["datum"]
+    if edits.get("sensitivity") is not None:
+        record.sensitivity = edits["sensitivity"]
+    if "appointment_id" in edits:
+        record.appointment_id = edits["appointment_id"]
+    if encounter_id and encounter_id != record.cezih_encounter_id:
+        record.cezih_encounter_id = encounter_id
+    if case_id and case_id != record.cezih_case_id:
+        record.cezih_case_id = case_id
+    if new_ref:
+        record.cezih_reference_id = new_ref
+        if new_oid:
+            record.cezih_document_oid = new_oid
+        # Deliberately do NOT set cezih_last_replaced_at — that field drives the
+        # legacy storno-hide (_encounter_has_replaced_doc). An amended finding has
+        # no `superseded` predecessor and MUST remain stornable, so leave it null.
+    else:
+        logger.error(
+            "Amend of e-Nalaz %s returned 2xx but no new reference id; leaving "
+            "local ref/OID unchanged.",
+            original_reference_id,
+        )
+    record.cezih_storno = False  # logical finding stays active after an edit
+    await db.flush()
+
+    # --- Step 2: cancel-old (entered-in-error), carrying encounter + case ---
+    cancel_failed: CezihError | None = None
+    try:
+        await real_service.cancel_document_canonical(
+            http_client,
+            old_ref_live,
+            patient_data=patient_data,
+            record_data=old_record_data,
+            org_code=org_code,
+            practitioner_id=practitioner_id,
+            encounter_id=encounter_id,
+            case_id=case_id,
+            practitioner_name=practitioner_name,
+            original_document_oid=old_oid_live,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
+            org_name=org_name,
+        )
+    except CezihError as e:
+        cancel_failed = e
+
+    await _write_audit(
+        db,
+        tenant_id,
+        user_id,
+        action="e_nalaz_edit_via_amend",
+        details={
+            "reference_id": original_reference_id,
+            "new_reference_id": new_ref,
+            "appended_to_oid": old_oid_live,
+            "old_reference_id": old_ref_live,
+            "cancelled_old": cancel_failed is None,
+            "edited_fields": sorted(k for k, v in edits.items() if v is not None),
+        },
+    )
+
+    if cancel_failed is not None:
+        # Honest partial failure: new doc is live (record repointed), but the old
+        # version is still `current`. Persist the repoint + audit, flag the coded
+        # error, then surface it — no fake success. Degraded (two current docs)
+        # but NOT deadlocked; the leftover old doc stays cancellable.
+        await record_cezih_error("medical_record", record_id, tenant_id, cancel_failed)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "Izmjena je zabilježena na CEZIH-u, ali starija verzija e-Nalaza "
+                "nije stornirana. Pokušajte ponovno ili stornirajte staru verziju "
+                f"ručno (CEZIH: {cancel_failed.message})."
+            ),
+        )
+
+    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
+    await db.commit()
+    return {
+        "success": True,
+        "new_reference_id": new_ref,
+        "new_document_oid": new_oid,
+        "amended_from_reference_id": old_ref_live,
+        "amended_from_oid": old_oid_live,
+    }
+
+
 async def dispatch_cancel_document_canonical(
     reference_id: str,
     *,
@@ -1069,6 +1336,7 @@ __all__ = [
     "dispatch_search_documents",
     "dispatch_replace_document",
     "dispatch_replace_document_with_edit",
+    "dispatch_edit_document_via_amend",
     "dispatch_cancel_document_canonical",
     "dispatch_retrieve_document",
 ]

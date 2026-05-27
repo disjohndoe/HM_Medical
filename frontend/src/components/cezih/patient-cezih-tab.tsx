@@ -28,7 +28,7 @@ import { CaseManagement } from "@/components/cezih/case-management"
 import { VisitManagement } from "@/components/cezih/visit-management"
 import { SendNalazDialog } from "@/components/cezih/send-nalaz-dialog"
 import { api } from "@/lib/api-client"
-import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useReplaceDocumentWithEdit } from "@/lib/hooks/use-cezih"
+import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useAmendDocumentWithEdit } from "@/lib/hooks/use-cezih"
 import { useMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { OSIGURANJE_STATUS, COUNTRY_HR, RECORD_SENSITIVITY, RECORD_SENSITIVITY_COLORS } from "@/lib/constants"
@@ -65,7 +65,7 @@ export function PatientCezihTab({
   const { data: summary, isLoading } = usePatientCezihSummary(patientId)
   const insuranceCheck = useInsuranceCheck()
   const cancelDocument = useCancelDocument()
-  const replaceWithEdit = useReplaceDocumentWithEdit()
+  const amendWithEdit = useAmendDocumentWithEdit()
   const { canUseHzzo } = usePermissions()
   const { tipLabelMap } = useRecordTypeMaps()
   const [internalSubTab, setInternalSubTab] = useState("posjete")
@@ -354,7 +354,7 @@ export function PatientCezihTab({
               </div>
             </CardHeader>
             <CardContent className="relative">
-              <CezihWaitOverlay isOpen={cancelDocument.isPending || replaceWithEdit.isPending} />
+              <CezihWaitOverlay isOpen={cancelDocument.isPending || amendWithEdit.isPending} />
               {!summary?.e_nalaz_history.length ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   Nema e-Nalaza za ovog pacijenta
@@ -477,7 +477,7 @@ export function PatientCezihTab({
           // re-linked) and fall back to the record's existing IDs.
           const encounterId = payload.encounter_id ?? editRecord?.cezih_encounter_id ?? ""
           const caseId = payload.case_id ?? editRecord?.cezih_case_id ?? ""
-          await replaceWithEdit.mutateAsync({
+          await amendWithEdit.mutateAsync({
             referenceId,
             record_id: recordId,
             patient_id: patientId,

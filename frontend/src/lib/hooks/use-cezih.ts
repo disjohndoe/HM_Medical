@@ -818,11 +818,13 @@ export function useDocumentSearch(params: {
   })
 }
 
-/** Atomic edit-and-replace: signs + calls CEZIH ITI-65 replace first, only
- *  applies the local record PATCH when CEZIH returns 2xx. Use this instead of
- *  the PATCH-then-replace pattern for any edit that should be mirrored to
- *  CEZIH — prevents DB/CEZIH divergence when CEZIH fails. */
-export function useReplaceDocumentWithEdit() {
+/** Doctor-facing edit via the "entered-in-error line": submits the edited
+ *  content as a NEW document (relatesTo=appends) then cancels the old one
+ *  (entered-in-error), instead of an ITI-65 replace. This leaves no
+ *  `superseded` document, so a later visit storno is not deadlocked
+ *  (ERR_ENCOUNTER_2001 ↔ ERR_DOM_10035). The local record PATCH is still gated
+ *  on CEZIH 2xx — prevents DB/CEZIH divergence when CEZIH fails. */
+export function useAmendDocumentWithEdit() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -854,7 +856,7 @@ export function useReplaceDocumentWithEdit() {
       preporucena_terapija?: unknown[] | null
       appointment_id?: string | null
     }) =>
-      api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}/replace-with-edit`, {
+      api.put<DocumentActionResponse>(`/cezih/e-nalaz/${referenceId}/amend-with-edit`, {
         record_id,
         patient_id,
         encounter_id: encounter_id || "",

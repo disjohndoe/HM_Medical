@@ -965,6 +965,42 @@ async def replace_document_with_edit(
     )
 
 
+@router.put("/e-nalaz/{reference_id}/amend-with-edit", response_model=DocumentActionResponse)
+async def amend_document_with_edit(
+    request: Request,
+    reference_id: str,
+    data: ReplaceDocumentWithEditRequest,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Doctor-facing edit via the "entered-in-error line" — submit a new
+    DocumentReference (relatesTo.code=appends) then cancel the old one
+    (entered-in-error). Unlike replace-with-edit (which sets the old doc to
+    `superseded` and permanently blocks visit storno — ERR_ENCOUNTER_2001 ↔
+    ERR_DOM_10035), this leaves no `superseded` document, so the visit stays
+    stornable. replace-with-edit is kept available for TC19/replace scenarios."""
+    await check_cezih_access(db, current_user.tenant_id)
+    org_code, _, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
+    edits = data.model_dump(exclude={"record_id", "patient_id", "encounter_id", "case_id"}, exclude_none=False)
+    return await cezih.dispatch_edit_document_via_amend(
+        reference_id,
+        record_id=data.record_id,
+        patient_id=data.patient_id,
+        edits=edits,
+        db=db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        http_client=_http_client(request),
+        org_code=org_code,
+        practitioner_id=current_user.practitioner_id,
+        practitioner_name=practitioner_name,
+        encounter_id=data.encounter_id,
+        case_id=data.case_id,
+        org_name=org_name,
+    )
+
+
 @router.delete("/e-nalaz/{reference_id}", response_model=DocumentActionResponse)
 async def cancel_document(
     request: Request,
