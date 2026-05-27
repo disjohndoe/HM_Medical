@@ -119,7 +119,15 @@ Files: `backend/app/schemas/cezih.py`, `dispatchers/cases.py`,
 - E2E on prod, both signing methods, before requesting the next provjera termin:
   TC18→19→20 plus a **second** replace (forces a superseded predecessor) then
   storno → expect no ERR_DOM_10035, doc ends `entered-in-error`, eKarton shows the
-  active head. Visit-storno cascade on a visit with a replaced nalaz.
+  active head. **DONE on smart card 2026-05-27** (Z11 chain `1647841→1647847→1647981`,
+  storno req `6592c21a` clean). Mobile Certilia re-verify still owed.
+- ~~Visit-storno cascade on a visit with a replaced nalaz.~~ **RESOLVED — confirmed
+  CEZIH-side deadlock, not fixable in-app.** The 1.4 is blocked by `ERR_ENCOUNTER_2001`
+  on the superseded predecessors, which CEZIH itself refuses to cancel (`ERR_DOM_10035`).
+  Auto-cancel-retry was already tried + reverted 2026-05-20 (`ede1fdf`→`16f0247`). The
+  visit-storno error message was corrected to be honest (no impossible "go storno them
+  yourself" instruction). Full write-up:
+  [2026-05-27-visit-storno-replaced-doc-deadlock.md](2026-05-27-visit-storno-replaced-doc-deadlock.md).
 - Confirm send/replace against a seed/terminal case → clean 422; storno of a
   seed-linked record → succeeds with the slučaj link dropped.
 - Note: a case opened at another clinic and surfaced via QEDm (no local CezihCase

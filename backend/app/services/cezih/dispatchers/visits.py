@@ -976,13 +976,25 @@ async def dispatch_visit_action(
         result = await fhir_client.process_message("encounter-services/api/v1", bundle)
     except CezihError as e:
         # ERR_ENCOUNTER_2001 lists DocumentReferences CEZIH still considers active
-        # on this Encounter. The FE cascade preflight already cancels everything in
-        # our local mirror, so when this fires we're looking at refs we don't track
-        # (predecessors of an ITI-65 replace, docs created by another system, etc.).
-        # We can't auto-cancel them: CEZIH refuses canonical cancel on superseded
-        # predecessors with ERR_DOM_10035 ("Target resource is not in valid status").
-        # Surface a clear, actionable error listing the blocking refs and instruct
-        # the doctor to contact support — there is no in-app remediation path.
+        # on this Encounter. The cascade preflight already cancels every doc in our
+        # local mirror, so when this STILL fires the blockers are refs the doctor
+        # cannot reach from the UI: superseded predecessors of an ITI-65 replace, or
+        # docs created by another system. This is a confirmed CEZIH-side deadlock -
+        # CEZIH refuses to cancel a superseded predecessor (ERR_DOM_10035, "Target
+        # resource is not in valid status") yet demands it be cancelled before the
+        # 1.4. The auto-cancel-and-retry self-heal was tried + reverted 2026-05-20
+        # (ede1fdf -> 16f0247); do NOT re-add it. See
+        # docs/CEZIH/findings/2026-05-27-visit-storno-replaced-doc-deadlock.md.
+        # So the message must be honest: this visit cannot be storno'd on CEZIH, not
+        # "go storno the nalazi yourself" (which the doctor cannot do for predecessors).
+        # The deadlock blocks ONLY storno (1.4 / entered-in-error). The normal terminal
+        # path is unaffected: close the visit (1.3 -> Završena) and resolve the case
+        # (2.5 -> Završen) both work, because closing an Encounter does not require its
+        # documents to be cancelled first. So point the doctor at the action that
+        # actually works when the visit was completed normally, instead of a dead end.
+        # We do NOT auto-convert storno -> close: they mean different things (storno =
+        # "never happened", close = "happened and is done") and substituting silently
+        # would be a forbidden fallback.
         if (
             action == "storno"
             and _extract_cezih_error_code(e) == "ERR_ENCOUNTER_2001"
@@ -990,10 +1002,11 @@ async def dispatch_visit_action(
             blocking = _parse_blocking_refs_from_encounter_2001(e)
             if blocking:
                 msg = (
-                    "Posjeta se ne može stornirati dok CEZIH evidentira aktivne "
-                    "dokumente vezane uz nju. Otvorite karton pacijenta, prijeđite "
-                    "u e-Nalaze, i stornirajte sve nalaze koji pripadaju ovoj "
-                    "posjeti, pa pokušajte ponovno."
+                    "Ova se posjeta ne može stornirati na CEZIH-u jer sadrži e-Nalaz "
+                    "koji je bio izmijenjen (zamijenjen novom verzijom) - CEZIH ne "
+                    "dopušta storniranje prijašnjih verzija dokumenta. Ako je posjeta "
+                    "uredno obavljena, umjesto storna ju zatvorite (status Završena) i "
+                    "po potrebi završite slučaj. Ako je unesena greškom, javite se podršci."
                 )
                 ref_list = ", ".join(r for r, _ in blocking)
                 wrapped = CezihFhirError(
@@ -1011,9 +1024,9 @@ async def dispatch_visit_action(
                                             "system": "http://ent.hr/fhir/CodeSystem/message-error-type",
                                             "code": "ERR_ENCOUNTER_2001",
                                             "display": (
-                                                "Prvo stornirajte sve nalaze "
-                                                "ove posjete, pa ponovo "
-                                                "pokušajte storno posjete"
+                                                "Posjeta sadrži izmijenjeni e-Nalaz "
+                                                "čije prijašnje verzije CEZIH ne "
+                                                "dopušta stornirati"
                                             ),
                                         }
                                     ],

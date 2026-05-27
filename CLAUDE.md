@@ -128,6 +128,7 @@ MEDICAL_MVP/
     ├── cezih-technical.md     # VPN, PKI, FHIR REST API, OAuth2, cloud cert, 22 test cases
     ├── go-to-market.md        # Sales strategy, professional association partnerships, conferences, outreach
     └── implementation-plan.md # Full build spec — DB schema, API, UI, phases (junior-friendly)
+    └── CEZIH/findings/README.md  # Living knowledge base — ALWAYS check here first for CEZIH discoveries, errors, fixes, sweeps
 ```
 
 ## Tech Stack
@@ -139,6 +140,8 @@ MEDICAL_MVP/
 - **CEZIH Integration (novi format za privatnike):** FHIR R4 + IHE profili (MHD, PDQm, SVCM, mCSD, PMIR, QEDm), OAuth2 via Keycloak
 
 ## CEZIH Integration Architecture
+
+**Knowledge base:** `docs/CEZIH/findings/README.md` is the living CEZIH knowledge base. **Always consult it first** when debugging CEZIH errors, modifying FHIR payloads, or implementing new TCs. It indexes every discovery, error resolution, sweep result, and spec compliance finding from live testing.
 
 ### Dual Signing — Both Methods Work Independently
 
