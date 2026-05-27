@@ -1214,6 +1214,72 @@ async def visit_action_diag(
         )
 
 
+# TEMP DIAGNOSTIC — cancel an EXACT DocumentReference version (e.g. a superseded
+# predecessor named in ERR_ENCOUNTER_2001 as DocumentReference/{id}/_history/{ver}).
+# Bypasses head-collapse: vread the exact version to get its OID, build the
+# HRCancelDocumentBundle for THAT OID, POST it, and return CEZIH's raw response.
+# Decides fixable (cancel succeeds) vs hard-limit (ERR_DOM_10035). REMOVE after test.
+@router.post("/_diag/cancel-docver")
+async def diag_cancel_docver(
+    request: Request,
+    patient_id: UUID = Query(...),
+    reference_id: str = Query(...),
+    version_id: str = Query(...),
+    tip: str = Query("specijalisticki_nalaz"),
+    encounter_id: str = Query(""),
+    case_id: str = Query(""),
+    current_user: User = Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import JSONResponse
+
+    from app.models.patient import Patient
+    from app.services.cezih import service as real_service
+    from app.services.cezih.client import CezihFhirClient
+    from app.services.cezih.dispatchers.documents import _resolve_djelatnost
+    from app.services.cezih.fhir_api.documents import _extract_oid_from_docref, build_cancel_bundle
+
+    await check_cezih_access(db, current_user.tenant_id)
+    org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    patient = await db.get(Patient, patient_id)
+    id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+    patient_data = {
+        "mbo": id_val, "identifier_system": id_sys, "identifier_value": id_val,
+        "ime": patient.ime, "prezime": patient.prezime,
+    }
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(db, current_user.tenant_id, current_user.id)
+    fhir = CezihFhirClient(_http_client(request))
+    trace: dict = {"reference_id": reference_id, "version_id": version_id}
+    try:
+        vread = await fhir.get(
+            f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}/_history/{version_id}"
+        )
+        oid = _extract_oid_from_docref(vread) if isinstance(vread, dict) else ""
+        trace["vread_status"] = vread.get("status") if isinstance(vread, dict) else None
+        trace["vread_oid"] = oid
+        if not oid:
+            return JSONResponse({"ok": False, "stage": "vread", "trace": trace, "vread": vread})
+        bundle = build_cancel_bundle(
+            patient_data=patient_data,
+            record_data={"tip": tip},
+            original_document_oid=oid,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
+            practitioner_id=current_user.practitioner_id or "",
+            practitioner_name="",
+            org_code=org_code,
+            encounter_id=encounter_id,
+            case_id=case_id,
+            org_name=org_name,
+        )
+        resp = await fhir.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle)
+        return JSONResponse({"ok": True, "stage": "posted", "trace": trace, "response": resp})
+    except HTTPException as e:
+        return JSONResponse({"ok": False, "stage": "post", "trace": trace, "status": e.status_code, "detail": e.detail})
+    except Exception as e:  # noqa: BLE001 - diagnostic: surface everything
+        return JSONResponse({"ok": False, "stage": "post", "trace": trace, "error_type": type(e).__name__, "detail": str(e)})
+
+
 @router.get("/extsigner/probe/{transaction_code}")
 async def probe_extsigner_transaction(
     transaction_code: str,
