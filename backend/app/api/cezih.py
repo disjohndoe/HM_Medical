@@ -1302,6 +1302,63 @@ async def diag_cancel_docver(
         return JSONResponse({"ok": False, "stage": "post", "trace": trace, "error_type": type(e).__name__, "detail": str(e)})
 
 
+# TEMP DIAGNOSTIC — dump the live document chain topology (id/status/OID/relatesTo)
+# so we can find each blocker's CURRENT head. Read-only. REMOVE after analysis.
+@router.get("/_diag/doc-chains")
+async def diag_doc_chains(
+    request: Request,
+    patient_id: UUID = Query(...),
+    ids: str = Query("", description="comma-separated ids to focus on (optional)"),
+    current_user: User = Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import JSONResponse
+
+    from app.models.patient import Patient
+    from app.services.cezih import service as real_service
+    from app.services.cezih.client import CezihFhirClient
+    from app.services.cezih.dispatchers.common import _require_audit_params
+    from app.services.cezih.fhir_api.documents import _extract_oid_from_docref
+
+    _require_audit_params(db, current_user.id, current_user.tenant_id)
+    await check_cezih_access(db, current_user.tenant_id)
+    patient = await db.get(Patient, patient_id)
+    id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+    fhir = CezihFhirClient(_http_client(request), tenant_id=current_user.tenant_id)
+
+    def _tail(oid: str) -> str:
+        oid = (oid or "").replace("urn:oid:", "")
+        return oid.rsplit(".", 1)[-1] if oid else ""
+
+    out: dict = {}
+    for st in ["current", "superseded", "entered-in-error"]:
+        search = await fhir.get(
+            "doc-mhd-svc/api/v1/DocumentReference",
+            params={"patient.identifier": f"{id_sys}|{id_val}", "status": st, "_count": 200},
+        )
+        for entry in (search.get("entry") or []) if isinstance(search, dict) else []:
+            res = entry.get("resource") or {}
+            if res.get("resourceType") != "DocumentReference":
+                continue
+            rid = res.get("id", "")
+            rels = []
+            for rel in res.get("relatesTo", []) or []:
+                tgt = rel.get("target") or {}
+                ref = tgt.get("reference") or (tgt.get("identifier") or {}).get("value") or ""
+                rels.append(f"{rel.get('code')}->{ref}")
+            ctx = res.get("context") or {}
+            enc = [(e.get("identifier") or {}).get("value") for e in (ctx.get("encounter") or [])]
+            out[rid] = {
+                "status": res.get("status"),
+                "oid_tail": _tail(_extract_oid_from_docref(res)),
+                "relatesTo": rels,
+                "encounter": enc,
+            }
+    focus = [i.strip() for i in ids.split(",") if i.strip()]
+    result = {k: v for k, v in out.items() if k in focus} if focus else out
+    return JSONResponse({"total": len(out), "focus": focus, "docs": result})
+
+
 @router.get("/extsigner/probe/{transaction_code}")
 async def probe_extsigner_transaction(
     transaction_code: str,
