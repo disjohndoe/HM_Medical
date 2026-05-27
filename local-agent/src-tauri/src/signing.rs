@@ -16,10 +16,6 @@ use std::ptr;
 use windows_sys::Win32::Security::Cryptography::*;
 use windows_sys::Win32::Foundation::GetLastError;
 
-/// NCrypt flag to produce IEEE P1363 format (raw r||s) instead of DER-encoded ECDSA signatures.
-/// JWS (RFC 7515) requires P1363 format. Without this flag, Windows NCryptSignHash defaults to DER.
-const NCRYPT_ECDSA_P1363_FORMAT_FLAG: u32 = 0x00000001;
-
 /// Result of a successful CMS signing operation.
 pub struct SignResult {
     /// Detached CMS/PKCS#7 signature (DER-encoded).
