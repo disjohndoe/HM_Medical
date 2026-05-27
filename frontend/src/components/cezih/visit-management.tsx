@@ -261,10 +261,12 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
     visitAction.mutate(
       { visitId, action, patientId, periodStart: visit?.period_start, confirmCascadeDocs },
       {
-        onSuccess: () => {
+        onSuccess: (res) => {
+          setCascadeDialog(null)
+          // BE silently no-op'd a doomed storno (replaced-doc deadlock) — show nothing.
+          if (res?.suppressed) return
           const label = VISIT_ACTIONS.find((a) => a.value === action)?.label || action
           toast.success(`${label}: ${visitId}`)
-          setCascadeDialog(null)
         },
         onError: (err) => {
           if (isCascadeRequiredError(err)) {

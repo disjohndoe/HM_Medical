@@ -912,6 +912,9 @@ export interface VisitResponse {
   vrsta_posjete?: string;
   tip_posjete?: string;
   visit?: VisitItem | null;
+  // True when the BE silently no-op'd a doomed storno (replaced-doc deadlock).
+  // The UI stays silent (no success toast) when set.
+  suppressed?: boolean;
 }
 
 export interface CreateVisitRequest {

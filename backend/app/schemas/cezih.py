@@ -380,6 +380,9 @@ class VisitResponse(BaseModel):
     vrsta_posjete: str | None = None
     tip_posjete: str | None = None
     visit: VisitItem | None = None  # full updated row after action; None if mirror missing
+    # True when a doomed storno (replaced-doc deadlock) was silently no-op'd server-side.
+    # The FE uses this to stay silent (skip the success toast) — see visit-management.tsx.
+    suppressed: bool = False
 
 
 # ============================================================
