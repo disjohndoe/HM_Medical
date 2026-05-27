@@ -811,11 +811,25 @@ async def dispatch_replace_document_with_edit(
         record.cezih_encounter_id = encounter_id
     if case_id and case_id != record.cezih_case_id:
         record.cezih_case_id = case_id
+    # Only advance the stored reference + stamp replaced-at together. Stamping
+    # cezih_last_replaced_at while leaving cezih_reference_id on the now-
+    # superseded value is exactly the mirror divergence that produced the
+    # 2026-05-20 stale-OID storno failure (ERR_DOM_10035): our DB pointed at a
+    # version CEZIH had moved past. If CEZIH 2xx'd but returned no parseable new
+    # reference, leave the local ref untouched and log loudly - the cancel path
+    # now resolves the live current version, so a stale local ref self-heals.
     if new_ref:
         record.cezih_reference_id = new_ref
-    if new_oid:
-        record.cezih_document_oid = new_oid
-    record.cezih_last_replaced_at = datetime.now(UTC)
+        if new_oid:
+            record.cezih_document_oid = new_oid
+        record.cezih_last_replaced_at = datetime.now(UTC)
+    else:
+        logger.error(
+            "Replace of e-Nalaz %s returned 2xx but no new reference id; "
+            "leaving local ref/OID unchanged to avoid stale-OID storno "
+            "divergence (ERR_DOM_10035).",
+            original_reference_id,
+        )
     await db.flush()
 
     await clear_cezih_error("medical_record", record_id, tenant_id, session=db)

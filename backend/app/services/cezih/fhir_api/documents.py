@@ -899,6 +899,125 @@ async def _lookup_document_oid(
     return ""
 
 
+def _normalize_oid(oid: str) -> str:
+    """Strip a leading urn:oid: so OIDs from different sources compare equal."""
+    if not oid:
+        return ""
+    return oid[len("urn:oid:") :] if oid.startswith("urn:oid:") else oid
+
+
+async def _find_current_head(
+    fhir_client: CezihFhirClient,
+    predecessor_id: str,
+    predecessor_oid: str,
+    identifier_system: str,
+    identifier_value: str,
+) -> dict | None:
+    """Walk forward from a superseded DocumentReference to the current head.
+
+    A successor's `relatesTo[code=replaces].target` points back at its
+    predecessor, either by literal `DocumentReference/{id}` reference or by OID
+    identifier (system urn:ietf:rfc:3986, value urn:oid:...). We search the
+    patient's `status=current` documents and return the one whose relatesTo
+    target matches our predecessor. Conservative: only returns on an
+    unambiguous single match, else None (caller surfaces a clear error rather
+    than risk cancelling the wrong document).
+    """
+    try:
+        resp = await fhir_client.get(
+            "doc-mhd-svc/api/v1/DocumentReference",
+            params={
+                "patient.identifier": f"{identifier_system}|{identifier_value}",
+                "status": "current",
+                "_count": 200,
+            },
+        )
+    except Exception as e:
+        logger.warning("cancel pre-check: current-docs search failed: %s", e)
+        return None
+
+    pred_oid_norm = _normalize_oid(predecessor_oid)
+    matches: list[dict] = []
+    for entry in resp.get("entry") or []:
+        doc = entry.get("resource") or {}
+        if doc.get("resourceType") != "DocumentReference":
+            continue
+        for rel in doc.get("relatesTo", []) or []:
+            if rel.get("code") != "replaces":
+                continue
+            tgt = rel.get("target") or {}
+            ref = tgt.get("reference") or ""
+            ident_val = _normalize_oid((tgt.get("identifier") or {}).get("value") or "")
+            if (predecessor_id and predecessor_id in ref) or (
+                pred_oid_norm and ident_val == pred_oid_norm
+            ):
+                matches.append(
+                    {"reference_id": doc.get("id", ""), "oid": _extract_oid_from_docref(doc)}
+                )
+                break
+
+    if len(matches) == 1:
+        logger.info(
+            "cancel pre-check: resolved current head %s for superseded %s",
+            matches[0]["reference_id"], predecessor_id,
+        )
+        return matches[0]
+    if len(matches) > 1:
+        logger.warning(
+            "cancel pre-check: %d current heads reference superseded %s - ambiguous, not auto-resolving",
+            len(matches), predecessor_id,
+        )
+    return None
+
+
+async def _resolve_live_document_for_cancel(
+    fhir_client: CezihFhirClient,
+    reference_id: str,
+    identifier_system: str,
+    identifier_value: str,
+) -> dict:
+    """Resolve the live state of a clinical document before a storno/cancel.
+
+    Returns {"state": current|superseded|entered-in-error|unknown,
+             "reference_id": <head id>, "oid": <head OID>}.
+
+    CEZIH rejects cancel against a non-current version with ERR_DOM_10035
+    ("Target resource is not in valid status"), so we must target the current
+    version - or no-op if it is already entered-in-error. On any read failure
+    we return state=unknown so the caller can fall back to the stored OID
+    (preserving prior behaviour when CEZIH is unreachable).
+    """
+    try:
+        doc = await fhir_client.get(
+            f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}"
+        )
+    except Exception as e:
+        logger.warning(
+            "cancel pre-check: GET DocumentReference/%s failed (%s) - degrading to stored OID",
+            reference_id, e,
+        )
+        return {"state": "unknown", "reference_id": reference_id, "oid": ""}
+
+    if not isinstance(doc, dict) or doc.get("resourceType") != "DocumentReference":
+        return {"state": "unknown", "reference_id": reference_id, "oid": ""}
+
+    status_raw = (doc.get("status") or "").lower()
+    oid = _extract_oid_from_docref(doc)
+
+    if status_raw == "entered-in-error":
+        return {"state": "entered-in-error", "reference_id": reference_id, "oid": oid}
+    if status_raw == "current":
+        return {"state": "current", "reference_id": reference_id, "oid": oid}
+    if status_raw == "superseded":
+        head = await _find_current_head(
+            fhir_client, reference_id, oid, identifier_system, identifier_value
+        )
+        if head and head.get("oid"):
+            return {"state": "current", "reference_id": head["reference_id"], "oid": head["oid"]}
+        return {"state": "superseded", "reference_id": reference_id, "oid": oid}
+    return {"state": "unknown", "reference_id": reference_id, "oid": oid}
+
+
 async def cancel_document(
     client: httpx.AsyncClient,
     reference_id: str,
@@ -1029,12 +1148,50 @@ async def cancel_document_canonical(
     """
     fhir_client = CezihFhirClient(client)
 
+    # Resolve the LIVE document state from CEZIH before cancelling. Cancelling
+    # against a stored OID that CEZIH has already superseded (post-replace) or
+    # already flipped to entered-in-error returns ERR_DOM_10035 ("Target
+    # resource is not in valid status") - the root cause of the 2026-05-20
+    # provjera failure (patient #2, all e-Nalazi storno'd). See finding
+    # docs/CEZIH/findings/2026-05-27-exam-fail-patient2-storno-stale-ref.md.
+    identifier_value = _require_identifier_value(patient_data)
+    identifier_system = _require_identifier_system(patient_data)
+    live = await _resolve_live_document_for_cancel(
+        fhir_client, reference_id, identifier_system, identifier_value
+    )
+
+    if live["state"] == "entered-in-error":
+        # Already storno'd on CEZIH - idempotent no-op, no POST. Kills the
+        # repeated ERR_DOM_10035 from re-storno attempts.
+        logger.info(
+            "TC20 canonical cancel: document %s already entered-in-error on CEZIH - no-op",
+            reference_id,
+        )
+        return {
+            "success": True,
+            "reference_id": reference_id,
+            "new_reference_id": live.get("reference_id") or reference_id,
+            "new_document_oid": live.get("oid") or original_document_oid,
+            "status": "entered-in-error",
+            "already_cancelled": True,
+        }
+
+    if live["state"] == "superseded" and not live.get("oid"):
+        raise CezihError(
+            f"e-Nalaz {reference_id} je zamijenjen novijom verzijom, a CEZIH nije "
+            "vratio trenutnu verziju za storno. Osvježite prikaz i stornirajte "
+            "aktualni e-Nalaz iz liste."
+        )
+
+    # Prefer the live-resolved current OID over the stored one. Stored OID is a
+    # fallback only when the live read was unavailable (state == unknown).
+    original_document_oid = live.get("oid") or original_document_oid
     if not original_document_oid:
         original_document_oid = await _lookup_document_oid(
             fhir_client,
-            reference_id,
-            _require_identifier_value(patient_data),
-            identifier_system=_require_identifier_system(patient_data),
+            live.get("reference_id") or reference_id,
+            identifier_value,
+            identifier_system=identifier_system,
             version_id=version_id,
         )
     if not original_document_oid:
@@ -1045,8 +1202,8 @@ async def cancel_document_canonical(
         )
 
     logger.info(
-        "TC20 canonical cancel: ref=%s oid=%s - using HRCancelDocumentBundle profile",
-        reference_id, original_document_oid,
+        "TC20 canonical cancel: ref=%s oid=%s state=%s - using HRCancelDocumentBundle profile",
+        reference_id, original_document_oid, live["state"],
     )
 
     bundle_dict = build_cancel_bundle(
