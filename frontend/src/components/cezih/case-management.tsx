@@ -53,7 +53,7 @@ import {
   useIcd10Search,
 } from "@/lib/hooks/use-cezih"
 import type { CaseItem } from "@/lib/types"
-import { CLINICAL_STATUS, CLINICAL_STATUS_COLORS, VERIFICATION_STATUS } from "@/lib/constants"
+import { CLINICAL_STATUS, CLINICAL_STATUS_COLORS, VERIFICATION_STATUS, CEZIH_LOADING_TITLE, CEZIH_LOADING_SUBTITLE } from "@/lib/constants"
 
 const PAGE_SIZE = 30
 
@@ -387,6 +387,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
       </CardHeader>
       <CardContent className="relative">
         <CezihWaitOverlay isOpen={updateStatus.isPending || updateData.isPending} />
+        <CezihWaitOverlay isOpen={casesQuery.isLoading} message={CEZIH_LOADING_TITLE} subMessage={CEZIH_LOADING_SUBTITLE} />
         <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
           <p className="font-medium">Kako koristiti:</p>
           <ul className="list-disc list-inside space-y-0.5">
@@ -402,9 +403,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
           </ul>
         </div>
         {casesQuery.isLoading ? (
-          <div className="flex justify-center py-4">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
+          <div className="py-16" />
         ) : casesQuery.isError ? (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
             <p className="text-sm text-destructive">

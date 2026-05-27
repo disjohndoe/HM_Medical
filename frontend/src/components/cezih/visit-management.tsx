@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { CezihWaitOverlay } from "@/components/cezih/cezih-wait-overlay"
+import { CEZIH_LOADING_TITLE, CEZIH_LOADING_SUBTITLE } from "@/lib/constants"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -379,6 +380,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
       </CardHeader>
       <CardContent className="relative space-y-3">
         <CezihWaitOverlay isOpen={visitAction.isPending} />
+        <CezihWaitOverlay isOpen={isLoading} message={CEZIH_LOADING_TITLE} subMessage={CEZIH_LOADING_SUBTITLE} />
         <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
           <p className="font-medium">Kako koristiti:</p>
           <ul className="list-disc list-inside space-y-0.5">
@@ -507,10 +509,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
         </Dialog>
 
         {isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Učitavanje posjeta...
-          </div>
+          <div className="py-16" />
         ) : isError ? (
           <p className="text-sm text-destructive py-4 text-center">
             Greška pri dohvatu posjeta: {visitsError?.message || "Nepoznata greška"}

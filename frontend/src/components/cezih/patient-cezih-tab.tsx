@@ -21,7 +21,6 @@ import { SortableTableHead } from "@/components/ui/sortable-table-head"
 import { TablePagination } from "@/components/shared/table-pagination"
 import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { Skeleton } from "@/components/ui/skeleton"
 import { PrescriptionForm } from "@/components/prescriptions/prescription-form"
 import { RecordForm } from "@/components/medical-records/record-form"
 import { CaseManagement } from "@/components/cezih/case-management"
@@ -31,7 +30,7 @@ import { api } from "@/lib/api-client"
 import { usePatientCezihSummary, useInsuranceCheck, useCancelDocument, useAmendDocumentWithEdit } from "@/lib/hooks/use-cezih"
 import { useMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { OSIGURANJE_STATUS, COUNTRY_HR, RECORD_SENSITIVITY, RECORD_SENSITIVITY_COLORS } from "@/lib/constants"
+import { OSIGURANJE_STATUS, COUNTRY_HR, RECORD_SENSITIVITY, RECORD_SENSITIVITY_COLORS, CEZIH_LOADING_TITLE, CEZIH_LOADING_SUBTITLE } from "@/lib/constants"
 import { isForeignPatient, type Patient } from "@/lib/types"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateTimeHR } from "@/lib/utils"
@@ -231,13 +230,15 @@ export function PatientCezihTab({
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card><CardContent className="p-6"><Skeleton className="h-20 w-full" /></CardContent></Card>
-          <Card><CardContent className="p-6"><Skeleton className="h-20 w-full" /></CardContent></Card>
-        </div>
-        <Card><CardContent className="p-6"><Skeleton className="h-32 w-full" /></CardContent></Card>
-      </div>
+      <Card>
+        <CardContent className="relative min-h-[320px] p-6">
+          <CezihWaitOverlay
+            isOpen
+            message={CEZIH_LOADING_TITLE}
+            subMessage={CEZIH_LOADING_SUBTITLE}
+          />
+        </CardContent>
+      </Card>
     )
   }
 
