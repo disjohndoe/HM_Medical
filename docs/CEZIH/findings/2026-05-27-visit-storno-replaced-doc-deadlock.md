@@ -227,3 +227,72 @@ for affected visits — no message, badge, or explanation shown to the doctor.
   `ERR_DOM_10035` are absent from the published terminology entirely.**
 - Latest published `cezih.hr.encounter-management` = 0.2.3 (= the local copy); nothing
   newer documents this.
+
+## Re-investigation 2026-05-27 (PM): the `List/{id}` SubmissionSet idea, and live eKarton proof
+
+Prompted by a fresh hypothesis - *"maybe our documented approach is wrong; the
+iti-65-service creation returns `"location": "List/1648559/_history/1"`, maybe we can
+store that and use it as a storno reference point; also check whether eNalazi status
+actually updates when we storno, and whether the e-Nalaz must be storno'd first."* The
+deadlock was reopened in good faith and tested three more ways. All three close the door
+harder, but they also produced a genuinely useful clarification (storno works and is
+visible; only *visit* cancel is blocked, and the clinical record is already correct
+without it).
+
+### 1. Can the SubmissionSet `List` be used as a cancel target? NO (spec-decisive)
+
+The `location: List/1648559/_history/1` returned on an ITI-65 submission is the
+**SubmissionSet** (a FHIR `List`) created by that transaction - not a handle for
+cancelling the document. The canonical `Bundle-ITI-65-Cancel.json`
+(`cezih.hr.klinicki-dokumenti`) keys the cancel **entirely on the `DocumentReference`**:
+`masterIdentifier` = the document's master OID + `status = entered-in-error`. In that same
+example the `List` is just a wrapper carrying `status = current`, `mode = working`, with
+`entry.item.reference` pointing at the DocumentReference's `urn:uuid` - the List is
+**never** the thing that gets cancelled, and there is **no List-/SubmissionSet-based
+cancel operation anywhere in the package**. So storing the `List/{id}` location cannot
+unlock anything: cancellation is per-document and status-gated by construction.
+
+Crucially, the own-OID probe (above) already proved the block is a **status** rule, not an
+**identity** rule: CEZIH *found* the superseded predecessor fine (it returned
+`ERR_DOM_10035` "not in valid status", not a not-found) and refused purely because the
+document is `superseded`. Changing *how* we reference the document (List location vs master
+OID vs resource-id+version) cannot change the document's status, so no reference trick
+unlocks the cancel.
+
+*(Small legitimate kernel, not a fix: storing the SubmissionSet `List/{id}` and the exact
+`DocumentReference/{id}/_history/{n}` would let us match the precise refs CEZIH lists in
+`ERR_ENCOUNTER_2001` for diagnostics / an HZZO ticket. It does not enable storno.)*
+
+### 2. Does e-Nalaz storno actually propagate to CEZIH? YES - proven live on the eKarton
+
+Observed directly on `certweb2.cezih.hr/eKarton` for MBO 999990260 (GORAN), 2026-05-27 PM:
+
+- Default Nalazi filter ("Svi dokumenti") shows **79** documents.
+- Switching to **"Svi dokumenti uključujući stornirane"** ("all documents *including
+  storno'd*") shows **201**. CEZIH tracks every storno'd/superseded version and simply
+  **hides storno'd ones from the default clinical view**.
+- The storno'd Z11 head (ref `1647981`, OID `...755013`) renders with status
+  **`Storniran`** (anamneza matches "ZAMJENA #2 (TC19 drugi replace)"). Our TC20 document
+  storno propagated perfectly.
+- The replaced head from today's fresh chain (ref `1648566`, OID `...755017`) renders
+  `Aktivan` with a `Povijest izdavanja` (version history) block - replace also propagates
+  correctly (current = Aktivan, prior versions retained as history).
+
+So **e-Nalaz storno and replace are fully functional and correctly reflected on CEZIH.**
+The eKarton's own UI even has a first-class "include storno'd" toggle - storno is a
+normal, supported, visible operation. "Maybe the e-Nalaz must be storno'd first" - we
+already do storno the live head first (it shows `Storniran`); the visit cancel still
+fails, because the block is the **superseded predecessors**, never the head.
+
+### 3. Net conclusion (reinforced, not overturned)
+
+The documented deadlock stands and is now triply confirmed (own-OID probe → `ERR_DOM_10035`;
+spec → no List/SubmissionSet cancel, status-gated per-document; live eKarton → storno
+propagates but superseded predecessors remain). The reframing that matters:
+
+> **The clinical record on CEZIH is already correct without the visit storno.** The current
+> finding is `Aktivan`, superseded versions are retained as history, and a storno'd
+> document shows `Storniran`. Visit (Encounter) cancel is the *only* blocked operation, and
+> it is not needed to make the eKarton accurate - close (1.3) + resolve case (2.5) is the
+> correct terminal act for a visit that genuinely happened. The shipped "hide storno on
+> replaced-doc visits" resolution is therefore validated, not contradicted.

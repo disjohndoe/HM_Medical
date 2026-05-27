@@ -859,14 +859,22 @@ async def amend_document(
 ) -> dict:
     """Submit an *amended* clinical document (the "entered-in-error line" edit).
 
-    Parallel to replace_document, but builds relatesTo.code="appends" instead of
-    "replaces". Per IHE MHD ITI-65 only `replaces` (RPLC) supersedes the target —
-    `appends` (APND) leaves the old document `current`. We deliberately want the
-    old doc to stay `current` (not `superseded`) so the caller can then cancel it
-    to `entered-in-error`, avoiding the superseded↔storno deadlock
-    (ERR_ENCOUNTER_2001 ↔ ERR_DOM_10035). The returned old_document_oid /
-    old_reference_id are the LIVE-resolved head — the dispatcher cancels exactly
-    that version, never a stale stored OID. Do NOT route TC19 here; replace stays.
+    The new document carries NO `relatesTo` at all (live-confirmed 2026-05-27:
+    both `replaces` AND `appends` produce a `superseded` document on CEZIH —
+    `replaces` supersedes the old, `appends` supersedes the *new* one — and any
+    `superseded` doc deadlocks visit storno via ERR_ENCOUNTER_2001 ↔ ERR_DOM_10035).
+    Instead the new doc is a standalone `status=current` document, still linked to
+    the SAME visit + case via `context.encounter` + `context.related` (that linkage,
+    not relatesTo, is what CEZIH/eKarton requires — verified in the 2026-05-11
+    rejection-items sweep). The caller then cancels the old doc to `entered-in-error`.
+    End state: old=`entered-in-error`, new=`current` + case-linked, NO `superseded`
+    → patient keeps a visible active nalaz (the 2026-05-20 exam-fail condition) AND
+    the visit stornos cleanly. The doc-to-doc correction link is kept LOCAL-only
+    (audit/`cezih_amended_from_oid`), never on the wire.
+
+    The returned old_document_oid / old_reference_id are the LIVE-resolved head —
+    the dispatcher cancels exactly that version, never a stale stored OID. Do NOT
+    route TC19 here; replace_document (with relatesTo=replaces) stays intact for it.
     """
     fhir_client = CezihFhirClient(client)
 
@@ -903,30 +911,11 @@ async def amend_document(
             identifier_system=identifier_system,
         )
 
-    if original_document_oid:
-        oid_value = (
-            original_document_oid
-            if original_document_oid.startswith("urn:oid:")
-            else f"urn:oid:{original_document_oid}"
-        )
-        relates_to = {
-            "code": "appends",
-            "target": {
-                "type": "DocumentReference",
-                "identifier": {
-                    "system": "urn:ietf:rfc:3986",
-                    "value": oid_value,
-                },
-            },
-        }
-    else:
-        relates_to = {
-            "code": "appends",
-            "target": {
-                "reference": f"DocumentReference/{original_reference_id}",
-            },
-        }
-
+    # NO relatesTo on the wire. Both `replaces` and `appends` leave a `superseded`
+    # document on CEZIH (live-confirmed), which deadlocks visit storno. The edited
+    # doc goes out as a standalone `current` doc; its tie to the original is kept
+    # local-only. The visit/case linkage is preserved separately via
+    # context.encounter + context.related inside the bundle below.
     bundle_dict, new_oid = await _build_document_bundle(
         fhir_client,
         patient_data,
@@ -939,7 +928,7 @@ async def amend_document(
         case_id=case_id,
         practitioner_name=practitioner_name,
         org_name=org_name,
-        relates_to=relates_to,
+        relates_to=None,
         use_external_profile=False,  # External profiles (v1.0.1) rejected by CEZIH test env with 415
         procedures=procedures,
         attachments=attachments,

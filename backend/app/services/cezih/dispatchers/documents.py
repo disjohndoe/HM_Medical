@@ -898,15 +898,19 @@ async def dispatch_edit_document_via_amend(
     Instead of an ITI-65 *replace* (which sets the old doc to `superseded` and
     permanently blocks visit storno — ERR_ENCOUNTER_2001 ↔ ERR_DOM_10035), this:
 
-      1. Submits the edited content as a NEW DocumentReference with
-         relatesTo.code="appends" → old doc stays `current` (per IHE MHD ITI-65).
+      1. Submits the edited content as a NEW DocumentReference with NO `relatesTo`
+         (live-confirmed 2026-05-27 that both `replaces` and `appends` leave a
+         `superseded` doc on CEZIH). The new doc is a standalone `current` doc,
+         tied to the SAME visit + case via context.encounter + context.related.
       2. Cancels the OLD doc to `entered-in-error` (canonical 2-entry cancel,
-         carrying context.encounter + context.related).
+         carrying context.encounter + context.related; idempotent if already eie).
 
-    End state on CEZIH: old=`entered-in-error`, new=`current` with a visible
-    relatesTo(appends) link. **No `superseded` doc anywhere** → a later visit
-    storno succeeds. Verified-correct ordering: submit-new FIRST (link target is
-    `current`/valid), then cancel-old.
+    End state on CEZIH: old=`entered-in-error`, new=`current` + case-linked.
+    **No `superseded` doc anywhere** → patient keeps a visible active nalaz (the
+    2026-05-20 exam-fail condition) AND a later visit storno succeeds. The
+    doc-to-doc correction link is kept LOCAL-only (audit `amended_from_oid`), never
+    on the wire. Ordering: submit-new FIRST (so the patient is never left without a
+    current doc), then cancel-old.
 
     Partial-failure rule (project "No fallbacks / no fake success"): if step (2)
     fails after step (1) succeeded, the record is repointed to the NEW doc (the
@@ -1014,7 +1018,7 @@ async def dispatch_edit_document_via_amend(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
-    # --- Step 1: submit-new (appends → live OLD head) ---
+    # --- Step 1: submit-new (standalone current doc, no relatesTo) ---
     try:
         amend_result = await real_service.amend_document(
             http_client,
@@ -1040,8 +1044,8 @@ async def dispatch_edit_document_via_amend(
 
     new_ref = amend_result.get("new_reference_id")
     new_oid = amend_result.get("new_document_oid", "")
-    # The LIVE-resolved old head amend_document actually appended to — cancel
-    # exactly that version (not a stale stored OID → avoids ERR_DOM_10035).
+    # The LIVE-resolved old head amend_document returned — cancel exactly that
+    # version (not a stale stored OID → avoids ERR_DOM_10035).
     old_ref_live = amend_result.get("old_reference_id") or original_reference_id
     old_oid_live = amend_result.get("old_document_oid") or stored_oid
 
@@ -1108,7 +1112,7 @@ async def dispatch_edit_document_via_amend(
         details={
             "reference_id": original_reference_id,
             "new_reference_id": new_ref,
-            "appended_to_oid": old_oid_live,
+            "amended_from_oid": old_oid_live,
             "old_reference_id": old_ref_live,
             "cancelled_old": cancel_failed is None,
             "edited_fields": sorted(k for k, v in edits.items() if v is not None),
