@@ -1255,14 +1255,29 @@ async def diag_cancel_docver(
     fhir = CezihFhirClient(_http_client(request), tenant_id=current_user.tenant_id)
     trace: dict = {"reference_id": reference_id, "version_id": version_id}
     try:
-        vread = await fhir.get(
-            f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}/_history/{version_id}"
+        # vread (DocumentReference/{id}/_history/{ver}) 404s on this gateway, so
+        # resolve the OID from the patient-scoped ITI-67 search (proven to return
+        # superseded predecessors) by matching the FHIR id.
+        search = await fhir.get(
+            "doc-mhd-svc/api/v1/DocumentReference",
+            params={
+                "patient.identifier": f"{id_sys}|{id_val}",
+                "status": "current,superseded",
+                "_count": 200,
+            },
         )
-        oid = _extract_oid_from_docref(vread) if isinstance(vread, dict) else ""
-        trace["vread_status"] = vread.get("status") if isinstance(vread, dict) else None
-        trace["vread_oid"] = oid
+        match = None
+        for entry in (search.get("entry") or []) if isinstance(search, dict) else []:
+            res = entry.get("resource") or {}
+            if res.get("resourceType") == "DocumentReference" and res.get("id", "") == reference_id:
+                match = res
+                break
+        oid = _extract_oid_from_docref(match) if match else ""
+        trace["search_status"] = (match.get("status") if match else None)
+        trace["search_oid"] = oid
         if not oid:
-            return JSONResponse({"ok": False, "stage": "vread", "trace": trace, "vread": vread})
+            return JSONResponse({"ok": False, "stage": "resolve_oid", "trace": trace,
+                                 "matched": bool(match)})
         bundle = build_cancel_bundle(
             patient_data=patient_data,
             record_data={"tip": tip},
