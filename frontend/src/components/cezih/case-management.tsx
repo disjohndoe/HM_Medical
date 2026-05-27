@@ -427,7 +427,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                     <SortableTableHead columnKey="naziv" label="Naziv" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
                     <SortableTableHead columnKey="onset_date" label="Početak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
                     <SortableTableHead columnKey="updated_at" label="Izmjena" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
-                    <SortableTableHead columnKey="abatement_date" label="Završetak" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
+                    <SortableTableHead columnKey="abatement_date" label="Kraj" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
                     <TableHead className="w-[180px] text-right">Akcije</TableHead>
                   </TableRow>
                 </TableHeader>

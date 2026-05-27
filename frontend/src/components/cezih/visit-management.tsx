@@ -398,7 +398,7 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
               <strong>Storno</strong> — stornira Posjetu na CEZIH. Radnja se ne može poništiti.
             </li>
             <li>
-              Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
+              Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO i/ili OIB za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
             </li>
           </ul>
         </div>

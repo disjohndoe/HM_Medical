@@ -408,7 +408,7 @@ export function PatientCezihTab({
                 <strong><Download className="inline h-3 w-3" /> Preuzmi</strong> — preuzima PDF nalaza na računalo. Radi i bez CEZIH potpisa.
               </li>
               <li>
-                Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
+                Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO i/ili OIB za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
               </li>
             </ul>
           </div>
@@ -430,16 +430,16 @@ export function PatientCezihTab({
                   <TableHeader>
                     <TableRow>
                       <SortableTableHead columnKey="izvor" label="Izvor" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="w-[100px]" />
-                      <SortableTableHead columnKey="datum" label="Datum kreiranja" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
-                      <SortableTableHead columnKey="datum_slanja" label="Datum slanja" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
-                      <SortableTableHead columnKey="datum_izmjene" label="Datum izmjene" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
+                      <SortableTableHead columnKey="status" label="Status" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="w-[100px]" />
                       <SortableTableHead columnKey="tip" label="Tip" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
                       <SortableTableHead columnKey="dijagnoza" label="Dijagnoza" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden md:table-cell" />
                       <SortableTableHead columnKey="doktor" label="Doktor" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden lg:table-cell" />
                       <SortableTableHead columnKey="referenca" label="Referenca" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
                       <SortableTableHead columnKey="potpis" label="Potpis" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden md:table-cell" />
-                      <SortableTableHead columnKey="status" label="Status" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
-                      <TableHead className="text-right">Akcije</TableHead>
+                      <SortableTableHead columnKey="datum" label="Kreiran" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
+                      <SortableTableHead columnKey="datum_slanja" label="Poslan" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
+                      <SortableTableHead columnKey="datum_izmjene" label="Izmjena" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
+                      <TableHead className="w-[180px] text-right">Akcije</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -458,13 +458,7 @@ export function PatientCezihTab({
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm">{formatDateTimeHR(item.datum)}</TableCell>
-                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                          {item.cezih_sent_at ? formatDateTimeHR(item.cezih_sent_at) : "—"}
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
-                          {item.cezih_last_replaced_at ? formatDateTimeHR(item.cezih_last_replaced_at) : "—"}
-                        </TableCell>
+                        <ENalazStatusCell item={item} />
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1">
                             <Badge variant="outline" className="text-xs">
@@ -506,7 +500,13 @@ export function PatientCezihTab({
                             </div>
                           )}
                         </TableCell>
-                        <ENalazStatusCell item={item} />
+                        <TableCell className="text-sm">{formatDateTimeHR(item.datum)}</TableCell>
+                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                          {item.cezih_sent_at ? formatDateTimeHR(item.cezih_sent_at) : "—"}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                          {item.cezih_last_replaced_at ? formatDateTimeHR(item.cezih_last_replaced_at) : "—"}
+                        </TableCell>
                         <ENalazActionsCell
                           item={item}
                           downloading={downloadingId === item.record_id}
