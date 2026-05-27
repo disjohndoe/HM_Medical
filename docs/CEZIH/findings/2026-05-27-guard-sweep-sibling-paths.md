@@ -34,18 +34,30 @@ against a superseded version → **ERR_DOM_10035**, identical to the cancel bug.
 **Fix:** `replace_document` now calls the shared resolver before building
 `relatesTo`: `current` → use live OID/ref; `superseded` → resolve current head
 (or clear "osvježite i uredite aktualni"); `entered-in-error` → refuse (cannot
-edit a storno'd doc); `unknown` → hard-fail (see G3). Replaces against the live
-head, not the caller's possibly-stale ref. `fhir_api/documents.py`.
+edit a storno'd doc); `unknown` → degrade to stored OID / ITI-67 lookup (see G3).
+Replaces against the live head when resolvable. `fhir_api/documents.py`.
 
-### G3 — `state == unknown` silently degraded to the stale stored OID (P2→promoted)
-The resolver returns `state="unknown"` on any CEZIH read failure; the cancel
-caller used to fall back to `original_document_oid` — re-opening the exact
-ERR_DOM_10035 window under the known-flaky test env.
-**Fix:** on `unknown`, **hard-fail** both cancel and replace with
-`"CEZIH trenutno nije dostupan za provjeru statusa dokumenta. Osvježite prikaz
-i pokušajte ponovno."` — never write against a stale OID. Resolver renamed
-`_resolve_live_document_for_cancel` → `_resolve_live_document_head` (now shared
-by cancel + replace) and its docstring no longer promises a fallback.
+### G3 — resolver was a dead GET-by-id no-op; reworked to search-based (P1, corrected 2026-05-27 E2E)
+**First cut (WRONG, reverted same session):** made `state=unknown` **hard-fail**
+both cancel and replace. Live E2E immediately exposed the flaw: the resolver
+(both `1f5c681`'s original and the rename) resolved via
+`GET doc-mhd-svc/.../DocumentReference/{numeric_id}`, which **CEZIH 404s for the
+ids we store** (confirmed live on ref 1621712 → 404). So `state=unknown` was the
+*normal* result for every document, not a rare outage — the hard-fail 502'd every
+replace/storno on prod, and `1f5c681`'s entered-in-error no-op + superseded→head
+walk had silently **never fired** since they too depended on the 404-ing GET.
+**Correct fix:** `_resolve_live_document_head` now resolves via the **patient-scoped
+ITI-67 search** (`patient.identifier` + `status=current,superseded`, then a
+separate `status=entered-in-error` probe) — the same mechanism
+`_lookup_document_oid` tier-3 and `_find_current_head` already use successfully.
+It reads the real live status, walks `superseded → current head`, and detects
+`entered-in-error` for the idempotent no-op. Only a genuine **search failure** or
+an **unmatchable id** yields `state=unknown`, and on `unknown` both callers
+**degrade to the stored OID / ITI-67 lookup** (the proven chain) rather than
+block. The stale-OID ERR_DOM_10035 is now prevented by the search actually
+resolving the current head, not by refusing the operation. Resolver renamed
+`_resolve_live_document_for_cancel` → `_resolve_live_document_head` (shared by
+cancel + replace).
 
 ### G4 — Deleted the legacy ITI-65 cancel path (P2, footgun removal)
 `dispatch_cancel_document` / `cancel_document` (replace-style storno) had no live

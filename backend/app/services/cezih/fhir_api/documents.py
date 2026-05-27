@@ -755,11 +755,6 @@ async def replace_document(
             f"e-Nalaz {original_reference_id} je storniran na CEZIH-u i ne može se "
             "uređivati. Osvježite prikaz."
         )
-    if live["state"] == "unknown":
-        raise CezihError(
-            "CEZIH trenutno nije dostupan za provjeru statusa dokumenta. "
-            "Osvježite prikaz i pokušajte ponovno."
-        )
     if live["state"] == "superseded" and not live.get("oid"):
         raise CezihError(
             f"e-Nalaz {original_reference_id} je zamijenjen novijom verzijom, a "
@@ -767,7 +762,10 @@ async def replace_document(
             "aktualni e-Nalaz iz liste."
         )
 
-    # Replace against the live current head, not the (possibly stale) caller ref.
+    # Replace against the live current head when resolved. On state=unknown the
+    # live search could not confirm the head (CEZIH unreachable, or the doc was
+    # not matchable by id) - keep the caller ref + stored OID and let the
+    # ITI-67 lookup below resolve it, rather than blocking a legitimate edit.
     if live.get("reference_id"):
         original_reference_id = live["reference_id"]
     original_document_oid = live.get("oid") or original_document_oid
@@ -1017,40 +1015,88 @@ async def _resolve_live_document_head(
 
     CEZIH rejects writing against a non-current version with ERR_DOM_10035
     ("Target resource is not in valid status"), so both cancel and replace must
-    target the current version (or no-op/refuse on entered-in-error). On any
-    read failure we return state=unknown; callers MUST decide what to do with
-    that (the cancel/replace paths hard-fail with a retry message rather than
-    risk writing against a stale stored OID - the 2026-05-20 provjera failure).
+    target the current version (or no-op/refuse on entered-in-error).
+
+    Resolution is via the patient-scoped ITI-67 search, NOT a direct
+    `GET DocumentReference/{id}`: CEZIH's doc-mhd-svc returns 404 for the numeric
+    reference ids we store (verified live 2026-05-27), so a GET-by-id never
+    resolves and the doc is only reachable through a `patient.identifier` +
+    `status` search (the same mechanism _lookup_document_oid tier-3 and
+    _find_current_head use). On a genuine search failure OR when the document
+    cannot be matched by id we return state=unknown; callers then degrade to the
+    stored OID (the proven fallback) rather than block a legitimate operation.
     """
+    # current + superseded in one search (this status filter is proven to work
+    # for this patient scope; see _lookup_document_oid).
     try:
-        doc = await fhir_client.get(
-            f"doc-mhd-svc/api/v1/DocumentReference/{reference_id}"
+        resp = await fhir_client.get(
+            "doc-mhd-svc/api/v1/DocumentReference",
+            params={
+                "patient.identifier": f"{identifier_system}|{identifier_value}",
+                "status": "current,superseded",
+                "_count": 200,
+            },
         )
     except Exception as e:
         logger.warning(
-            "live-doc pre-check: GET DocumentReference/%s failed (%s) - state=unknown",
-            reference_id, e,
+            "live-doc pre-check: current/superseded search failed (%s) - state=unknown",
+            e,
         )
         return {"state": "unknown", "reference_id": reference_id, "oid": ""}
 
-    if not isinstance(doc, dict) or doc.get("resourceType") != "DocumentReference":
-        return {"state": "unknown", "reference_id": reference_id, "oid": ""}
+    target: dict | None = None
+    for entry in resp.get("entry") or []:
+        doc = entry.get("resource") or {}
+        if doc.get("resourceType") != "DocumentReference":
+            continue
+        if doc.get("id", "") == reference_id:
+            target = {
+                "status": (doc.get("status") or "").lower(),
+                "oid": _extract_oid_from_docref(doc),
+            }
+            break
 
-    status_raw = (doc.get("status") or "").lower()
-    oid = _extract_oid_from_docref(doc)
+    if target is not None:
+        if target["status"] == "current":
+            return {"state": "current", "reference_id": reference_id, "oid": target["oid"]}
+        if target["status"] == "superseded":
+            head = await _find_current_head(
+                fhir_client, reference_id, target["oid"], identifier_system, identifier_value
+            )
+            if head and head.get("oid"):
+                return {"state": "current", "reference_id": head["reference_id"], "oid": head["oid"]}
+            return {"state": "superseded", "reference_id": reference_id, "oid": target["oid"]}
 
-    if status_raw == "entered-in-error":
-        return {"state": "entered-in-error", "reference_id": reference_id, "oid": oid}
-    if status_raw == "current":
-        return {"state": "current", "reference_id": reference_id, "oid": oid}
-    if status_raw == "superseded":
-        head = await _find_current_head(
-            fhir_client, reference_id, oid, identifier_system, identifier_value
+    # Not among current/superseded - it may already be storno'd. A separate
+    # entered-in-error search lets the cancel path no-op idempotently.
+    try:
+        eie = await fhir_client.get(
+            "doc-mhd-svc/api/v1/DocumentReference",
+            params={
+                "patient.identifier": f"{identifier_system}|{identifier_value}",
+                "status": "entered-in-error",
+                "_count": 200,
+            },
         )
-        if head and head.get("oid"):
-            return {"state": "current", "reference_id": head["reference_id"], "oid": head["oid"]}
-        return {"state": "superseded", "reference_id": reference_id, "oid": oid}
-    return {"state": "unknown", "reference_id": reference_id, "oid": oid}
+        for entry in eie.get("entry") or []:
+            doc = entry.get("resource") or {}
+            if doc.get("resourceType") == "DocumentReference" and doc.get("id", "") == reference_id:
+                return {
+                    "state": "entered-in-error",
+                    "reference_id": reference_id,
+                    "oid": _extract_oid_from_docref(doc),
+                }
+    except Exception as e:
+        logger.warning("live-doc pre-check: entered-in-error search failed (%s)", e)
+
+    # Reachable, but the document could not be matched by id in any live status.
+    # We cannot assert the live head; degrade to the stored OID (callers handle
+    # state=unknown by keeping the stored OID / ITI-67 lookup).
+    logger.info(
+        "live-doc pre-check: %s not matched in live search - degrading to stored OID",
+        reference_id,
+    )
+    return {"state": "unknown", "reference_id": reference_id, "oid": ""}
 
 
 async def cancel_document_canonical(
@@ -1117,17 +1163,12 @@ async def cancel_document_canonical(
             "aktualni e-Nalaz iz liste."
         )
 
-    if live["state"] == "unknown":
-        # CEZIH live-status read failed. Do NOT fall back to the stored OID -
-        # that is exactly how a superseded/stale OID got cancelled and produced
-        # ERR_DOM_10035 in the 2026-05-20 provjera. Hard-fail with a retry hint.
-        raise CezihError(
-            "CEZIH trenutno nije dostupan za provjeru statusa dokumenta. "
-            "Osvježite prikaz i pokušajte ponovno."
-        )
-
-    # Use the live-resolved current OID. (state is now current; stored OID is no
-    # longer trusted as a silent fallback - see the unknown-state guard above.)
+    # Prefer the live-resolved current OID. On state=unknown (CEZIH unreachable
+    # or the doc not matchable by id in the live search) degrade to the stored
+    # OID and then the ITI-67 lookup below - the proven resolution chain. The
+    # stale-OID ERR_DOM_10035 from the 2026-05-20 provjera is prevented by the
+    # search-based head resolution above (which walks superseded -> current),
+    # not by blocking the storno when the live read is inconclusive.
     original_document_oid = live.get("oid") or original_document_oid
     if not original_document_oid:
         original_document_oid = await _lookup_document_oid(
