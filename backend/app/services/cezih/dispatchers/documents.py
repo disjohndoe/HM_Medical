@@ -1279,6 +1279,120 @@ async def dispatch_cancel_document_canonical(
     return result
 
 
+async def dispatch_cancel_document_for_storno(
+    reference_id: str,
+    *,
+    patient,
+    encounter_id: str = "",
+    case_id: str = "",
+    document_oid: str = "",
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
+    http_client=None,
+    org_code: str = "",
+    practitioner_id: str | None = None,
+    practitioner_name: str = "",
+    org_name: str = "",
+) -> dict:
+    """Cancel a CEZIH document during a visit-storno cascade, mirror or no mirror.
+
+    `dispatch_cancel_document_canonical` resolves all patient/case context from the
+    local `medical_records` row matched by `cezih_reference_id` — useless for an
+    orphan doc that CEZIH still ties to the Encounter but our mirror lost track of
+    (re-edited / re-linked nalaz). This builds patient context from the passed
+    `Patient` instead, so the cascade can cancel EVERY current doc CEZIH lists for
+    the visit, not just the locally-known ones. Idempotent (the underlying
+    `cancel_document_canonical` no-ops an already-`entered-in-error` target). If a
+    local mirror row happens to point at this ref, it is flipped to
+    `cezih_storno=True` so the mirror converges.
+    """
+    from app.models.medical_record import MedicalRecord
+
+    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
+
+    try:
+        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+        all_ids = real_service.resolve_all_cezih_identifiers(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
+    patient_data = {
+        "mbo": id_val,
+        "identifier_system": id_sys,
+        "identifier_value": id_val,
+        "identifiers": all_ids,
+        "ime": patient.ime,
+        "prezime": patient.prezime,
+    }
+    # Minimal record_data — the cancel bundle (HRCancelDocumentBundle) carries the
+    # masterIdentifier OID + entered-in-error, not the clinical body, so a stub is
+    # sufficient for an orphan whose local content we no longer hold.
+    record_data = {"tip": "nalaz", "sadrzaj": "", "created_at": _now_iso()}
+
+    # A storno must not be blocked by an unregistered/seed case link (see
+    # dispatch_cancel_document_canonical) — drop it rather than 422 if it does not
+    # resolve, the doc is going away regardless.
+    if case_id:
+        try:
+            await assert_case_registered_on_cezih(db, tenant_id, patient.id, case_id)
+        except CezihError:
+            logger.warning(
+                "Storno cascade: ref %s carried an unregistered/seed case id %r — "
+                "dropping slučaj link from cancel bundle.",
+                reference_id, case_id,
+            )
+            case_id = ""
+
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(db, tenant_id, user_id)
+
+    try:
+        result = await real_service.cancel_document_canonical(
+            http_client,
+            reference_id,
+            patient_data=patient_data,
+            record_data=record_data,
+            org_code=org_code,
+            practitioner_id=practitioner_id,
+            encounter_id=encounter_id,
+            case_id=case_id,
+            practitioner_name=practitioner_name,
+            original_document_oid=document_oid,
+            djelatnost_code=djelatnost_code,
+            djelatnost_display=djelatnost_display,
+            org_name=org_name,
+        )
+    except CezihError as e:
+        _raise_cezih_error(e)
+
+    # Converge any local mirror row that still points at this ref.
+    rec_result = await db.execute(
+        sa_select(MedicalRecord).where(
+            MedicalRecord.tenant_id == tenant_id,
+            MedicalRecord.cezih_reference_id == reference_id,
+        )
+    )
+    rec = rec_result.scalar_one_or_none()
+    if rec:
+        rec.cezih_storno = True
+
+    await _write_audit(
+        db,
+        tenant_id,
+        user_id,
+        action="e_nalaz_cancel_for_storno",
+        details={
+            "reference_id": reference_id,
+            "encounter_id": encounter_id,
+            "already_cancelled": result.get("already_cancelled", False),
+            "in_local_mirror": rec is not None,
+        },
+    )
+    if db:
+        await db.commit()
+    return result
+
+
 async def dispatch_retrieve_document(
     reference_id: str,
     document_url: str | None = None,

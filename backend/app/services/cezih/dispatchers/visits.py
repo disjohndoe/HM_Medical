@@ -972,9 +972,46 @@ async def dispatch_visit_action(
                 "status": (current or {}).get("status", ""),
                 "visit": current,
             }
-        blocking_docs = await _list_active_cezih_docs_for_visit(db, tenant_id, visit_id)
+        # Authoritative blocker discovery. CEZIH — not our local mirror — decides what
+        # blocks the 1.4 (ERR_ENCOUNTER_2001), so ASK CEZIH which current docs it still
+        # ties to this Encounter (ITI-67, all types). The local mirror is unreliable
+        # here: a doctor edit (amend) repoints the row to the new ref, so an earlier
+        # amended/orphaned doc can stay `current` on the Encounter with no local row
+        # pointing at it; the mirror is also not guaranteed type-complete. We union the
+        # CEZIH list with the local mirror (defensive) and cancel every distinct ref.
+        # Only `current` docs come back from CEZIH — superseded predecessors (legacy
+        # ITI-65 replace) are excluded there and remain the separate, un-cancellable
+        # deadlock handled by the post-1.4 guard below.
+        cezih_docs = await real_service.list_active_documents_on_encounter(
+            http_client,
+            encounter_id=visit_id,
+            patient_system=_sys,
+            patient_value=identifier_value,
+        )
+        local_docs = await _list_active_cezih_docs_for_visit(db, tenant_id, visit_id)
+        by_ref: dict[str, dict] = {}
+        for d in cezih_docs:
+            ref = d.get("reference_id")
+            if ref:
+                by_ref[ref] = d
+        for d in local_docs:
+            ref = d.get("reference_id")
+            if ref:
+                by_ref.setdefault(ref, d)
+        blocking_docs = list(by_ref.values())
         if blocking_docs:
             if not confirm_cascade_docs:
+                # Normalise to the FE CascadeDoc shape (reference_id/tip/dijagnoza_mkb/
+                # datum) — CEZIH-sourced orphans have no local dijagnoza/datum.
+                doc_payload = [
+                    {
+                        "reference_id": d["reference_id"],
+                        "tip": d.get("tip"),
+                        "dijagnoza_mkb": d.get("dijagnoza_mkb"),
+                        "datum": d.get("datum"),
+                    }
+                    for d in blocking_docs
+                ]
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
@@ -983,14 +1020,18 @@ async def dispatch_visit_action(
                             f"Posjet ima {len(blocking_docs)} aktivnih nalaza na CEZIH-u. "
                             "Da bi se posjet stornirao, prvo se moraju stornirati svi priloženi nalazi."
                         ),
-                        "documents": blocking_docs,
+                        "documents": doc_payload,
                     },
                 )
-            from app.services.cezih.dispatchers.documents import dispatch_cancel_document_canonical
+            from app.services.cezih.dispatchers.documents import dispatch_cancel_document_for_storno
 
             for doc in blocking_docs:
-                await dispatch_cancel_document_canonical(
+                await dispatch_cancel_document_for_storno(
                     doc["reference_id"],
+                    patient=patient,
+                    encounter_id=visit_id,
+                    case_id=doc.get("case_id", "") or "",
+                    document_oid=doc.get("oid", "") or "",
                     db=db,
                     user_id=user_id,
                     tenant_id=tenant_id,

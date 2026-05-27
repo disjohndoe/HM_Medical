@@ -714,6 +714,82 @@ async def search_documents(
     return items
 
 
+async def list_active_documents_on_encounter(
+    client: httpx.AsyncClient,
+    *,
+    encounter_id: str,
+    patient_system: str,
+    patient_value: str,
+) -> list[dict]:
+    """Every `status=current` DocumentReference CEZIH still ties to this Encounter.
+
+    CEZIH — not our local mirror — is the source of truth for what blocks a visit
+    storno (msg 1.4 → ERR_ENCOUNTER_2001). Our `medical_records` mirror loses refs
+    in normal use: a doctor edit (amend) creates a NEW `current` doc and repoints
+    the row to it, but if the row is edited again, re-linked to another case, or the
+    new ref is otherwise not captured, the earlier amended doc stays `current` on the
+    Encounter while no local row points at it (orphan). The storno cascade must cancel
+    EVERY current doc on the Encounter regardless of type or local visibility, so we
+    ask CEZIH directly (ITI-67) and match `context.encounter`.
+
+    Only `status=current` docs are returned — those are the cancellable blockers.
+    `superseded` predecessors (legacy ITI-65 replace) are deliberately excluded: CEZIH
+    refuses to cancel them (ERR_DOM_10035), so they are a separate, un-remediable
+    deadlock handled upstream, not something to attempt here.
+
+    Returns `[{reference_id, oid, tip, case_id}]` in CEZIH order.
+    """
+    if not encounter_id:
+        return []
+    fhir_client = CezihFhirClient(client)
+    try:
+        response = await fhir_client.get(
+            "doc-mhd-svc/api/v1/DocumentReference",
+            params={
+                "patient.identifier": f"{patient_system}|{patient_value}",
+                "status": "current",
+                "_count": 200,
+            },
+        )
+    except Exception as exc:
+        # A storno preflight that cannot reach CEZIH must NOT silently proceed as if
+        # no docs block it (that would leave orphans and let the 1.4 fail). Surface it.
+        logger.error("Encounter-doc lookup failed for %s: %s", encounter_id, exc)
+        raise CezihError(
+            f"Provjera nalaza vezanih uz posjet nije uspjela: {exc}"
+        ) from exc
+
+    out: list[dict] = []
+    if not isinstance(response, dict) or response.get("resourceType") != "Bundle":
+        return out
+    for entry in response.get("entry") or []:
+        doc_ref = entry.get("resource") or {}
+        if doc_ref.get("resourceType") != "DocumentReference":
+            continue
+        ctx = doc_ref.get("context") or {}
+        enc_values = [
+            (e.get("identifier") or {}).get("value")
+            for e in (ctx.get("encounter") or [])
+        ]
+        if encounter_id not in enc_values:
+            continue
+        case_id = ""
+        for rel in ctx.get("related") or []:
+            val = (rel.get("identifier") or {}).get("value")
+            if val:
+                case_id = val
+                break
+        out.append(
+            {
+                "reference_id": doc_ref.get("id", ""),
+                "oid": _extract_oid_from_docref(doc_ref),
+                "tip": _extract_codeable_text(doc_ref.get("type")),
+                "case_id": case_id,
+            }
+        )
+    return out
+
+
 async def replace_document(
     client: httpx.AsyncClient,
     original_reference_id: str,
@@ -1422,6 +1498,7 @@ __all__ = [
     "_extract_reference_display",
     "_map_fhir_status",
     "search_documents",
+    "list_active_documents_on_encounter",
     "replace_document",
     "amend_document",
     "_lookup_document_oid",
