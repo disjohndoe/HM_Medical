@@ -45,9 +45,15 @@ but the tab didn't consume them.
   externally-created case mirrored from CEZIH (CEZIH-authoritative; not eligible for visit
   linking — `visit-management.tsx` already filters `c.registered !== false`).
 - Remote cases without an `identifikator-slucaja` (empty `case_id`) are skipped (untrackable).
-- Diagnostic log added in `retrieve_cases` (resolved identifier + entry count + parsed
-  case_ids) to confirm what QEDm `Condition` actually returns. **Downgrade to debug / remove
-  after prod confirmation.**
+- **Onset/abatement normalised to date-only at parse time** (`condition.py`). CEZIH returns a
+  full ISO `onsetDateTime` (e.g. `2026-03-10T00:00:00+01:00`, 25 chars) but `cezih_cases.onset_date`
+  is `String(20)` — sized for our date-only convention (locally-created cases store
+  `strftime("%Y-%m-%d")`). The first external-case upsert on prod 500'd with
+  `StringDataRightTruncationError` and blanked the whole tab. Slicing the FHIR date prefix
+  (`[:10]`) fixes it with no schema migration and keeps the table format consistent; `icd_display`
+  is also capped to its column width (300) as a boundary guard against untrusted CEZIH text.
+- Diagnostic log in `retrieve_cases`/`retrieve_cases` parser kept at **debug** level
+  (downgraded from info after prod confirmation 2026-05-27).
 
 **Nalazi** — `get_patient_cezih_summary` now best-effort augments the local list with CEZIH
 docs via ITI-67 (`dispatch_search_documents`, type=nalaz, status=current). Docs whose `id` is
@@ -65,18 +71,35 @@ storno/replace are hidden (no local record/signature/PDF for other-provider docs
 - Local verification: ruff + eslint + `tsc --noEmit` clean; backend import/wiring asserts pass;
   migration applied + downgraded + re-applied on local DB (`registered BOOLEAN DEFAULT true NOT
   NULL`).
+- **Prod E2E VERIFIED 2026-05-27** (GORAN PACPRIVATNICI19, MBO 999990260, via Chrome MCP +
+  SSH logs; commits `4fb13cf` cases/nalazi + `71bdba3` onset-truncation fix):
+  - `GET /cezih/cases` → 200, 94 cases (12 `registered=true` ours, 82 `registered=false`
+    external mirrored from QEDm `Condition` — e.g. external `L52.0 Erythema nodosum`). Onset
+    stored date-only. Slučajevi table renders, no console errors. **Confirms QEDm DOES return
+    externally-created cases** — persistence approach is correct.
+  - e-Nalazi: external CEZIH docs render with "Vanjski nalaz" badge + download-only action;
+    issuer shown in Doktor column; local nalazi keep full edit/send/storno; no duplicates;
+    sorted date desc. ITI-68 download of external ref `1620700` → 200 `application/pdf`, 43 KB,
+    valid `%PDF`.
 
 ## Decision: graceful degradation (scoped exception to "no fallbacks")
 For these read-only list views, a CEZIH outage serves the local mirror rather than erroring —
 matching the established visits pattern. The local mirror is the same data, not a silent
 substitute. Write/storno/sign paths keep the strict no-fallback behavior.
 
-## Action Items / PENDING prod verification
-- [ ] Confirm on prod (Croatian GORAN, ~67 cases per `2026-05-20` sweep) that QEDm `Condition`
-      actually returns externally-created cases → if the diagnostic log shows 0 entries even
-      for GORAN, the root cause is the QEDm query itself (identifier or missing param), not
-      persistence; investigate `category`/`clinical-status` params or the consumer-portal path.
-- [ ] Confirm external nalazi appear read-only + ITI-68 download works; local nalazi stay
-      editable; just-sent nalaz never disappears during QEDm lag.
-- [ ] Confirm both tables still render when the agent/VPN is down (graceful).
-- [ ] Remove/downgrade the `retrieve_cases` diagnostic log once confirmed.
+## Action Items
+- [x] Confirm on prod (GORAN) that QEDm `Condition` returns externally-created cases — **YES**,
+      94 entries incl. 82 externals (2026-05-27).
+- [x] Confirm external nalazi appear read-only + ITI-68 download works; local nalazi stay
+      editable — **DONE** (2026-05-27).
+- [x] Downgrade the `retrieve_cases` diagnostic log — done (info → debug, 2026-05-27).
+- [ ] (Open, non-blocking) GORAN shows 82/94 cases as `registered=false` because their local
+      `cezih_cases` rows were lost across test-env DB resets while CEZIH accumulated them; they
+      are correctly treated as external (CEZIH-authoritative, not visit-linkable). For a real
+      clinic, self-created cases retain local rows and match → `registered=true`. Same pattern
+      for the "Ordinacija Horvat"-issued docs surfacing as "Vanjski nalaz" in e-Nalazi. No code
+      change needed; noted so the high external ratio for test patients isn't mistaken for a bug.
+- [ ] (Optional UX parity) Visits show an "Izvor" (Naša/Ostalo) column + a "(N naše / M ostale)"
+      count; the Slučajevi table does not yet visually flag `registered=false` cases. The plan
+      only required externals to be non-linkable (satisfied). Adding an Izvor column to cases is
+      a future nice-to-have, not in scope here.

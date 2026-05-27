@@ -159,11 +159,11 @@ async def retrieve_cases(
                     "registered": False,
                 }
             )
-    # Diagnostic: confirm what CEZIH's QEDm Condition read actually returns for
-    # this patient (entry count + parsed case_ids). Externally-created cases
-    # only surface in the Slučajevi table if they appear here. TODO(cezih):
-    # downgrade to debug once the test-env QEDm Condition behaviour is confirmed.
-    logger.info(
+    # Debug aid: what CEZIH's QEDm Condition read returns for this patient
+    # (entry count + parsed case_ids). Externally-created cases only surface in
+    # the Slučajevi table if they appear here. Verified live on prod 2026-05-27
+    # (GORAN: 94 entries incl. externals), so kept at debug level rather than info.
+    logger.debug(
         "QEDm Condition read for %s|%s: %d entries, case_ids=%s",
         system_uri,
         value,
