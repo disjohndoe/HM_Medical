@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,6 +48,18 @@ class CezihCase(BaseTenantModel):
     onset_date: Mapped[str] = mapped_column(String(20), nullable=False)
     abatement_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    registered: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+        default=True,
+        comment=(
+            "True = this clinic created the case on CEZIH (local is authoritative "
+            "for clinical/verification status). False = externally-created case "
+            "mirrored from a CEZIH QEDm read (CEZIH-authoritative, not eligible for "
+            "visit linking)."
+        ),
+    )
 
     last_error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
     last_error_display: Mapped[str | None] = mapped_column(Text, nullable=True)

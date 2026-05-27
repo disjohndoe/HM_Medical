@@ -143,11 +143,23 @@ async def retrieve_cases(
                     "onset_date": cond.get("onsetDateTime", ""),
                     "abatement_date": cond.get("abatementDateTime") or None,
                     "note": note_text or None,
-                    # QEDm read: no local mirror by itself. _merge_with_local
-                    # promotes this to True when a local CezihCase row matches.
+                    # QEDm read on its own cannot tell who created the case;
+                    # dispatch_retrieve_cases sets the persisted `registered`
+                    # flag (True for rows this clinic created, False otherwise).
                     "registered": False,
                 }
             )
+    # Diagnostic: confirm what CEZIH's QEDm Condition read actually returns for
+    # this patient (entry count + parsed case_ids). Externally-created cases
+    # only surface in the Slučajevi table if they appear here. TODO(cezih):
+    # downgrade to debug once the test-env QEDm Condition behaviour is confirmed.
+    logger.info(
+        "QEDm Condition read for %s|%s: %d entries, case_ids=%s",
+        system_uri,
+        value,
+        len(cases),
+        [c["case_id"] for c in cases],
+    )
     return cases
 
 

@@ -662,6 +662,10 @@ export interface PatientCezihENalaz {
   cezih_last_error_code: string | null;
   cezih_last_error_display: string | null;
   cezih_last_error_diagnostics: string | null;
+  // External = document CEZIH holds that this clinic did not create (read-only:
+  // view/download via ITI-68 only). content_url is the ITI-68 retrieve URL.
+  external?: boolean;
+  content_url?: string | null;
 }
 
 export interface PatientCezihERecept {

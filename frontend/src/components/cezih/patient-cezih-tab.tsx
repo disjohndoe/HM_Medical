@@ -114,6 +114,37 @@ export function PatientCezihTab({
     }
   }
 
+  // Download a document CEZIH holds that we did not create locally (external
+  // nalaz). Goes through the ITI-68 retrieve endpoint using the DocumentReference
+  // content URL — there is no local medical_record/PDF to serve. The downloading
+  // key is the synthetic record_id ("cezih:<ref>") so the spinner lines up.
+  const handleDownloadExternal = async (referenceId: string, contentUrl: string | null, datum: string) => {
+    const key = `cezih:${referenceId}`
+    if (downloadingRef.current.has(key)) return
+    downloadingRef.current.add(key)
+    setDownloadingId(key)
+    try {
+      const qs = contentUrl ? `?url=${encodeURIComponent(contentUrl)}` : ""
+      const res = await api.fetchRaw(`/cezih/e-nalaz/${encodeURIComponent(referenceId)}/document${qs}`)
+      const blob = await res.blob()
+      const disposition = res.headers.get("content-disposition") || ""
+      const match = disposition.match(/filename="?([^"]+)"?/)
+      const filename = match ? match[1] : `nalaz_cezih_${datum.slice(0, 10)}_${referenceId.slice(0, 6)}.pdf`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Vanjski nalaz preuzet.")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Greška pri preuzimanju nalaza")
+    } finally {
+      downloadingRef.current.delete(key)
+      setDownloadingId(null)
+    }
+  }
+
   const enalazRows = (summary?.e_nalaz_history ?? []).map((item) => {
     const replacedMs = item.cezih_last_replaced_at ? new Date(item.cezih_last_replaced_at).getTime() : 0
     const wasReplaced = replacedMs > 0
@@ -431,6 +462,7 @@ export function PatientCezihTab({
                           item={item}
                           downloading={downloadingId === item.record_id}
                           onDownloadPdf={(id) => handleDownloadPdf(id, item.datum)}
+                          onDownloadExternal={() => handleDownloadExternal(item.reference_id ?? "", item.content_url ?? null, item.datum)}
                           onLocalEdit={(id) => setLocalEditRecordId(id)}
                           onSend={(id) => setSendTargetRecordId(id)}
                           onReplaceEdit={(recordId, referenceId) => setEditTarget({ recordId, referenceId })}
@@ -548,24 +580,29 @@ function ENalazStatusCell({
     cezih_sent_at: string | null
     cezih_storno: boolean
     cezih_last_replaced_at: string | null
+    external?: boolean
   }
 }) {
   const isSent = !!item.cezih_sent_at
   const isReplaced = !!item.cezih_last_replaced_at
-  const label = item.cezih_storno
-    ? "Storniran"
-    : isReplaced
-      ? "Izmijenjen"
-      : isSent
-        ? "Poslan"
-        : "Neposlan"
-  const cls = item.cezih_storno
-    ? "bg-red-100 text-red-800 border-red-200"
-    : isReplaced
-      ? "bg-blue-100 text-blue-800 border-blue-200"
-      : isSent
-        ? "bg-green-100 text-green-800 border-green-200"
-        : "bg-amber-100 text-amber-800 border-amber-200"
+  const label = item.external
+    ? "Vanjski nalaz"
+    : item.cezih_storno
+      ? "Storniran"
+      : isReplaced
+        ? "Izmijenjen"
+        : isSent
+          ? "Poslan"
+          : "Neposlan"
+  const cls = item.external
+    ? "bg-slate-100 text-slate-700 border-slate-200"
+    : item.cezih_storno
+      ? "bg-red-100 text-red-800 border-red-200"
+      : isReplaced
+        ? "bg-blue-100 text-blue-800 border-blue-200"
+        : isSent
+          ? "bg-green-100 text-green-800 border-green-200"
+          : "bg-amber-100 text-amber-800 border-amber-200"
 
   return (
     <TableCell>
@@ -578,6 +615,7 @@ function ENalazActionsCell({
   item,
   downloading,
   onDownloadPdf,
+  onDownloadExternal,
   onLocalEdit,
   onSend,
   onReplaceEdit,
@@ -588,15 +626,42 @@ function ENalazActionsCell({
     reference_id: string | null
     cezih_sent_at: string | null
     cezih_storno: boolean
+    external?: boolean
   }
   downloading: boolean
   onDownloadPdf: (id: string) => void
+  onDownloadExternal: () => void
   onLocalEdit: (id: string) => void
   onSend: (id: string) => void
   onReplaceEdit: (recordId: string, referenceId: string) => void
   onStorno: (referenceId: string) => void
 }) {
   const isUnsent = !item.cezih_sent_at && !item.cezih_storno
+
+  // External docs (created at another provider) have no local record, signature
+  // or PDF — only view/download via ITI-68 is possible.
+  if (item.external) {
+    return (
+      <TableCell className="text-right">
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={onDownloadExternal}
+            disabled={downloading}
+            title="Preuzmi vanjski nalaz"
+          >
+            {downloading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </div>
+      </TableCell>
+    )
+  }
 
   return (
     <TableCell className="text-right">

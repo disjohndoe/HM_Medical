@@ -176,6 +176,12 @@ class PatientCezihENalaz(BaseModel):
     cezih_last_error_code: str | None = None
     cezih_last_error_display: str | None = None
     cezih_last_error_diagnostics: str | None = None
+    # External = document found on CEZIH (ITI-67) that this clinic did not create.
+    # It has no local medical_record, signature, or PDF, so the UI exposes
+    # view/download only (no edit/send/storno). content_url is the ITI-68
+    # retrieve URL used to download the CEZIH-held PDF.
+    external: bool = False
+    content_url: str | None = None
 
 
 class PatientCezihERecept(BaseModel):

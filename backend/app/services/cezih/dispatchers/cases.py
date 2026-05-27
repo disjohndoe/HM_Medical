@@ -143,8 +143,9 @@ def _serialize_case_row(row) -> dict:
         "last_error_diagnostics": row.last_error_diagnostics,
         "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
         "visited_clinical_statuses": row.visited_clinical_statuses or [],
-        # Local mirror row exists -> this clinic registered the case on CEZIH.
-        "registered": True,
+        # True = this clinic created the case on CEZIH; False = mirrored from a
+        # CEZIH read of a case created elsewhere (not eligible for visit linking).
+        "registered": row.registered,
     }
 
 
@@ -210,33 +211,96 @@ async def _read_local_case_as_dict(
         return None
 
 
-def _merge_with_local(
-    remote: list[dict],
-    local: list[dict],
-    id_key: str,
-) -> list[dict]:
-    """Merge local mirror rows into the remote list (cases).
+async def _upsert_cezih_case_from_response(
+    db: AsyncSession,
+    tenant_id: UUID,
+    patient_id: UUID,
+    identifier_value: str,
+    remote: dict,
+) -> None:
+    """Insert or update a cezih_cases row from a CEZIH QEDm Condition response.
 
-    - Rows present in both → prefer the *local* copy for fields it owns
-      (clinical_status/verification_status for cases). CEZIH's QEDm read
-      side lags action messages by minutes, so its cached state is often
-      staler than our mirror.
-    - Rows only in local → prepend (CEZIH hasn't caught up to the create yet).
-    - Rows only in remote → pass through unchanged.
+    Mirrors `_upsert_cezih_visit_from_response`: every case CEZIH returns is
+    persisted so externally-created cases stay visible even when CEZIH's QEDm
+    read side later lags or returns empty.
+
+    Field ownership differs from visits, because for a case WE created the local
+    mirror is authoritative (QEDm lags our own action messages by minutes):
+    - Row exists & registered=True (ours): leave clinical_status/verification_
+      status/icd/note untouched; only backfill NULL fields (e.g. abatement_date).
+    - Row exists & registered=False (external): refresh all fields from CEZIH.
+    - No row: insert as an external (registered=False) mirror of the CEZIH case.
+
+    Remote cases without a `case_id` (no `identifikator-slucaja`) cannot be
+    tracked and are skipped.
     """
-    local_by_id = {row[id_key]: row for row in local if row.get(id_key)}
-    merged: list[dict] = []
-    seen_local = set()
-    for row in remote:
-        rid = row.get(id_key)
-        lrow = local_by_id.get(rid) if rid else None
-        if lrow is not None:
-            merged.append({**row, **lrow})
-            seen_local.add(rid)
+    case_id = (remote.get("case_id") or "").strip()
+    if not case_id:
+        logger.debug("Skipping CEZIH case with empty case_id: %r", remote)
+        return
+    try:
+        from sqlalchemy import or_
+
+        from app.models.cezih_case import CezihCase
+
+        result = await db.execute(
+            select(CezihCase).where(
+                CezihCase.tenant_id == tenant_id,
+                or_(
+                    CezihCase.cezih_case_id == case_id,
+                    CezihCase.local_case_id == case_id,
+                ),
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            db.add(
+                CezihCase(
+                    tenant_id=tenant_id,
+                    patient_id=patient_id,
+                    patient_mbo=identifier_value,
+                    local_case_id=case_id,
+                    cezih_case_id=case_id,
+                    icd_code=remote.get("icd_code") or "",
+                    icd_display=remote.get("icd_display") or "",
+                    clinical_status=remote.get("clinical_status") or None,
+                    verification_status=remote.get("verification_status") or "unconfirmed",
+                    onset_date=remote.get("onset_date") or "",
+                    abatement_date=remote.get("abatement_date") or None,
+                    note=remote.get("note") or None,
+                    registered=False,
+                )
+            )
+        elif not row.registered:
+            # External case we already mirrored — CEZIH is authoritative, refresh.
+            if not row.cezih_case_id:
+                row.cezih_case_id = case_id
+            row.icd_code = remote.get("icd_code") or row.icd_code
+            row.icd_display = remote.get("icd_display") or row.icd_display
+            row.clinical_status = remote.get("clinical_status") or row.clinical_status
+            if remote.get("verification_status"):
+                row.verification_status = remote["verification_status"]
+            row.onset_date = remote.get("onset_date") or row.onset_date
+            row.abatement_date = remote.get("abatement_date") or None
+            if remote.get("note"):
+                row.note = remote["note"]
         else:
-            merged.append(row)
-    extra = [row for rid, row in local_by_id.items() if rid not in seen_local]
-    return extra + merged
+            # Case this clinic created — local is authoritative for status/note.
+            # Only backfill the CEZIH-assigned id and NULL-only fields.
+            if not row.cezih_case_id:
+                row.cezih_case_id = case_id
+            if not row.abatement_date and remote.get("abatement_date"):
+                row.abatement_date = remote["abatement_date"]
+    except (IntegrityError, OperationalError):
+        logger.exception(
+            "CezihCase mirror upsert failed",
+            extra={
+                "tenant_id": str(tenant_id),
+                "patient_id": str(patient_id),
+                "case_id": case_id,
+            },
+        )
+        raise
 
 
 # Map CEZIH case action (frontend keyword) → resulting clinical_status.
@@ -335,10 +399,18 @@ async def dispatch_retrieve_cases(
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
+    # Local-first, like dispatch_list_visits: query CEZIH, persist every returned
+    # case into the mirror, then return the mirror. If CEZIH fails we still serve
+    # the mirror so the table stays useful during a CEZIH/agent outage.
+    remote: list[dict] = []
     try:
-        result = await real_service.retrieve_cases(http_client, system_uri, value)
+        remote = await real_service.retrieve_cases(http_client, system_uri, value)
     except CezihError as e:
-        _raise_cezih_error(e)
+        logger.warning(
+            "CEZIH retrieve_cases failed for patient %s — serving local mirror only: %s",
+            patient_id,
+            e,
+        )
     await _write_audit(
         db,
         tenant_id,
@@ -346,8 +418,17 @@ async def dispatch_retrieve_cases(
         action="case_retrieve",
         details={"patient_id": str(patient_id), "identifier_system": system_uri},
     )
-    local = await _fetch_fresh_local_cases_by_patient(db, tenant_id, patient_id)
-    return _merge_with_local(result, local, id_key="case_id")
+    for row in remote:
+        await _upsert_cezih_case_from_response(db, tenant_id, patient_id, value, row)
+    try:
+        await db.flush()
+    except (IntegrityError, OperationalError):
+        logger.exception(
+            "CezihCase mirror flush failed after retrieve upsert",
+            extra={"tenant_id": str(tenant_id), "patient_id": str(patient_id)},
+        )
+        raise
+    return await _fetch_fresh_local_cases_by_patient(db, tenant_id, patient_id)
 
 
 async def dispatch_create_case(
@@ -669,7 +750,7 @@ __all__ = [
     "_lookup_local_case_id",
     "_persist_local_case_by_patient_id",
     "_fetch_fresh_local_cases_by_patient",
-    "_merge_with_local",
+    "_upsert_cezih_case_from_response",
     "_update_local_case",
     "dispatch_retrieve_cases",
     "dispatch_create_case",

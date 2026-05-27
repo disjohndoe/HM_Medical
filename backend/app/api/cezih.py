@@ -319,6 +319,7 @@ async def get_cezih_activity(
 @router.get("/patient/{patient_id}/summary", response_model=PatientCezihSummary)
 async def get_patient_cezih_summary(
     patient_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -364,6 +365,64 @@ async def get_patient_cezih_summary(
         )
         for row in records
     ]
+
+    # Augment with documents CEZIH holds for this patient that we did NOT create
+    # locally (e.g. nalazi issued by another provider), fetched live via ITI-67.
+    # Best-effort: like the visits mirror, a CEZIH/agent outage must not break the
+    # tab — on any failure we serve the local-only list. External docs are
+    # read-only (no local record/signature/PDF) and downloadable via ITI-68.
+    local_ref_ids = {
+        row[0].cezih_reference_id for row in records if row[0].cezih_reference_id
+    }
+    try:
+        remote_docs = await cezih.dispatch_search_documents(
+            patient_id=patient_id,
+            document_type="nalaz",
+            status_filter="current",
+            db=db,
+            user_id=current_user.id,
+            tenant_id=current_user.tenant_id,
+            http_client=_http_client(request),
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort augmentation, never fatal
+        logger.warning(
+            "ITI-67 external nalazi fetch failed for patient %s — serving local only: %s",
+            patient_id,
+            exc,
+        )
+        remote_docs = []
+
+    for doc in remote_docs:
+        doc_id = (doc.get("id") or "").strip()
+        if not doc_id or doc_id in local_ref_ids:
+            continue
+        raw_date = doc.get("datum_izdavanja") or ""
+        try:
+            datum = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            logger.debug("Skipping external nalaz %s — unparseable date %r", doc_id, raw_date)
+            continue
+        # Local records carry timezone-aware created_at; normalise external
+        # date-only / naive values so the combined sort never mixes aware+naive.
+        if datum.tzinfo is None:
+            datum = datum.replace(tzinfo=UTC)
+        e_nalaz_history.append(
+            PatientCezihENalaz(
+                record_id=f"cezih:{doc_id}",
+                datum=datum,
+                tip=doc.get("type") or doc.get("svrha") or "Vanjski nalaz",
+                # The "Doktor" column renders on doktor_prezime; put the issuing
+                # specialist/provider there so it shows for external docs.
+                doktor_prezime=doc.get("specijalist") or doc.get("izdavatelj") or None,
+                reference_id=doc_id,
+                content_url=doc.get("content_url") or None,
+                cezih_sent_at=datum,
+                external=True,
+            )
+        )
+
+    # Most-recent first across both local and external entries.
+    e_nalaz_history.sort(key=lambda n: n.datum, reverse=True)
 
     # e-Recept history from audit log
     recept_result = await db.execute(
