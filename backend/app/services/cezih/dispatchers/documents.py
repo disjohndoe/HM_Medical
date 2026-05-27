@@ -1071,6 +1071,7 @@ async def dispatch_DEBUG_cancel_predecessor_by_own_oid(  # noqa: N802
     reference_id: str,
     patient_mbo: str,
     *,
+    head_reference_id: str = "",
     db: AsyncSession,
     user_id: UUID,
     tenant_id: UUID,
@@ -1080,6 +1081,8 @@ async def dispatch_DEBUG_cancel_predecessor_by_own_oid(  # noqa: N802
     practitioner_name: str = "",
     org_name: str = "",
 ) -> dict:
+    from app.models.medical_record import MedicalRecord
+    from app.models.patient import Patient
     from app.services.cezih.client import CezihFhirClient
     from app.services.cezih.fhir_api.documents import (
         _extract_oid_from_docref,
@@ -1090,7 +1093,8 @@ async def dispatch_DEBUG_cancel_predecessor_by_own_oid(  # noqa: N802
     identifier_system = "http://fhir.cezih.hr/specifikacije/identifikatori/MBO"
     fhir_client = CezihFhirClient(http_client)
 
-    # 1) find the target ref in the current,superseded search and take ITS OWN oid
+    # 1) find the target predecessor ref in the current,superseded search and
+    #    take ITS OWN oid (NO head resolution - that is the whole point).
     resp = await fhir_client.get(
         "doc-mhd-svc/api/v1/DocumentReference",
         params={
@@ -1114,18 +1118,68 @@ async def dispatch_DEBUG_cancel_predecessor_by_own_oid(  # noqa: N802
     if not own_oid:
         return {"found": False, "reference_id": reference_id, "status": own_status}
 
-    # 2) build a cancel targeting THAT EXACT oid (NO head resolution) and POST
-    djelatnost_code, djelatnost_display = await _resolve_djelatnost(db, tenant_id, user_id)
+    # 2) Load the SAME context the working head-cancel uses (encounter, case,
+    #    patient identifiers, record_data) from the head record, so the bundle is
+    #    structurally identical to a verified-green storno. Only the target OID
+    #    differs (predecessor instead of head). This isolates the deadlock
+    #    question: same bundle shape, predecessor OID -> 200 or ERR_DOM_10035?
+    patient_data: dict = {
+        "mbo": patient_mbo, "identifier_system": identifier_system,
+        "identifier_value": patient_mbo, "ime": "", "prezime": "",
+    }
+    record_data: dict = {"tip": "nalaz", "sadrzaj": "", "created_at": _now_iso()}
+    encounter_id = ""
+    case_id = ""
+    head_ref = head_reference_id or reference_id
+    query_result = await db.execute(
+        sa_select(MedicalRecord).where(
+            MedicalRecord.tenant_id == tenant_id,
+            MedicalRecord.cezih_reference_id == head_ref,
+        )
+    )
+    record = query_result.scalar_one_or_none()
+    if record:
+        encounter_id = record.cezih_encounter_id or ""
+        case_id = record.cezih_case_id or ""
+        if not practitioner_id and record.doktor_id:
+            practitioner_id = str(record.doktor_id)
+        if record.patient_id:
+            patient = await db.get(Patient, record.patient_id)
+            if patient:
+                id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+                patient_data = {
+                    "mbo": id_val, "identifier_system": id_sys,
+                    "identifier_value": id_val,
+                    "identifiers": real_service.resolve_all_cezih_identifiers(patient),
+                    "ime": patient.ime, "prezime": patient.prezime,
+                }
+        record_data = {
+            "tip": record.tip,
+            "dijagnoza_mkb": record.dijagnoza_mkb,
+            "dijagnoza_tekst": record.dijagnoza_tekst,
+            "sadrzaj": record.sadrzaj or "",
+            "preporucena_terapija": record.preporucena_terapija,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+        }
+    logger.info(
+        "DEBUG cancel-predecessor: head_ref=%s record_found=%s encounter_id=%s case_id=%s",
+        head_ref, record is not None, encounter_id, case_id,
+    )
+
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(
+        db, tenant_id, (record.doktor_id if record else None) or user_id
+    )
     bundle_dict = build_cancel_bundle(
-        patient_data={"mbo": patient_mbo, "identifier_system": identifier_system,
-                      "identifier_value": patient_mbo, "ime": "", "prezime": ""},
-        record_data={"tip": "nalaz", "sadrzaj": "", "created_at": _now_iso()},
+        patient_data=patient_data,
+        record_data=record_data,
         original_document_oid=own_oid,
         djelatnost_code=djelatnost_code,
         djelatnost_display=djelatnost_display,
         practitioner_id=practitioner_id,
         practitioner_name=practitioner_name,
         org_code=org_code,
+        encounter_id=encounter_id,
+        case_id=case_id,
         org_name=org_name,
     )
     try:
@@ -1134,7 +1188,8 @@ async def dispatch_DEBUG_cancel_predecessor_by_own_oid(  # noqa: N802
         logger.warning("DEBUG cancel-predecessor: CEZIH rejected own-oid cancel: %s", getattr(e, "message", e))
         _raise_cezih_error(e)
     return {"found": True, "reference_id": reference_id, "own_status": own_status,
-            "own_oid": own_oid, "cezih_response": response}
+            "own_oid": own_oid, "head_ref": head_ref, "context_loaded": record is not None,
+            "cezih_response": response}
 
 
 __all__ = [

@@ -999,18 +999,22 @@ async def DEBUG_cancel_predecessor(  # noqa: N802
     request: Request,
     reference_id: str,
     patient_mbo: str,
+    head_reference_id: str = "",
     current_user: User = Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),
 ):
     # TEMP DEBUG — settle the visit-storno-replaced-doc deadlock empirically:
-    # cancel a SUPERSEDED predecessor by its OWN master OID (no head resolution).
-    # 200 => deadlock is solvable; ERR_DOM_10035 => fundamental. REMOVE after test.
+    # cancel a SUPERSEDED predecessor by its OWN master OID (no head resolution),
+    # in a bundle structurally identical to the working head-cancel (context from
+    # head_reference_id). 200 => deadlock solvable; ERR_DOM_10035 => fundamental.
+    # REMOVE after test.
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
     return await cezih.dispatch_DEBUG_cancel_predecessor_by_own_oid(
         reference_id,
         patient_mbo,
+        head_reference_id=head_reference_id,
         db=db,
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,
