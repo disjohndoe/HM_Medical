@@ -994,6 +994,78 @@ async def cancel_document(
     )
 
 
+@router.post("/_diag/cancel-by-oid")
+async def diag_cancel_by_oid(
+    request: Request,
+    patient_id: UUID = Query(..., description="Local patient UUID (supplies MBO context)"),
+    oid: str = Query(..., description="urn:oid:... or bare OID of the document to cancel"),
+    tip: str = Query("nalaz", description="Document tip for coding"),
+    ref: str | None = Query(None, description="Original CEZIH reference id, for logging only"),
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    """DIAGNOSTIC / THROWAWAY — do not keep in production.
+
+    Sends a canonical 2-entry HRCancelDocumentBundle (status=entered-in-error) for a
+    SPECIFIC document OID, bypassing _resolve_live_document_head. Used once to test
+    whether CEZIH will cancel a *superseded* predecessor (the ERR_ENCOUNTER_2001 ↔
+    ERR_DOM_10035 visit-storno deadlock). Returns CEZIH's raw response or error.
+    """
+    await check_cezih_access(db, current_user.tenant_id)
+    org_code, _source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    practitioner_name = f"{current_user.ime} {current_user.prezime}".strip()
+
+    from app.models.patient import Patient
+    from app.services.cezih import service as real_service
+    from app.services.cezih.client import CezihFhirClient
+    from app.services.cezih.dispatchers.documents import _resolve_djelatnost
+    from app.services.cezih.exceptions import CezihError, CezihFhirError
+    from app.services.cezih.fhir_api.documents import build_cancel_bundle
+
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Pacijent nije pronađen")
+    id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+    all_ids = real_service.resolve_all_cezih_identifiers(patient)
+    patient_data = {
+        "mbo": id_val,
+        "identifier_system": id_sys,
+        "identifier_value": id_val,
+        "identifiers": all_ids,
+        "ime": patient.ime,
+        "prezime": patient.prezime,
+    }
+    djelatnost_code, djelatnost_display = await _resolve_djelatnost(db, current_user.tenant_id, current_user.id)
+
+    bundle = build_cancel_bundle(
+        patient_data=patient_data,
+        record_data={"tip": tip},
+        original_document_oid=oid,
+        djelatnost_code=djelatnost_code,
+        djelatnost_display=djelatnost_display,
+        practitioner_id=current_user.practitioner_id,
+        practitioner_name=practitioner_name,
+        org_code=org_code,
+        org_name=org_name,
+    )
+    logger.info("DIAG cancel-by-oid: ref=%s oid=%s patient=%s", ref, oid, patient_id)
+    client = CezihFhirClient(_http_client(request))
+    try:
+        resp = await client.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle)
+        return {"ok": True, "ref": ref, "oid": oid, "response": resp}
+    except CezihFhirError as e:
+        return {
+            "ok": False,
+            "ref": ref,
+            "oid": oid,
+            "status_code": e.status_code,
+            "operation_outcome": e.operation_outcome,
+            "message": e.message,
+        }
+    except CezihError as e:
+        return {"ok": False, "ref": ref, "oid": oid, "message": e.message, "detail": e.detail}
+
+
 @router.get("/e-nalaz/{reference_id}/document")
 async def retrieve_document(
     request: Request,
