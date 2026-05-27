@@ -7,6 +7,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from app.services.cezih.builders.common import ID_PRACTITIONER
 from app.services.cezih.builders.condition import (
     CASE_EVENT_PROFILE_MAP,
     PROFILE_CONDITION,
@@ -133,6 +134,15 @@ async def retrieve_cases(
             # Extract note from Condition.note[0].text
             notes = cond.get("note", [])
             note_text = notes[0].get("text", "") if notes else ""
+            # Authoring identity — Conditions carry NO organization, only the
+            # recorder/asserter Practitioner (HZJZ broj). Ownership ("ours vs
+            # external") is decided downstream by matching these against the
+            # tenant's doctors. See ownership.py + the read-identity finding.
+            case_practitioner_ids: list[str] = []
+            for ref_key in ("recorder", "asserter"):
+                ident = (cond.get(ref_key) or {}).get("identifier") or {}
+                if ident.get("system") == ID_PRACTITIONER and ident.get("value"):
+                    case_practitioner_ids.append(ident["value"])
             # CEZIH returns a full ISO onset/abatement (e.g.
             # "2026-03-10T00:00:00+01:00"), but our mirror stores date-only —
             # matching locally-created cases (strftime "%Y-%m-%d") and the
@@ -153,6 +163,7 @@ async def retrieve_cases(
                     "onset_date": onset_raw[:10],
                     "abatement_date": abatement_raw[:10] or None,
                     "note": note_text or None,
+                    "practitioner_ids": case_practitioner_ids,
                     # QEDm read on its own cannot tell who created the case;
                     # dispatch_retrieve_cases sets the persisted `registered`
                     # flag (True for rows this clinic created, False otherwise).

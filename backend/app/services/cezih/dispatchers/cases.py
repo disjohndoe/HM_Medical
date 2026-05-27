@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -15,6 +16,10 @@ from app.services.cezih import service as real_service
 from app.services.cezih.dispatchers.common import _raise_cezih_error, _require_audit_params, _write_audit
 from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
 from app.services.cezih.exceptions import CezihError
+from app.services.cezih.ownership import load_tenant_cezih_identity
+
+if TYPE_CHECKING:
+    from app.services.cezih.ownership import TenantCezihIdentity
 
 
 async def _lookup_local_case_id(
@@ -217,6 +222,7 @@ async def _upsert_cezih_case_from_response(
     patient_id: UUID,
     identifier_value: str,
     remote: dict,
+    identity: TenantCezihIdentity,
 ) -> None:
     """Insert or update a cezih_cases row from a CEZIH QEDm Condition response.
 
@@ -224,12 +230,20 @@ async def _upsert_cezih_case_from_response(
     persisted so externally-created cases stay visible even when CEZIH's QEDm
     read side later lags or returns empty.
 
+    `registered` ("ours") is decided by IDENTITY, not by local-row presence: a
+    Condition has no organisation, so a case is ours when its recorder/asserter
+    HZJZ matches one of the tenant's doctors (`identity.owns`). This is robust to
+    lost mirror rows (DB resets) that previously mislabelled our own cases as
+    external.
+
     Field ownership differs from visits, because for a case WE created the local
     mirror is authoritative (QEDm lags our own action messages by minutes):
     - Row exists & registered=True (ours): leave clinical_status/verification_
       status/icd/note untouched; only backfill NULL fields (e.g. abatement_date).
-    - Row exists & registered=False (external): refresh all fields from CEZIH.
-    - No row: insert as an external (registered=False) mirror of the CEZIH case.
+      Never demoted to external (we know we created it).
+    - Row exists & registered=False (external): refresh all fields from CEZIH and
+      re-classify `registered` from identity (self-heals a mislabelled own case).
+    - No row: insert with `registered` = whether the case is ours by identity.
 
     Remote cases without a `case_id` (no `identifikator-slucaja`) cannot be
     tracked and are skipped.
@@ -238,6 +252,7 @@ async def _upsert_cezih_case_from_response(
     if not case_id:
         logger.debug("Skipping CEZIH case with empty case_id: %r", remote)
         return
+    is_ours = identity.owns(practitioner_ids=remote.get("practitioner_ids") or ())
     try:
         from sqlalchemy import or_
 
@@ -268,11 +283,14 @@ async def _upsert_cezih_case_from_response(
                     onset_date=remote.get("onset_date") or "",
                     abatement_date=remote.get("abatement_date") or None,
                     note=remote.get("note") or None,
-                    registered=False,
+                    registered=is_ours,
                 )
             )
         elif not row.registered:
-            # External case we already mirrored — CEZIH is authoritative, refresh.
+            # Mirrored case we did not create locally — CEZIH is authoritative,
+            # refresh, and re-classify ownership from identity (an own case whose
+            # local row was lost flips back to registered=True here).
+            row.registered = is_ours
             if not row.cezih_case_id:
                 row.cezih_case_id = case_id
             row.icd_code = remote.get("icd_code") or row.icd_code
@@ -418,8 +436,9 @@ async def dispatch_retrieve_cases(
         action="case_retrieve",
         details={"patient_id": str(patient_id), "identifier_system": system_uri},
     )
+    identity = await load_tenant_cezih_identity(db, tenant_id)
     for row in remote:
-        await _upsert_cezih_case_from_response(db, tenant_id, patient_id, value, row)
+        await _upsert_cezih_case_from_response(db, tenant_id, patient_id, value, row, identity)
     try:
         await db.flush()
     except (IntegrityError, OperationalError):

@@ -581,12 +581,17 @@ function ENalazStatusCell({
     cezih_storno: boolean
     cezih_last_replaced_at: string | null
     external?: boolean
+    is_ours?: boolean
   }
 }) {
   const isSent = !!item.cezih_sent_at
   const isReplaced = !!item.cezih_last_replaced_at
+  // External rows have no local mirror; is_ours distinguishes our own document
+  // (issuing institution/doctor is us) from a genuinely other-provider document.
   const label = item.external
-    ? "Vanjski nalaz"
+    ? item.is_ours
+      ? "Naš nalaz"
+      : "Vanjski nalaz"
     : item.cezih_storno
       ? "Storniran"
       : isReplaced
@@ -595,7 +600,9 @@ function ENalazStatusCell({
           ? "Poslan"
           : "Neposlan"
   const cls = item.external
-    ? "bg-slate-100 text-slate-700 border-slate-200"
+    ? item.is_ours
+      ? "bg-teal-100 text-teal-800 border-teal-200"
+      : "bg-slate-100 text-slate-700 border-slate-200"
     : item.cezih_storno
       ? "bg-red-100 text-red-800 border-red-200"
       : isReplaced

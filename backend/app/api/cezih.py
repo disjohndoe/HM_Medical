@@ -63,6 +63,7 @@ from app.schemas.cezih import (
 )
 from app.services.card_verification import get_card_status
 from app.services.cezih import dispatcher as cezih
+from app.services.cezih.ownership import load_tenant_cezih_identity
 
 router = APIRouter(prefix="/cezih", tags=["cezih"])
 
@@ -392,6 +393,11 @@ async def get_patient_cezih_summary(
         )
         remote_docs = []
 
+    # CEZIH docs without a local mirror row are read-only either way; `is_ours`
+    # (issuing org šifra == our institution, or author HZJZ ∈ our doctors) only
+    # decides the label — "Naš nalaz" vs "Vanjski nalaz" — so our own historical
+    # docs aren't mislabelled external just because the local row was lost.
+    identity = await load_tenant_cezih_identity(db, current_user.tenant_id)
     for doc in remote_docs:
         doc_id = (doc.get("id") or "").strip()
         if not doc_id or doc_id in local_ref_ids:
@@ -406,6 +412,10 @@ async def get_patient_cezih_summary(
         # date-only / naive values so the combined sort never mixes aware+naive.
         if datum.tzinfo is None:
             datum = datum.replace(tzinfo=UTC)
+        is_ours = identity.owns(
+            org_codes=[doc.get("org_code")],
+            practitioner_ids=doc.get("practitioner_ids") or (),
+        )
         e_nalaz_history.append(
             PatientCezihENalaz(
                 record_id=f"cezih:{doc_id}",
@@ -418,6 +428,7 @@ async def get_patient_cezih_summary(
                 content_url=doc.get("content_url") or None,
                 cezih_sent_at=datum,
                 external=True,
+                is_ours=is_ours,
             )
         )
 

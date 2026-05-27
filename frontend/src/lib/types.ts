@@ -662,10 +662,14 @@ export interface PatientCezihENalaz {
   cezih_last_error_code: string | null;
   cezih_last_error_display: string | null;
   cezih_last_error_diagnostics: string | null;
-  // External = document CEZIH holds that this clinic did not create (read-only:
+  // External = document CEZIH holds with no local mirror row (read-only:
   // view/download via ITI-68 only). content_url is the ITI-68 retrieve URL.
   external?: boolean;
   content_url?: string | null;
+  // For external rows: true when the issuing institution (šifra ustanove) is ours
+  // or the author is one of our doctors — our own doc whose local row was lost.
+  // Drives the "Naš nalaz" vs "Vanjski nalaz" label (both stay download-only).
+  is_ours?: boolean;
 }
 
 export interface PatientCezihERecept {

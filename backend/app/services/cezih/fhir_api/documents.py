@@ -686,8 +686,25 @@ async def search_documents(
             doc_ref = entry.get("resource", {})
             try:
                 author = ""
+                # Issuing identity for ownership classification (ours vs external):
+                # org šifra ustanove (custodian / author Organization) + author
+                # Practitioner HZJZ. See ownership.py + the read-identity finding.
+                org_code = ""
+                practitioner_ids: list[str] = []
                 for a in doc_ref.get("author", []):
                     author = a.get("display", "") or author
+                    ident = a.get("identifier") or {}
+                    sys_uri, val = ident.get("system"), ident.get("value")
+                    if not val:
+                        continue
+                    if sys_uri == ID_ORG or a.get("type") == "Organization":
+                        org_code = org_code or val
+                    elif sys_uri == ID_PRACTITIONER or a.get("type") == "Practitioner":
+                        practitioner_ids.append(val)
+                cust = doc_ref.get("custodian") or {}
+                cust_ident = cust.get("identifier") or {}
+                if cust_ident.get("system") == ID_ORG and cust_ident.get("value"):
+                    org_code = org_code or cust_ident["value"]
                 # Extract content URL for ITI-68 retrieve
                 content_url = ""
                 for content in doc_ref.get("content", []):
@@ -705,6 +722,8 @@ async def search_documents(
                         "status": _map_fhir_status(doc_ref.get("status", "current")),
                         "type": _extract_codeable_text(doc_ref.get("type")),
                         "content_url": content_url,
+                        "org_code": org_code,
+                        "practitioner_ids": practitioner_ids,
                     }
                 )
             except Exception as parse_exc:

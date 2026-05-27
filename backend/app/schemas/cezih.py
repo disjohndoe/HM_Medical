@@ -182,6 +182,11 @@ class PatientCezihENalaz(BaseModel):
     # retrieve URL used to download the CEZIH-held PDF.
     external: bool = False
     content_url: str | None = None
+    # For external (CEZIH-only) rows: True when the issuing institution (šifra
+    # ustanove) is ours or the author is one of our doctors (HZJZ) — i.e. our own
+    # document whose local row didn't survive. Drives the "Naš nalaz" vs "Vanjski
+    # nalaz" label; both stay read-only (no local record/signature to edit).
+    is_ours: bool = False
 
 
 class PatientCezihERecept(BaseModel):

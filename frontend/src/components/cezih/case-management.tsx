@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { FileText, Plus, Loader2, Pencil, ChevronDown } from "lucide-react"
+import { FileText, Plus, Loader2, Pencil, ChevronDown, Building2, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
 
@@ -237,10 +237,16 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
 
   const cases = casesQuery.data?.cases || []
 
+  // Ownership: a case is "ours" when its CEZIH recorder/asserter (HZJZ) matches
+  // one of our doctors — the backend sets `registered` from that identity. Mirrors
+  // how visits classify Naša/Ostalo (there by service_provider_code).
+  const isExternalCase = (c: CaseItem) => c.registered === false
   const { sorted: sortedCases, sortKey: cSortKey, sortDir: cSortDir, toggleSort: toggleCSort } = useTableSort<CaseItem>(cases, {
     defaultKey: "onset_date",
     defaultDir: "desc",
+    primaryBucket: (c) => (isExternalCase(c) ? 1 : 0),
     keyAccessors: {
+      izvor: (c) => (isExternalCase(c) ? 1 : 0),
       status: (c) => CLINICAL_STATUS[c.clinical_status] || c.clinical_status,
       verifikacija: (c) => VERIFICATION_STATUS[c.verification_status || ""] || c.verification_status || "",
       icd_code: (c) => c.icd_code,
@@ -415,6 +421,7 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <SortableTableHead columnKey="izvor" label="Izvor" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="w-[100px]" />
                     <SortableTableHead columnKey="status" label="Status" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="w-[100px]" />
                     <SortableTableHead columnKey="verifikacija" label="Verifikacija" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} className="w-[100px]" />
                     <SortableTableHead columnKey="icd_code" label="MKB šifra" currentKey={cSortKey} currentDir={cSortDir} onSort={toggleCSort} />
@@ -428,8 +435,22 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
                 <TableBody>
                   {pagedCases.map((c) => {
                     const actions = getAvailableActions(c)
+                    const external = isExternalCase(c)
                     return (
-                      <TableRow key={c.case_id}>
+                      <TableRow key={c.case_id} className={external ? "bg-muted/30" : ""}>
+                        <TableCell>
+                          {external ? (
+                            <Badge variant="outline" className="text-xs gap-1 text-muted-foreground">
+                              <ExternalLink className="h-3 w-3" />
+                              Ostalo
+                            </Badge>
+                          ) : (
+                            <Badge variant="default" className="bg-primary/90 text-xs gap-1">
+                              <Building2 className="h-3 w-3" />
+                              Naša
+                            </Badge>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Badge className={CLINICAL_STATUS_COLORS[c.clinical_status] || "bg-gray-100"}>
                             {CLINICAL_STATUS[c.clinical_status] || c.clinical_status}
