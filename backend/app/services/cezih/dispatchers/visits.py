@@ -959,9 +959,15 @@ async def dispatch_visit_action(
                 action="visit_storno_suppressed",
                 details={"visit_id": visit_id, "reason": "replaced_document_deadlock"},
             )
+            # Clear any stale CEZIH error badge left by an earlier real storno
+            # attempt (pre-fix), so the visit doesn't keep showing the obsolete
+            # ERR_ENCOUNTER_2001 "first storno the nalazi" message. Read AFTER
+            # clearing so the returned state is clean.
+            await clear_cezih_error("visit", local_visit_id, tenant_id, session=db)
             current = await _read_local_visit_as_dict(db, tenant_id, visit_id)
             return {
                 "success": True,
+                "suppressed": True,
                 "visit_id": visit_id,
                 "status": (current or {}).get("status", ""),
                 "visit": current,
@@ -1122,6 +1128,7 @@ async def dispatch_visit_action(
             current = await _read_local_visit_as_dict(db, tenant_id, visit_id)
             return {
                 "success": True,
+                "suppressed": True,
                 "visit_id": visit_id,
                 "status": (current or {}).get("status", ""),
                 "visit": current,
