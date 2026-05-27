@@ -400,6 +400,9 @@ export function CaseManagement({ patientId, createOpen: createOpenProp, onCreate
             <li>
               Promjena statusa Verifikacije ide kroz <Pencil className="inline h-3 w-3" />.
             </li>
+            <li>
+              Akcije su onemogućene ako pacijent nema CEZIH identifikator (MBO i/ili OIB za hrvatske pacijente, odnosno EHIC/Putovnica za strance).
+            </li>
           </ul>
         </div>
         {casesQuery.isLoading ? (
