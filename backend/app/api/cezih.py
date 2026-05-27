@@ -1315,6 +1315,84 @@ async def diag_doc_chains(
     return JSONResponse({"total": len(out), "focus": focus, "docs": result})
 
 
+# TEMP DIAGNOSTIC (remove after ownership-by-identity is implemented) — dump the
+# raw author/custodian/recorder/asserter/serviceProvider identity fields CEZIH
+# returns for a patient's documents, conditions and encounters, so we can classify
+# "ours vs external" by tenant šifra ustanove + doctor id instead of local-row match.
+@router.get("/_diag/ownership")
+async def diag_ownership(
+    request: Request,
+    patient_id: UUID = Query(...),
+    current_user: User = Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import JSONResponse
+
+    from app.models.patient import Patient
+    from app.models.tenant import Tenant
+    from app.services.cezih import service as real_service
+    from app.services.cezih.builders.common import ID_ORG, ID_PRACTITIONER
+    from app.services.cezih.client import CezihFhirClient
+    from app.services.cezih.dispatchers.common import _require_audit_params
+
+    _require_audit_params(db, current_user.id, current_user.tenant_id)
+    await check_cezih_access(db, current_user.tenant_id)
+    patient = await db.get(Patient, patient_id)
+    tenant = await db.get(Tenant, current_user.tenant_id)
+    id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+    fhir = CezihFhirClient(_http_client(request), tenant_id=current_user.tenant_id)
+
+    docs = []
+    dsearch = await fhir.get(
+        "doc-mhd-svc/api/v1/DocumentReference",
+        params={"patient.identifier": f"{id_sys}|{id_val}", "status": "current", "_count": 200},
+    )
+    for entry in (dsearch.get("entry") or []) if isinstance(dsearch, dict) else []:
+        res = entry.get("resource") or {}
+        if res.get("resourceType") != "DocumentReference":
+            continue
+        docs.append(
+            {
+                "id": res.get("id"),
+                "author": res.get("author"),
+                "custodian": res.get("custodian"),
+            }
+        )
+        if len(docs) >= 6:
+            break
+
+    conds = []
+    csearch = await fhir.get(
+        "ihe-qedm-services/api/v1/Condition",
+        params={"patient.identifier": f"{id_sys}|{id_val}", "_count": "100"},
+    )
+    for entry in (csearch.get("entry") or []) if isinstance(csearch, dict) else []:
+        res = entry.get("resource") or {}
+        if res.get("resourceType") != "Condition":
+            continue
+        conds.append(
+            {
+                "top_level_keys": sorted(res.keys()),
+                "identifier": res.get("identifier"),
+                "recorder": res.get("recorder"),
+                "asserter": res.get("asserter"),
+                "encounter": res.get("encounter"),
+            }
+        )
+        if len(conds) >= 6:
+            break
+
+    return JSONResponse(
+        {
+            "tenant_sifra_ustanove": getattr(tenant, "sifra_ustanove", None),
+            "id_org_system": ID_ORG,
+            "id_practitioner_system": ID_PRACTITIONER,
+            "documents_sample": docs,
+            "conditions_sample": conds,
+        }
+    )
+
+
 @router.get("/extsigner/probe/{transaction_code}")
 async def probe_extsigner_transaction(
     transaction_code: str,
