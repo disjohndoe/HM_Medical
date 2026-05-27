@@ -89,9 +89,11 @@ export default function PacijentiPage() {
       {
         onSuccess: (result) => {
           toast.success(
-            result.already_exists
-              ? `Pacijent ${result.ime} ${result.prezime} već postoji u kartoteci`
-              : `Pacijent ${result.ime} ${result.prezime} uspješno kreiran iz CEZIH-a`,
+            result.reactivated
+              ? `Pacijent ${result.ime} ${result.prezime} vraćen iz arhive`
+              : result.already_exists
+                ? `Pacijent ${result.ime} ${result.prezime} već postoji u kartoteci`
+                : `Pacijent ${result.ime} ${result.prezime} uspješno kreiran iz CEZIH-a`,
           )
           resetImportDialog()
           router.push(`/pacijenti/${result.id}`)

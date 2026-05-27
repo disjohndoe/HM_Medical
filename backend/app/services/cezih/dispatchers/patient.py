@@ -36,15 +36,18 @@ async def import_patient_from_cezih(
 
     from app.models.patient import Patient
 
-    # Check if patient with this MBO already exists
+    # Find any existing patient with this MBO, INCLUDING soft-deleted rows. An
+    # active match is a real duplicate (409). A soft-deleted match still holds
+    # the MBO/OIB via the unique constraints, so it is reactivated below rather
+    # than re-inserted (which would 409 with no way to recover the patient).
     result = await db.execute(
         select(Patient).where(
             Patient.tenant_id == tenant_id,
             Patient.mbo == mbo,
-            Patient.is_active.is_(True),
         )
     )
-    if result.scalar_one_or_none():
+    existing_patient = result.scalar_one_or_none()
+    if existing_patient and existing_patient.is_active:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Pacijent s tim MBO-om već postoji",
@@ -106,6 +109,56 @@ async def import_patient_from_cezih(
 
     addr = cezih_data.get("adresa") or {}
 
+    if existing_patient is not None:
+        # Reactivate the soft-deleted record with fresh CEZIH demographics.
+        existing_patient.is_active = True
+        existing_patient.ime = cezih_data.get("ime") or existing_patient.ime
+        existing_patient.prezime = cezih_data.get("prezime") or existing_patient.prezime
+        if dob:
+            existing_patient.datum_rodjenja = dob
+        if spol_norm:
+            existing_patient.spol = spol_norm
+        if oib and not existing_patient.oib:
+            existing_patient.oib = oib
+        if cezih_patient_id and not existing_patient.cezih_patient_id:
+            existing_patient.cezih_patient_id = cezih_patient_id
+        if addr.get("ulica"):
+            existing_patient.adresa = addr["ulica"]
+        if addr.get("grad"):
+            existing_patient.grad = addr["grad"]
+        if addr.get("postanski_broj"):
+            existing_patient.postanski_broj = addr["postanski_broj"]
+        if cezih_data.get("telefon"):
+            existing_patient.telefon = cezih_data["telefon"]
+        if cezih_data.get("email"):
+            existing_patient.email = cezih_data["email"]
+        existing_patient.cezih_insurance_status = "Aktivan"
+        existing_patient.cezih_insurance_checked_at = datetime.now(UTC)
+        await db.flush()
+        await db.refresh(existing_patient)
+
+        await _write_audit(
+            db,
+            tenant_id,
+            user_id,
+            action="cezih_patient_reactivated",
+            resource_id=existing_patient.id,
+            details={"mbo": mbo, "ime": existing_patient.ime, "prezime": existing_patient.prezime},
+        )
+
+        return {
+            "id": str(existing_patient.id),
+            "ime": existing_patient.ime,
+            "prezime": existing_patient.prezime,
+            "datum_rodjenja": existing_patient.datum_rodjenja.isoformat()
+            if existing_patient.datum_rodjenja
+            else None,
+            "oib": existing_patient.oib,
+            "spol": existing_patient.spol,
+            "mbo": existing_patient.mbo,
+            "reactivated": True,
+        }
+
     patient = Patient(
         tenant_id=tenant_id,
         ime=cezih_data.get("ime") or "Nepoznato",
@@ -153,6 +206,7 @@ async def import_patient_from_cezih(
         "oib": patient.oib,
         "spol": patient.spol,
         "mbo": patient.mbo,
+        "reactivated": False,
     }
 
 
@@ -242,17 +296,23 @@ async def import_patient_by_identifier(
     if dup_filters:
         from sqlalchemy import or_
 
+        # Include soft-deleted rows: a previously deleted patient still holds the
+        # OIB/MBO via uq_patient_tenant_oib, so skipping inactive rows here would
+        # let the INSERT below hit the unique constraint (409 with no way back).
+        # Re-importing a deleted patient reactivates the existing record instead.
         existing = await db.execute(
             select(Patient)
             .where(
                 Patient.tenant_id == tenant_id,
-                Patient.is_active.is_(True),
                 or_(*dup_filters),
             )
+            .order_by(Patient.is_active.desc())  # prefer an active match if both exist
             .limit(1),
         )
         existing_patient = existing.scalar_one_or_none()
         if existing_patient:
+            reactivated = not existing_patient.is_active
+            existing_patient.is_active = True
             # Update CEZIH-synced fields with fresh data
             if mbo and not existing_patient.mbo:
                 existing_patient.mbo = mbo
@@ -279,6 +339,21 @@ async def import_patient_by_identifier(
             existing_patient.cezih_insurance_checked_at = datetime.now(UTC) if mbo else None
             await db.flush()
 
+            if reactivated:
+                await _write_audit(
+                    db,
+                    tenant_id,
+                    user_id,
+                    action="cezih_patient_reactivated",
+                    resource_id=existing_patient.id,
+                    details={
+                        "identifier_type": identifier_type,
+                        "identifier_value": identifier_value,
+                        "ime": existing_patient.ime,
+                        "prezime": existing_patient.prezime,
+                    },
+                )
+
             return {
                 "id": str(existing_patient.id),
                 "ime": existing_patient.ime,
@@ -293,6 +368,7 @@ async def import_patient_by_identifier(
                 "ehic_broj": existing_patient.ehic_broj,
                 "cezih_patient_id": existing_patient.cezih_patient_id,
                 "already_exists": True,
+                "reactivated": reactivated,
             }
 
     dob = None
@@ -373,6 +449,7 @@ async def import_patient_by_identifier(
         "ehic_broj": patient.ehic_broj,
         "cezih_patient_id": patient.cezih_patient_id,
         "already_exists": False,
+        "reactivated": False,
     }
 
 

@@ -9,6 +9,18 @@ from app.models.patient import Patient
 from app.schemas.patient import PatientCreate, PatientUpdate
 from app.utils.croatian import validate_mbo, validate_oib
 
+# CEZIH identifier columns that uniquely identify a patient, in match priority
+# order, paired with the conflict message shown when an ACTIVE patient already
+# holds that value. Used by create/update to detect duplicates and to reactivate
+# a soft-deleted patient holding the same identifier.
+_IDENTIFIER_CONFLICTS: list[tuple[str, str]] = [
+    ("oib", "Pacijent s tim OIB-om vec postoji"),
+    ("mbo", "Pacijent s tim MBO-om vec postoji"),
+    ("broj_putovnice", "Pacijent s tim brojem putovnice vec postoji"),
+    ("ehic_broj", "Pacijent s tim EHIC brojem vec postoji"),
+    ("cezih_patient_id", "Pacijent s tim CEZIH identifikatorom vec postoji"),
+]
+
 
 async def list_patients(
     db: AsyncSession,
@@ -65,33 +77,60 @@ async def create_patient(
     tenant_id: uuid.UUID,
     data: PatientCreate,
 ) -> Patient:
-    if data.oib:
-        existing = await db.execute(
-            select(Patient).where(
-                Patient.oib == data.oib,
-                Patient.tenant_id == tenant_id,
-                Patient.is_active.is_(True),
+    # Look up matching rows by ANY CEZIH identifier (OIB, MBO, putovnica, EHIC),
+    # INCLUDING soft-deleted ones. An active match is a real duplicate (409). A
+    # soft-deleted match still holds the identifier via the unique constraints,
+    # so we reactivate it with the new data instead of inserting a duplicate that
+    # would hit the constraint (409 with no way to recover the patient).
+    revive: Patient | None = None
+    dump = data.model_dump()
+    for col, conflict_detail in _IDENTIFIER_CONFLICTS:
+        val = dump.get(col)
+        if not val:
+            continue
+        row = (
+            await db.execute(
+                select(Patient)
+                .where(
+                    Patient.tenant_id == tenant_id,
+                    getattr(Patient, col) == val,
+                )
+                .order_by(Patient.is_active.desc())  # prefer an active match
+                .limit(1)
             )
-        )
-        if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Pacijent s tim OIB-om vec postoji",
-            )
+        ).scalars().first()
+        if row is None:
+            continue
+        if row.is_active:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict_detail)
+        revive = row
+        break
 
-    if data.mbo:
-        existing = await db.execute(
-            select(Patient).where(
-                Patient.mbo == data.mbo,
-                Patient.tenant_id == tenant_id,
-                Patient.is_active.is_(True),
-            )
-        )
-        if existing.scalar_one_or_none():
+    if revive is not None:
+        for field, value in data.model_dump().items():
+            setattr(revive, field, value)
+        revive.is_active = True
+        try:
+            await db.flush()
+        except IntegrityError as e:
+            await db.rollback()
+            error_msg = str(e.orig)
+            if "uq_patient_tenant_oib" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Pacijent s tim OIB-om vec postoji",
+                ) from None
+            elif "uq_patient_tenant_mbo" in error_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Pacijent s tim MBO-om vec postoji",
+                ) from None
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Pacijent s tim MBO-om vec postoji",
-            )
+                detail="Pacijent s tim podacima vec postoji",
+            ) from None
+        await db.refresh(revive)
+        return revive
 
     patient = Patient(tenant_id=tenant_id, **data.model_dump())
     db.add(patient)
@@ -142,35 +181,34 @@ async def update_patient(
             detail="Neispravan MBO",
         )
 
-    if "oib" in update_data and update_data["oib"]:
-        existing = await db.execute(
-            select(Patient).where(
-                Patient.oib == update_data["oib"],
-                Patient.tenant_id == tenant_id,
-                Patient.id != patient_id,
-                Patient.is_active.is_(True),
+    # Collision check across ALL CEZIH identifiers against OTHER patients,
+    # including soft-deleted ones. An active holder is a normal 409. A soft-
+    # deleted holder still reserves the identifier via the unique constraint, so
+    # surface a clear, actionable error (restore that patient via CEZIH import)
+    # instead of letting the flush below raise a raw 500 IntegrityError.
+    for col, conflict_detail in _IDENTIFIER_CONFLICTS:
+        if col not in update_data or not update_data[col]:
+            continue
+        other = (
+            await db.execute(
+                select(Patient)
+                .where(
+                    getattr(Patient, col) == update_data[col],
+                    Patient.tenant_id == tenant_id,
+                    Patient.id != patient_id,
+                )
+                .order_by(Patient.is_active.desc())
+                .limit(1)
             )
+        ).scalars().first()
+        if other is None:
+            continue
+        if other.is_active:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=conflict_detail)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Obrisani pacijent već koristi taj identifikator - vratite ga putem Uvoz iz CEZIH-a",
         )
-        if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Pacijent s tim OIB-om vec postoji",
-            )
-
-    if "mbo" in update_data and update_data["mbo"]:
-        existing = await db.execute(
-            select(Patient).where(
-                Patient.mbo == update_data["mbo"],
-                Patient.tenant_id == tenant_id,
-                Patient.id != patient_id,
-                Patient.is_active.is_(True),
-            )
-        )
-        if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Pacijent s tim MBO-om vec postoji",
-            )
 
     for field, value in update_data.items():
         setattr(patient, field, value)

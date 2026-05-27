@@ -999,6 +999,7 @@ export function useImportPatientByIdentifier() {
         ehic_broj: string | null
         cezih_patient_id: string | null
         already_exists: boolean
+        reactivated: boolean
       }>("/cezih/import-patient-by-identifier", { identifier_type, identifier_value }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patients"] })
