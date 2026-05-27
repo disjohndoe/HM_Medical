@@ -1162,6 +1162,58 @@ async def visit_action(
     )
 
 
+# ---------------------------------------------------------------------------
+# TEMP DIAGNOSTIC — TC20 storno "does cancelling the head unblock Encounter 1.4?"
+# Runs the REAL storno cascade + 1.4 with both silent-suppression branches
+# BYPASSED, so the true CEZIH outcome (ERR_ENCOUNTER_2001 vs success) surfaces.
+# Returns raw JSON incl. any CEZIH error. Admin-only. REMOVE after the test.
+# ---------------------------------------------------------------------------
+@router.post("/visits/{visit_id}/action-diag")
+async def visit_action_diag(
+    request: Request,
+    visit_id: str,
+    patient_id: UUID = Query(..., description="Local patient UUID"),
+    action: str = Query("storno"),
+    current_user: User = Depends(require_roles("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import JSONResponse
+
+    await check_cezih_access(db, current_user.tenant_id)
+    org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
+    practitioner_name = (
+        f"{current_user.ime} {current_user.prezime}".strip() if hasattr(current_user, "ime") else ""
+    )
+    try:
+        result = await cezih.dispatch_visit_action(
+            visit_id,
+            action,
+            patient_id,
+            db=db,
+            user_id=current_user.id,
+            tenant_id=current_user.tenant_id,
+            http_client=_http_client(request),
+            practitioner_id=current_user.practitioner_id or "",
+            practitioner_name=practitioner_name,
+            org_code=org_code,
+            org_name=org_name,
+            source_oid=source_oid,
+            confirm_cascade_docs=True,
+            _diag_no_suppress=True,
+        )
+        return JSONResponse({"ok": True, "result": result})
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=200,
+            content={"ok": False, "error_type": "HTTPException", "status": e.status_code, "detail": e.detail},
+        )
+    except Exception as e:  # noqa: BLE001 - diagnostic: surface everything
+        return JSONResponse(
+            status_code=200,
+            content={"ok": False, "error_type": type(e).__name__, "detail": str(e)},
+        )
+
+
 @router.get("/extsigner/probe/{transaction_code}")
 async def probe_extsigner_transaction(
     transaction_code: str,
