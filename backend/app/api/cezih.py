@@ -1001,6 +1001,14 @@ async def diag_cancel_by_oid(
     oid: str = Query(..., description="urn:oid:... or bare OID of the document to cancel"),
     tip: str = Query("nalaz", description="Document tip for coding"),
     ref: str | None = Query(None, description="Original CEZIH reference id, for logging only"),
+    head_ref: str | None = Query(
+        None,
+        description="CEZIH reference id of a sibling/head doc in the SAME visit; "
+        "its mirror row supplies encounter_id/case_id so the cancel bundle "
+        "passes HRMinimalProvideDocumentBundle profile validation.",
+    ),
+    encounter_id: str | None = Query(None, description="Explicit CEZIH encounter OID override"),
+    case_id: str | None = Query(None, description="Explicit CEZIH case OID override"),
     current_user: User = Depends(require_roles("admin", "doctor")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1015,6 +1023,7 @@ async def diag_cancel_by_oid(
     org_code, _source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
     practitioner_name = f"{current_user.ime} {current_user.prezime}".strip()
 
+    from app.models.medical_record import MedicalRecord
     from app.models.patient import Patient
     from app.services.cezih import service as real_service
     from app.services.cezih.client import CezihFhirClient
@@ -1027,6 +1036,22 @@ async def diag_cancel_by_oid(
     # signing method resolves per-user — without this the client falls back to
     # a direct OAuth POST the server cannot reach (30s timeout).
     _require_audit_params(db, current_user.id, current_user.tenant_id)
+
+    # Source encounter_id/case_id from a sibling/head doc's mirror row unless
+    # explicitly overridden. CEZIH validates the cancel against the *provide*
+    # profile (HRMinimalProvideDocumentBundle, closed slicing), which requires
+    # context.encounter (CEZIHDR-005) and context.related/Case (CEZIHDR-008).
+    if head_ref and (not encounter_id or not case_id):
+        head_q = await db.execute(
+            select(MedicalRecord).where(
+                MedicalRecord.tenant_id == current_user.tenant_id,
+                MedicalRecord.cezih_reference_id == head_ref,
+            )
+        )
+        head_rec = head_q.scalar_one_or_none()
+        if head_rec:
+            encounter_id = encounter_id or head_rec.cezih_encounter_id or ""
+            case_id = case_id or head_rec.cezih_case_id or ""
 
     patient = await db.get(Patient, patient_id)
     if not patient or patient.tenant_id != current_user.tenant_id:
@@ -1052,18 +1077,25 @@ async def diag_cancel_by_oid(
         practitioner_id=current_user.practitioner_id,
         practitioner_name=practitioner_name,
         org_code=org_code,
+        encounter_id=encounter_id or "",
+        case_id=case_id or "",
         org_name=org_name,
     )
-    logger.info("DIAG cancel-by-oid: ref=%s oid=%s patient=%s", ref, oid, patient_id)
+    logger.info(
+        "DIAG cancel-by-oid: ref=%s oid=%s patient=%s enc=%s case=%s",
+        ref, oid, patient_id, encounter_id, case_id,
+    )
     client = CezihFhirClient(_http_client(request), tenant_id=current_user.tenant_id)
     try:
         resp = await client.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle)
-        return {"ok": True, "ref": ref, "oid": oid, "response": resp}
+        return {"ok": True, "ref": ref, "oid": oid, "encounter_id": encounter_id, "case_id": case_id, "response": resp}
     except CezihFhirError as e:
         return {
             "ok": False,
             "ref": ref,
             "oid": oid,
+            "encounter_id": encounter_id,
+            "case_id": case_id,
             "status_code": e.status_code,
             "operation_outcome": e.operation_outcome,
             "message": e.message,
