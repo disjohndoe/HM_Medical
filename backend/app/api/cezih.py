@@ -1236,9 +1236,13 @@ async def diag_cancel_docver(
     from app.models.patient import Patient
     from app.services.cezih import service as real_service
     from app.services.cezih.client import CezihFhirClient
+    from app.services.cezih.dispatchers.common import _require_audit_params
     from app.services.cezih.dispatchers.documents import _resolve_djelatnost
     from app.services.cezih.fhir_api.documents import _extract_oid_from_docref, build_cancel_bundle
 
+    # Sets current_tenant_id/user_id/db contextvars so CezihFhirClient routes
+    # through the agent (server has no VPN) and resolves signing method.
+    _require_audit_params(db, current_user.id, current_user.tenant_id)
     await check_cezih_access(db, current_user.tenant_id)
     org_code, source_oid, org_name = await _get_tenant_cezih_config(db, current_user.tenant_id)
     patient = await db.get(Patient, patient_id)
@@ -1248,7 +1252,7 @@ async def diag_cancel_docver(
         "ime": patient.ime, "prezime": patient.prezime,
     }
     djelatnost_code, djelatnost_display = await _resolve_djelatnost(db, current_user.tenant_id, current_user.id)
-    fhir = CezihFhirClient(_http_client(request))
+    fhir = CezihFhirClient(_http_client(request), tenant_id=current_user.tenant_id)
     trace: dict = {"reference_id": reference_id, "version_id": version_id}
     try:
         vread = await fhir.get(
