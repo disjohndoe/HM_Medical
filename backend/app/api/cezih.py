@@ -1228,6 +1228,7 @@ async def diag_cancel_docver(
     tip: str = Query("specijalisticki_nalaz"),
     encounter_id: str = Query(""),
     case_id: str = Query(""),
+    dry_run: bool = Query(False),
     current_user: User = Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1291,6 +1292,8 @@ async def diag_cancel_docver(
             case_id=case_id,
             org_name=org_name,
         )
+        if dry_run:
+            return JSONResponse({"ok": True, "stage": "dry_run", "trace": trace, "bundle": bundle})
         resp = await fhir.post("doc-mhd-svc/api/v1/iti-65-service", json_body=bundle)
         return JSONResponse({"ok": True, "stage": "posted", "trace": trace, "response": resp})
     except HTTPException as e:
