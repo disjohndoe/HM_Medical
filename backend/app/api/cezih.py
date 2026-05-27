@@ -1,3 +1,4 @@
+import asyncio
 import json  # noqa: F401
 import logging
 from datetime import UTC, date, datetime
@@ -325,7 +326,8 @@ async def get_patient_cezih_summary(
     db: AsyncSession = Depends(get_db),
 ):
     # e-Nalaz table: all CEZIH-eligible medical records for this patient
-    # (sent + unsent). Status is derived on the frontend from cezih_sent_at / cezih_storno.
+    # (sent + unsent). Status comes from the live CEZIH doc search below
+    # (cezih_doc_status), falling back to local cezih_* fields on the frontend.
     records_result = await db.execute(
         select(
             MedicalRecord,
@@ -341,6 +343,40 @@ async def get_patient_cezih_summary(
         .order_by(func.coalesce(MedicalRecord.cezih_sent_at, MedicalRecord.created_at).desc())
     )
     records = records_result.all()
+
+    # Live CEZIH document status (ITI-67) is the source of truth for the Status
+    # column. Query all three lifecycle states in parallel so storno'd / superseded
+    # docs — ours and external — report their true CEZIH status. Best-effort: like
+    # the visits mirror, a CEZIH/agent outage must not break the tab; on any failure
+    # we serve the local-only list (Status then falls back to local cezih_* fields).
+    try:
+        search_batches = await asyncio.gather(
+            *[
+                cezih.dispatch_search_documents(
+                    patient_id=patient_id,
+                    document_type="nalaz",
+                    status_filter=s,
+                    db=db,
+                    user_id=current_user.id,
+                    tenant_id=current_user.tenant_id,
+                    http_client=_http_client(request),
+                )
+                for s in ("current", "superseded", "entered-in-error")
+            ]
+        )
+        remote_docs = [doc for batch in search_batches for doc in batch]
+    except Exception as exc:  # noqa: BLE001 — best-effort augmentation, never fatal
+        logger.warning(
+            "ITI-67 nalazi status fetch failed for patient %s — serving local only: %s",
+            patient_id,
+            exc,
+        )
+        remote_docs = []
+
+    # reference_id → raw FHIR status, applied to both our rows and external rows.
+    cezih_status_by_ref = {
+        doc["id"]: doc.get("fhir_status") for doc in remote_docs if doc.get("id")
+    }
 
     e_nalaz_history = [
         PatientCezihENalaz(
@@ -363,36 +399,22 @@ async def get_patient_cezih_summary(
             cezih_last_error_code=row[0].cezih_last_error_code,
             cezih_last_error_display=row[0].cezih_last_error_display,
             cezih_last_error_diagnostics=row[0].cezih_last_error_diagnostics,
+            cezih_doc_status=(
+                cezih_status_by_ref.get(row[0].cezih_reference_id)
+                if row[0].cezih_reference_id
+                else None
+            ),
         )
         for row in records
     ]
 
     # Augment with documents CEZIH holds for this patient that we did NOT create
-    # locally (e.g. nalazi issued by another provider), fetched live via ITI-67.
-    # Best-effort: like the visits mirror, a CEZIH/agent outage must not break the
-    # tab — on any failure we serve the local-only list. External docs are
-    # read-only (no local record/signature/PDF) and downloadable via ITI-68.
+    # locally (e.g. nalazi issued by another provider), surfaced from the same
+    # live ITI-67 search above. External docs are read-only (no local
+    # record/signature/PDF) and downloadable via ITI-68.
     local_ref_ids = {
         row[0].cezih_reference_id for row in records if row[0].cezih_reference_id
     }
-    try:
-        remote_docs = await cezih.dispatch_search_documents(
-            patient_id=patient_id,
-            document_type="nalaz",
-            status_filter="current",
-            db=db,
-            user_id=current_user.id,
-            tenant_id=current_user.tenant_id,
-            http_client=_http_client(request),
-        )
-    except Exception as exc:  # noqa: BLE001 — best-effort augmentation, never fatal
-        logger.warning(
-            "ITI-67 external nalazi fetch failed for patient %s — serving local only: %s",
-            patient_id,
-            exc,
-        )
-        remote_docs = []
-
     # CEZIH docs without a local mirror row are read-only either way; `is_ours`
     # (issuing org šifra == our institution, or author HZJZ ∈ our doctors) only
     # decides the label — "Naš nalaz" vs "Vanjski nalaz" — so our own historical
@@ -429,6 +451,7 @@ async def get_patient_cezih_summary(
                 cezih_sent_at=datum,
                 external=True,
                 is_ours=is_ours,
+                cezih_doc_status=doc.get("fhir_status"),
             )
         )
 

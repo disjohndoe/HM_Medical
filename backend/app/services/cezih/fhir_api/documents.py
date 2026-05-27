@@ -720,6 +720,10 @@ async def search_documents(
                         "svrha": _extract_codeable_text(doc_ref.get("type")),
                         "specijalist": author,
                         "status": _map_fhir_status(doc_ref.get("status", "current")),
+                        # Raw FHIR status (current/superseded/entered-in-error) for
+                        # consumers that map it to their own lifecycle labels; the
+                        # mapped "status" above stays for Pretraga/DocumentSearchItem.
+                        "fhir_status": doc_ref.get("status", "current"),
                         "type": _extract_codeable_text(doc_ref.get("type")),
                         "content_url": content_url,
                         "org_code": org_code,

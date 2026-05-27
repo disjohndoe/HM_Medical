@@ -668,8 +668,12 @@ export interface PatientCezihENalaz {
   content_url?: string | null;
   // For external rows: true when the issuing institution (šifra ustanove) is ours
   // or the author is one of our doctors — our own doc whose local row was lost.
-  // Drives the "Naš nalaz" vs "Vanjski nalaz" label (both stay download-only).
+  // Drives the "Naš" vs "Vanjski" Izvor column (both stay download-only).
   is_ours?: boolean;
+  // Raw FHIR DocumentReference.status from the live ITI-67 search
+  // (current / superseded / entered-in-error). null = not on CEZIH. Drives the
+  // Status column, falling back to local cezih_* fields when absent.
+  cezih_doc_status?: string | null;
 }
 
 export interface PatientCezihERecept {

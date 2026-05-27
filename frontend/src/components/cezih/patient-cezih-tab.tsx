@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useRef, useState } from "react"
-import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe, Download } from "lucide-react"
+import { Loader2, Shield, FileText, Trash2, CheckCircle2, XCircle, Pencil, Send, Globe, Download, Building2, ExternalLink } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,37 @@ import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateTimeHR } from "@/lib/utils"
 
 const PAGE_SIZE = 30
+
+// A row is "Vanjski" only when CEZIH holds it with no local mirror AND it wasn't
+// issued by our institution/doctor. Everything else (our local records, or
+// external docs classified as ours) is "Naš". Matches the visit/case Izvor column.
+const isVanjskiNalaz = (r: { external?: boolean; is_ours?: boolean }) =>
+  r.external === true && r.is_ours !== true
+
+type NalazStatusKey = "poslan" | "izmijenjen" | "storniran" | "neposlan"
+
+// Status = CEZIH document lifecycle only (ownership lives in the Izvor column).
+// Prefer the live FHIR status from ITI-67; fall back to locally-tracked cezih_*
+// fields when the doc isn't on CEZIH (or the live fetch was unavailable).
+function resolveNalazStatus(item: {
+  cezih_doc_status?: string | null
+  cezih_storno?: boolean
+  cezih_last_replaced_at?: string | null
+  cezih_sent_at?: string | null
+}): NalazStatusKey {
+  const s = item.cezih_doc_status
+  if (s === "entered-in-error" || item.cezih_storno) return "storniran"
+  if (s === "superseded" || item.cezih_last_replaced_at) return "izmijenjen"
+  if (s === "current" || item.cezih_sent_at) return "poslan"
+  return "neposlan"
+}
+
+const NALAZ_STATUS_META: Record<NalazStatusKey, { label: string; cls: string; rank: number }> = {
+  poslan: { label: "Poslan", cls: "bg-green-100 text-green-800 border-green-200", rank: 0 },
+  izmijenjen: { label: "Izmijenjen", cls: "bg-blue-100 text-blue-800 border-blue-200", rank: 1 },
+  storniran: { label: "Storniran", cls: "bg-red-100 text-red-800 border-red-200", rank: 2 },
+  neposlan: { label: "Neposlan", cls: "bg-amber-100 text-amber-800 border-amber-200", rank: 3 },
+}
 
 interface PatientCezihTabProps {
   patientId: string
@@ -159,7 +190,10 @@ export function PatientCezihTab({
   } = useTableSort(enalazRows, {
     defaultKey: "datum",
     defaultDir: "desc",
+    // Group our nalazi first, external ("Vanjski") after — like Posjete/Slučajevi.
+    primaryBucket: (r) => (isVanjskiNalaz(r) ? 1 : 0),
     keyAccessors: {
+      izvor: (r) => (isVanjskiNalaz(r) ? 1 : 0),
       datum_slanja: (r) => (r.cezih_sent_at ? new Date(r.cezih_sent_at).getTime() : null),
       datum_izmjene: (r) => (r._wasReplaced ? r._replacedMs : null),
       tip: (r) => tipLabelMap[r.tip] || r.tip,
@@ -170,7 +204,7 @@ export function PatientCezihTab({
         return Number.isFinite(n) ? n : r.reference_id || null
       },
       potpis: (r) => (r.cezih_signed ? 1 : 0),
-      status: (r) => (r.cezih_storno ? 1 : 0),
+      status: (r) => NALAZ_STATUS_META[resolveNalazStatus(r)].rank,
     },
   })
 
@@ -394,6 +428,7 @@ export function PatientCezihTab({
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <SortableTableHead columnKey="izvor" label="Izvor" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="w-[100px]" />
                       <SortableTableHead columnKey="datum" label="Datum kreiranja" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} />
                       <SortableTableHead columnKey="datum_slanja" label="Datum slanja" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
                       <SortableTableHead columnKey="datum_izmjene" label="Datum izmjene" currentKey={nSortKey} currentDir={nSortDir} onSort={toggleNSort} className="hidden sm:table-cell" />
@@ -408,7 +443,20 @@ export function PatientCezihTab({
                   </TableHeader>
                   <TableBody>
                     {pagedENalazi.map((item) => (
-                      <TableRow key={item.record_id}>
+                      <TableRow key={item.record_id} className={isVanjskiNalaz(item) ? "bg-muted/30" : ""}>
+                        <TableCell>
+                          {isVanjskiNalaz(item) ? (
+                            <Badge variant="outline" className="text-xs gap-1 text-muted-foreground">
+                              <ExternalLink className="h-3 w-3" />
+                              Vanjski
+                            </Badge>
+                          ) : (
+                            <Badge variant="default" className="bg-primary/90 text-xs gap-1">
+                              <Building2 className="h-3 w-3" />
+                              Naš
+                            </Badge>
+                          )}
+                        </TableCell>
                         <TableCell className="text-sm">{formatDateTimeHR(item.datum)}</TableCell>
                         <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                           {item.cezih_sent_at ? formatDateTimeHR(item.cezih_sent_at) : "—"}
@@ -575,42 +623,14 @@ function ENalazStatusCell({
   item,
 }: {
   item: {
-    record_id: string
-    reference_id: string | null
+    cezih_doc_status?: string | null
     cezih_sent_at: string | null
     cezih_storno: boolean
     cezih_last_replaced_at: string | null
-    external?: boolean
-    is_ours?: boolean
   }
 }) {
-  const isSent = !!item.cezih_sent_at
-  const isReplaced = !!item.cezih_last_replaced_at
-  // External rows have no local mirror; is_ours distinguishes our own document
-  // (issuing institution/doctor is us) from a genuinely other-provider document.
-  const label = item.external
-    ? item.is_ours
-      ? "Naš nalaz"
-      : "Vanjski nalaz"
-    : item.cezih_storno
-      ? "Storniran"
-      : isReplaced
-        ? "Izmijenjen"
-        : isSent
-          ? "Poslan"
-          : "Neposlan"
-  const cls = item.external
-    ? item.is_ours
-      ? "bg-teal-100 text-teal-800 border-teal-200"
-      : "bg-slate-100 text-slate-700 border-slate-200"
-    : item.cezih_storno
-      ? "bg-red-100 text-red-800 border-red-200"
-      : isReplaced
-        ? "bg-blue-100 text-blue-800 border-blue-200"
-        : isSent
-          ? "bg-green-100 text-green-800 border-green-200"
-          : "bg-amber-100 text-amber-800 border-amber-200"
-
+  // Status = CEZIH document lifecycle only (Naš/Vanjski lives in the Izvor column).
+  const { label, cls } = NALAZ_STATUS_META[resolveNalazStatus(item)]
   return (
     <TableCell>
       <Badge variant="outline" className={cls}>{label}</Badge>

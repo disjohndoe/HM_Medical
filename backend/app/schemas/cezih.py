@@ -187,6 +187,11 @@ class PatientCezihENalaz(BaseModel):
     # document whose local row didn't survive. Drives the "Naš nalaz" vs "Vanjski
     # nalaz" label; both stay read-only (no local record/signature to edit).
     is_ours: bool = False
+    # Raw FHIR DocumentReference.status from the live ITI-67 search
+    # (current / superseded / entered-in-error). None = not present on CEZIH
+    # (e.g. an unsent local record). Frontend maps it to the Status column
+    # (Poslan / Izmijenjen / Storniran), falling back to local cezih_* fields.
+    cezih_doc_status: str | None = None
 
 
 class PatientCezihERecept(BaseModel):
