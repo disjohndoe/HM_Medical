@@ -70,7 +70,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   const { data: casesData } = useRetrieveCases(hasCezihIdentifier ? patientId : "")
 
   type VisitItem = { visit_id: string; status: string; period_start?: string; visit_type_display?: string; service_provider_code?: string | null }
-  type CaseItem = { case_id: string; clinical_status: string; icd_code?: string; icd_display?: string }
+  type CaseItem = { case_id: string; clinical_status: string; icd_code?: string; icd_display?: string; registered?: boolean }
 
   const visits = ((visitsData as { visits?: VisitItem[] })?.visits ?? []) as VisitItem[]
   const cases = ((casesData as { cases?: CaseItem[] })?.cases ?? []) as CaseItem[]
@@ -81,7 +81,12 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   const TERMINAL_VISIT_STATUSES = new Set(["finished", "cancelled", "entered-in-error"])
   const TERMINAL_CASE_STATUSES = new Set(["resolved", "inactive", "entered-in-error"])
   const activeVisits = visits.filter((v) => !TERMINAL_VISIT_STATUSES.has(v.status))
-  const activeCases = cases.filter((c) => !TERMINAL_CASE_STATUSES.has(c.clinical_status))
+  // Only this clinic's own registered cases (registered === true) are linkable.
+  // Remote-only QEDm cases (no local mirror) are hidden - the backend guard
+  // rejects them and they cannot be sent against from here.
+  const activeCases = cases.filter(
+    (c) => c.registered !== false && !TERMINAL_CASE_STATUSES.has(c.clinical_status),
+  )
 
   // Auto-select first visit/case when data loads, and clear a selection that has
   // fallen out of the eligible list (e.g. the case transitioned to terminal, or

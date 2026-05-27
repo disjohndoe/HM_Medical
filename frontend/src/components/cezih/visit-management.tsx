@@ -158,8 +158,14 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   const { data: casesData } = useRetrieveCases(patientId)
   // Eligible for visit linkage: active + remission + relapse (closed/entered-in-error excluded).
   // BE mirrors this rule and 422s when patient has any eligible case but case_id is missing.
+  // Only this clinic's own registered cases (registered === true) are linkable.
+  // Remote-only QEDm cases (no local mirror) are hidden - the backend guard
+  // rejects them on the Encounter↔slučaj link, and caseRequired must not be
+  // forced true by a case the doctor cannot actually pick.
   const eligibleCases = (casesData?.cases ?? []).filter(
-    (c) => c.clinical_status === "active" || c.clinical_status === "remission" || c.clinical_status === "relapse",
+    (c) =>
+      c.registered !== false &&
+      (c.clinical_status === "active" || c.clinical_status === "remission" || c.clinical_status === "relapse"),
   )
   const caseRequired = eligibleCases.length > 0
 

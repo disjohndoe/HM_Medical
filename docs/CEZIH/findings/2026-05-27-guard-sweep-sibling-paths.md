@@ -78,13 +78,33 @@ e-Nalaz **send** and **replace-with-edit**. Cancel stays drop-link (G1), visit
 links unchanged.
 
 ### G6 — Frontend stale case/visit selection (P3, defense-in-depth)
-The send-nalaz Slučaj/Posjeta pickers already list only registered, non-terminal
-items from the CezihCase mirror, and send is blocked when none is selected — so a
-seed/unregistered id cannot be picked. Remaining gap: a selection that goes
-terminal (or drops on refetch) while the dialog is open kept its stale value.
 **Fix:** the auto-select effect now also clears a `selectedCaseId`/
 `selectedEncounterId` that has fallen out of the eligible list.
 `frontend/src/components/cezih/send-nalaz-dialog.tsx`.
+
+### G6b — Case pickers were offering remote-only QEDm cases (P2, corrected 2026-05-27 E2E)
+The original G6 note claimed the pickers "already list only registered cases from
+the CezihCase mirror." **That was wrong.** `/cezih/cases` (`dispatch_retrieve_cases`)
+returns the **QEDm read merged with the local mirror** (`_merge_with_local`), so
+cases opened in a *prior session / other context* with **no local `CezihCase` row**
+surfaced in every Slučaj dropdown (record-form auto-send, send-nalaz dialog, visit
+create/update). Picking one → `assert_case_registered_on_cezih` 422 ("nije
+registriran"); worse, in record-form the auto-select silently defaulted to
+`activeCases[0]` (often such a remote case) and stamped its ICD on the new record.
+In visit-management it also forced `caseRequired = true` for a case the doctor
+could not actually satisfy.
+**Fix:** `CaseItem` gained a server-provided durable `registered` flag — `True`
+only for rows backed by a local `CezihCase` mirror (`_serialize_case_row`),
+`False` for QEDm-only rows (`fhir_api/condition.py`); `_merge_with_local` promotes
+a remote row to `True` when a local row matches. All three link-dropdowns now
+filter to `registered !== false`, so remote-only cases are **not shown** (JUST
+DON'T SHOW THEM). The full `/cezih/cases` list still returns both — the eKarton /
+case-history view (`case-management.tsx`, `ekarton-view.tsx`) is unchanged and
+keeps showing externally-opened cases. Backend guard stays the real trust boundary.
+Files: `backend/app/schemas/cezih.py`, `dispatchers/cases.py`,
+`fhir_api/condition.py`, `frontend/src/lib/types.ts`, `lib/hooks/use-cezih.ts`,
+`components/medical-records/record-form.tsx`,
+`components/cezih/send-nalaz-dialog.tsx`, `components/cezih/visit-management.tsx`.
 
 ## Verified SOUND (no action)
 - `CezihCase` rows persist only after a successful CEZIH create (`cases.py:94`)

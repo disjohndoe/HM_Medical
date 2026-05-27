@@ -143,6 +143,9 @@ async def retrieve_cases(
                     "onset_date": cond.get("onsetDateTime", ""),
                     "abatement_date": cond.get("abatementDateTime") or None,
                     "note": note_text or None,
+                    # QEDm read: no local mirror by itself. _merge_with_local
+                    # promotes this to True when a local CezihCase row matches.
+                    "registered": False,
                 }
             )
     return cases

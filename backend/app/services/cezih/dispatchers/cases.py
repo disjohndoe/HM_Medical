@@ -143,6 +143,8 @@ def _serialize_case_row(row) -> dict:
         "last_error_diagnostics": row.last_error_diagnostics,
         "last_error_at": row.last_error_at.isoformat() if row.last_error_at else None,
         "visited_clinical_statuses": row.visited_clinical_statuses or [],
+        # Local mirror row exists -> this clinic registered the case on CEZIH.
+        "registered": True,
     }
 
 

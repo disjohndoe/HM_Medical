@@ -216,13 +216,18 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const { data: casesData } = useRetrieveCases(cezihShowLinkSelectors ? patientId : "")
 
   type VisitItem = { visit_id: string; status: string; period_start?: string; visit_type_display?: string }
-  type CaseItem = { case_id: string; clinical_status: string; icd_code?: string; icd_display?: string }
+  type CaseItem = { case_id: string; clinical_status: string; icd_code?: string; icd_display?: string; registered?: boolean }
   const visits = ((visitsData as { visits?: VisitItem[] })?.visits ?? []) as VisitItem[]
   const cases = ((casesData as { cases?: CaseItem[] })?.cases ?? []) as CaseItem[]
   const TERMINAL_VISIT_STATUSES = new Set(["finished", "cancelled", "entered-in-error"])
   const TERMINAL_CASE_STATUSES = new Set(["resolved", "inactive", "entered-in-error"])
   const activeVisits = visits.filter((v) => !TERMINAL_VISIT_STATUSES.has(v.status))
-  const activeCases = cases.filter((c) => !TERMINAL_CASE_STATUSES.has(c.clinical_status))
+  // Only offer cases this clinic registered on CEZIH (registered === true).
+  // Remote-only QEDm cases (opened elsewhere, no local mirror) are hidden - they
+  // cannot be linked here and the backend guard would reject them anyway.
+  const activeCases = cases.filter(
+    (c) => c.registered !== false && !TERMINAL_CASE_STATUSES.has(c.clinical_status),
+  )
 
   // Auto-select first visit/case on CREATE only - edit mode pre-populates
   // from record.cezih_encounter_id/case_id in the reset block instead.

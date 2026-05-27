@@ -398,6 +398,11 @@ class CaseItem(BaseModel):
     last_error_diagnostics: str | None = None
     last_error_at: datetime | None = None
     visited_clinical_statuses: list[str] = []
+    # True only for cases this clinic created (backed by a local CezihCase mirror
+    # row). Remote-only QEDm cases (opened elsewhere, no local row) are False and
+    # must not be offered as a slučaj link target - the registration guard rejects
+    # them. The full list still returns both for the eKarton/history view.
+    registered: bool = False
 
 
 class CasesListResponse(BaseModel):

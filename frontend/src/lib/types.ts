@@ -827,6 +827,10 @@ export interface CaseItem {
   // Zatvori action on this flag. Lost on reload (intentional — after
   // reload we can't be sure CEZIH will accept Resolve).
   _local?: boolean;
+  // Server-provided, durable: true only for cases this clinic registered on
+  // CEZIH (backed by a local CezihCase mirror row). Remote-only QEDm cases
+  // (opened elsewhere) are false and must not be offered as slučaj-link targets.
+  registered?: boolean;
 }
 
 export interface CasesListResponse {

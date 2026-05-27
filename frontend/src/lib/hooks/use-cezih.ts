@@ -667,6 +667,7 @@ export function useCreateCase() {
         abatement_date: null,
         note: vars.note ?? null,
         _local: true,
+        registered: true,
       }
       qc.setQueryData<CasesListResponse>(queryKey, (old) => {
         if (!old) return { cases: [newCase] }
