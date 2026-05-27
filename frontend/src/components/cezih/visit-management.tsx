@@ -6,7 +6,6 @@ import { toast } from "sonner"
 import { formatDateTimeHR } from "@/lib/utils"
 import { isCascadeRequiredError, type CascadeDoc } from "@/lib/api-client"
 
-import { useAuth } from "@/lib/auth"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -112,7 +111,6 @@ interface VisitManagementProps {
 }
 
 export function VisitManagement({ patientId, onNavigateToCase, createOpen: createOpenProp, onCreateOpenChange }: VisitManagementProps) {
-  const { tenant } = useAuth()
   const { data: visitsData, isLoading, isError, error: visitsError } = useListVisits(patientId)
   const createVisit = useCreateVisit()
   const updateVisit = useUpdateVisit()
@@ -154,7 +152,6 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   } | null>(null)
 
   const visits = visitsData?.visits ?? []
-  const myOrgCode = tenant?.sifra_ustanove || ""
   const { data: casesData } = useRetrieveCases(patientId)
   // Eligible for visit linkage: active + remission + relapse (closed/entered-in-error excluded).
   // BE mirrors this rule and 422s when patient has any eligible case but case_id is missing.
@@ -169,8 +166,9 @@ export function VisitManagement({ patientId, onNavigateToCase, createOpen: creat
   )
   const caseRequired = eligibleCases.length > 0
 
-  const isExternalVisit = (v: VisitItem) =>
-    !!myOrgCode && !!v.service_provider_code && v.service_provider_code !== myOrgCode
+  // Ownership is classified server-side via the shared identity classifier
+  // (issuing šifra ustanove OR author/participant HZJZ). See backend ownership.py.
+  const isExternalVisit = (v: VisitItem) => v.is_ours === false
 
   const isOptimisticId = (id: string) => id.startsWith("temp-")
   const isOptimistic = (v: VisitItem) => isOptimisticId(v.visit_id)

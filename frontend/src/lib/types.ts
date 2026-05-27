@@ -894,6 +894,9 @@ export interface VisitItem {
   practitioner_id: string | null;
   practitioner_ids: string[];
   diagnosis_case_ids: string[];
+  // Server-classified ownership: false when the visit's issuing institution and
+  // authoring doctors are all external. Drives the "Naša"/"Vanjska" label.
+  is_ours?: boolean;
   last_error_code?: string | null;
   last_error_display?: string | null;
   last_error_diagnostics?: string | null;

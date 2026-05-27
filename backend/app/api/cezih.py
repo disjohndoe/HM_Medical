@@ -1178,6 +1178,14 @@ async def list_visits(
         tenant_id=current_user.tenant_id,
         http_client=_http_client(request),
     )
+    # Classify ownership ("Naša" vs "Vanjska") via the shared identity classifier,
+    # exactly like nalazi (line ~415) and cases — never by local-row presence.
+    identity = await load_tenant_cezih_identity(db, current_user.tenant_id)
+    for v in visits:
+        v["is_ours"] = identity.owns(
+            org_codes=[v.get("service_provider_code")],
+            practitioner_ids=v.get("practitioner_ids") or (),
+        )
     return VisitsListResponse(visits=visits)  # type: ignore[arg-type]
 
 

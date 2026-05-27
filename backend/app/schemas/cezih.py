@@ -369,6 +369,12 @@ class VisitItem(BaseModel):
     practitioner_id: str | None = None
     practitioner_ids: list[str] = []
     diagnosis_case_ids: list[str] = []
+    # Ownership ("Naša" vs "Vanjska"): True when the issuing institution (šifra
+    # ustanove) is ours OR an author/participant doctor's HZJZ is one of ours.
+    # Classified server-side via the shared ownership classifier, so a visit our
+    # doctor authored isn't mislabeled external just because serviceProvider is
+    # blank/foreign. Default True keeps a row "ours" when neither id is present.
+    is_ours: bool = True
     last_error_code: str | None = None
     last_error_display: str | None = None
     last_error_diagnostics: str | None = None
