@@ -83,16 +83,24 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   const activeVisits = visits.filter((v) => !TERMINAL_VISIT_STATUSES.has(v.status))
   const activeCases = cases.filter((c) => !TERMINAL_CASE_STATUSES.has(c.clinical_status))
 
-  // Auto-select first visit/case when data loads
+  // Auto-select first visit/case when data loads, and clear a selection that has
+  // fallen out of the eligible list (e.g. the case transitioned to terminal, or
+  // a refetch dropped it). Submitting a case the backend no longer treats as a
+  // registered/active slučaj would 422 — keep the picker from carrying a stale id.
   useEffect(() => {
-    if (open && activeVisits.length > 0 && !selectedEncounterId) {
+    if (!open) return
+    if (selectedEncounterId && !activeVisits.some((v) => v.visit_id === selectedEncounterId)) {
+      setSelectedEncounterId(activeVisits[0]?.visit_id || "")
+    } else if (activeVisits.length > 0 && !selectedEncounterId) {
       setSelectedEncounterId(activeVisits[0]?.visit_id || "")
     }
-    if (open && activeCases.length > 0 && !selectedCaseId) {
+    if (selectedCaseId && !activeCases.some((c) => c.case_id === selectedCaseId)) {
+      setSelectedCaseId(activeCases[0]?.case_id || "")
+    } else if (activeCases.length > 0 && !selectedCaseId) {
       setSelectedCaseId(activeCases[0]?.case_id || "")
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, activeVisits.length, activeCases.length])
+  }, [open, activeVisits.length, activeCases.length, selectedEncounterId, selectedCaseId])
 
   const records = data?.items ?? []
   const eligibleRecords = records.filter((r) => {

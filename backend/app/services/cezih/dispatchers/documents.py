@@ -284,9 +284,13 @@ async def send_enalaz(
 
     # Never thread a case id that CEZIH has no registered slučaj for (seed/
     # local-only cases) into the nalaz↔slučaj link - it produces "Posjeta nije
-    # povezana sa Slučajem". Raises CezihError if unregistered.
+    # povezana sa Slučajem". require_active also rejects a closed (resolved/
+    # inactive/entered-in-error) slučaj - you cannot author a fresh nalaz against
+    # it. Raises CezihError if unregistered or terminal.
     try:
-        case_id = await assert_case_registered_on_cezih(db, tenant_id, patient_id, case_id)
+        case_id = await assert_case_registered_on_cezih(
+            db, tenant_id, patient_id, case_id, require_active=True
+        )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
@@ -746,9 +750,12 @@ async def dispatch_replace_document_with_edit(
     if not case_id and record.cezih_case_id:
         case_id = record.cezih_case_id
 
-    # Block unregistered/seed case ids from the replaced bundle's slučaj link.
+    # Block unregistered/seed (and now closed) case ids from the replaced
+    # bundle's slučaj link - same authoring rule as the initial send.
     try:
-        case_id = await assert_case_registered_on_cezih(db, tenant_id, patient_id, case_id)
+        case_id = await assert_case_registered_on_cezih(
+            db, tenant_id, patient_id, case_id, require_active=True
+        )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
 
@@ -868,148 +875,6 @@ async def dispatch_replace_document_with_edit(
     return result
 
 
-async def dispatch_cancel_document(
-    reference_id: str,
-    *,
-    db: AsyncSession | None = None,
-    user_id: UUID | None = None,
-    tenant_id: UUID | None = None,
-    http_client=None,
-    org_code: str = "",
-    practitioner_id: str | None = None,
-    practitioner_name: str = "",
-    org_name: str = "",
-) -> dict:
-    """Cancel/storno a document on CEZIH (via ITI-65 replace)."""
-    from app.models.medical_record import MedicalRecord
-    from app.models.patient import Patient
-
-    db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
-
-    # Look up the record by cezih_reference_id — need full record data for ITI-65 bundle
-    patient_data: dict = {}
-    record_data: dict = {}
-    encounter_id = ""
-    case_id = ""
-    record_id: UUID | None = None
-    if db and tenant_id:
-        query_result = await db.execute(
-            sa_select(MedicalRecord).where(
-                MedicalRecord.tenant_id == tenant_id,
-                MedicalRecord.cezih_reference_id == reference_id,
-            )
-        )
-        record = query_result.scalar_one_or_none()
-        if record:
-            record_id = record.id
-            if record.patient_id:
-                patient = await db.get(Patient, record.patient_id)
-                if patient:
-                    try:
-                        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
-                        all_ids = real_service.resolve_all_cezih_identifiers(patient)
-                    except CezihError as e:
-                        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
-                    patient_data = {
-                        "mbo": id_val,
-                        "identifier_system": id_sys,
-                        "identifier_value": id_val,
-                        "identifiers": all_ids,
-                        "ime": patient.ime,
-                        "prezime": patient.prezime,
-                    }
-            encounter_id = record.cezih_encounter_id or ""
-            case_id = record.cezih_case_id or ""
-            if not practitioner_id and record.doktor_id:
-                practitioner_id = str(record.doktor_id)
-            # Storno carries the same clinical content as the document being
-            # storno'd - the storno semantic is on relatesTo, not on anamneza.
-            # Synthesizing "Storno dokumenta X" as Observation.valueString
-            # would put a placeholder string into a signed HRDocument that
-            # claims to be a clinical finding.
-            record_data = {
-                "tip": record.tip,
-                "dijagnoza_mkb": record.dijagnoza_mkb,
-                "dijagnoza_tekst": record.dijagnoza_tekst,
-                "sadrzaj": record.sadrzaj or "",
-                "preporucena_terapija": record.preporucena_terapija,
-                "created_at": record.created_at.isoformat() if record.created_at else None,
-            }
-
-    # Use stored OID if available — avoids unreliable ITI-67 lookup
-    stored_oid = ""
-    if record:
-        stored_oid = record.cezih_document_oid or ""
-
-    djelatnost_code, djelatnost_display = await _resolve_djelatnost(
-        db, tenant_id, (record.doktor_id if record else None) or user_id
-    )
-
-    # NOTE: no validate_doc_type_djelatnost on storno. The original tip was
-    # already accepted by CEZIH at send time; the user cannot change it here.
-    # If their current djelatnost setting has drifted, blocking the storno
-    # locks them out of cancelling docs they legitimately sent. CEZIH's own
-    # validator runs on the replace bundle and will reject if needed.
-
-    # Storno carries the same clinical content (anamneza, dijagnoza, postupci,
-    # prilozi) as the document being cancelled.
-    procedures: list[dict] = []
-    attachments: list[dict] = []
-    if db and tenant_id and record_id:
-        try:
-            procedures = await _get_procedures_for_record(db, tenant_id, record_id)
-            attachments = await _load_attachments_for_record(db, tenant_id, record_id)
-        except CezihError as e:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
-
-    try:
-        result = await real_service.cancel_document(
-            http_client,
-            reference_id,
-            patient_data=patient_data,
-            record_data=record_data,
-            org_code=org_code,
-            practitioner_id=practitioner_id,
-            encounter_id=encounter_id,
-            case_id=case_id,
-            practitioner_name=practitioner_name,
-            original_document_oid=stored_oid,
-            djelatnost_code=djelatnost_code,
-            djelatnost_display=djelatnost_display,
-            org_name=org_name,
-            procedures=procedures,
-            attachments=attachments,
-        )
-    except CezihError as e:
-        await record_cezih_error("medical_record", record_id, tenant_id, e)
-        _raise_cezih_error(e)
-
-    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
-    # Mark record as storniran in DB
-    if db and tenant_id:
-        rec_result = await db.execute(
-            sa_select(MedicalRecord).where(
-                MedicalRecord.tenant_id == tenant_id,
-                MedicalRecord.cezih_reference_id == reference_id,
-            )
-        )
-        rec = rec_result.scalar_one_or_none()
-        if rec:
-            rec.cezih_storno = True
-            await db.flush()
-
-    await _write_audit(
-        db,
-        tenant_id,
-        user_id,
-        action="e_nalaz_cancel",
-        details={"reference_id": reference_id, "new_reference_id": result.get("new_reference_id")},
-    )
-    if db:
-        await db.commit()
-    return result
-
-
 async def dispatch_cancel_document_canonical(
     reference_id: str,
     *,
@@ -1076,11 +941,27 @@ async def dispatch_cancel_document_canonical(
     if record:
         stored_oid = record.cezih_document_oid or ""
 
+    # The cancel bundle threads case_id into a slučaj link (build_cancel_bundle ->
+    # context["related"]). A storno must NEVER be blocked by an unrelated bad
+    # link, so unlike send/replace we DROP an unregistered/seed case id instead
+    # of 422-ing - the nalaz is going away regardless. (Guards against the same
+    # seed-CUID leak that sank patient #2, surfacing on the cancel path.)
+    if case_id and record and record.patient_id:
+        try:
+            await assert_case_registered_on_cezih(db, tenant_id, record.patient_id, case_id)
+        except CezihError:
+            logger.warning(
+                "Storno of e-Nalaz %s carried an unregistered/seed case id %r - "
+                "dropping slučaj link from cancel bundle.",
+                reference_id, case_id,
+            )
+            case_id = ""
+
     djelatnost_code, djelatnost_display = await _resolve_djelatnost(
         db, tenant_id, (record.doktor_id if record else None) or user_id
     )
 
-    # NOTE: no validate_doc_type_djelatnost on storno - see dispatch_cancel_document.
+    # NOTE: no validate_doc_type_djelatnost on storno - see cancel_document_canonical.
 
     try:
         result = await real_service.cancel_document_canonical(
@@ -1188,7 +1069,6 @@ __all__ = [
     "dispatch_search_documents",
     "dispatch_replace_document",
     "dispatch_replace_document_with_edit",
-    "dispatch_cancel_document",
     "dispatch_cancel_document_canonical",
     "dispatch_retrieve_document",
 ]

@@ -739,13 +739,46 @@ async def replace_document(
     """
     fhir_client = CezihFhirClient(client)
 
-    # Look up document OID from CEZIH if not provided
-    if not original_document_oid and _require_identifier_value(patient_data):
+    # Resolve the LIVE current head before building relatesTo. Replacing against
+    # a stored OID that CEZIH has already superseded (or against an
+    # entered-in-error doc) returns ERR_DOM_10035 - the same failure class the
+    # cancel path now guards against. Never trust a stored OID without a live
+    # check (2026-05-20 provjera stale-OID failure).
+    identifier_value = _require_identifier_value(patient_data)
+    identifier_system = _require_identifier_system(patient_data)
+    live = await _resolve_live_document_head(
+        fhir_client, original_reference_id, identifier_system, identifier_value
+    )
+
+    if live["state"] == "entered-in-error":
+        raise CezihError(
+            f"e-Nalaz {original_reference_id} je storniran na CEZIH-u i ne može se "
+            "uređivati. Osvježite prikaz."
+        )
+    if live["state"] == "unknown":
+        raise CezihError(
+            "CEZIH trenutno nije dostupan za provjeru statusa dokumenta. "
+            "Osvježite prikaz i pokušajte ponovno."
+        )
+    if live["state"] == "superseded" and not live.get("oid"):
+        raise CezihError(
+            f"e-Nalaz {original_reference_id} je zamijenjen novijom verzijom, a "
+            "CEZIH nije vratio trenutnu verziju. Osvježite prikaz i uredite "
+            "aktualni e-Nalaz iz liste."
+        )
+
+    # Replace against the live current head, not the (possibly stale) caller ref.
+    if live.get("reference_id"):
+        original_reference_id = live["reference_id"]
+    original_document_oid = live.get("oid") or original_document_oid
+
+    # Fallback ITI-67 lookup only if the live read somehow yielded no OID.
+    if not original_document_oid:
         original_document_oid = await _lookup_document_oid(
             fhir_client,
             original_reference_id,
-            _require_identifier_value(patient_data),
-            identifier_system=_require_identifier_system(patient_data),
+            identifier_value,
+            identifier_system=identifier_system,
         )
 
     if original_document_oid:
@@ -970,22 +1003,24 @@ async def _find_current_head(
     return None
 
 
-async def _resolve_live_document_for_cancel(
+async def _resolve_live_document_head(
     fhir_client: CezihFhirClient,
     reference_id: str,
     identifier_system: str,
     identifier_value: str,
 ) -> dict:
-    """Resolve the live state of a clinical document before a storno/cancel.
+    """Resolve the live state + current head of a clinical document before a
+    storno/cancel OR a replace.
 
     Returns {"state": current|superseded|entered-in-error|unknown,
              "reference_id": <head id>, "oid": <head OID>}.
 
-    CEZIH rejects cancel against a non-current version with ERR_DOM_10035
-    ("Target resource is not in valid status"), so we must target the current
-    version - or no-op if it is already entered-in-error. On any read failure
-    we return state=unknown so the caller can fall back to the stored OID
-    (preserving prior behaviour when CEZIH is unreachable).
+    CEZIH rejects writing against a non-current version with ERR_DOM_10035
+    ("Target resource is not in valid status"), so both cancel and replace must
+    target the current version (or no-op/refuse on entered-in-error). On any
+    read failure we return state=unknown; callers MUST decide what to do with
+    that (the cancel/replace paths hard-fail with a retry message rather than
+    risk writing against a stale stored OID - the 2026-05-20 provjera failure).
     """
     try:
         doc = await fhir_client.get(
@@ -993,7 +1028,7 @@ async def _resolve_live_document_for_cancel(
         )
     except Exception as e:
         logger.warning(
-            "cancel pre-check: GET DocumentReference/%s failed (%s) - degrading to stored OID",
+            "live-doc pre-check: GET DocumentReference/%s failed (%s) - state=unknown",
             reference_id, e,
         )
         return {"state": "unknown", "reference_id": reference_id, "oid": ""}
@@ -1018,107 +1053,6 @@ async def _resolve_live_document_for_cancel(
     return {"state": "unknown", "reference_id": reference_id, "oid": oid}
 
 
-async def cancel_document(
-    client: httpx.AsyncClient,
-    reference_id: str,
-    patient_data: dict,
-    record_data: dict,
-    *,
-    djelatnost_code: str,
-    djelatnost_display: str,
-    org_code: str = "",
-    practitioner_id: str | None = None,
-    encounter_id: str = "",
-    case_id: str = "",
-    practitioner_name: str = "",
-    original_document_oid: str = "",
-    org_name: str = "",
-    procedures: list[dict] | None = None,
-    attachments: list[dict] | None = None,
-) -> dict:
-    """Cancel/storno a clinical document (TC20).
-
-    Storno is an ITI-65 transaction bundle with `relatesTo.code=replaces`
-    pointing at the original document by OID (masterIdentifier). CEZIH
-    resolves relatesTo by OID, not by server-assigned numeric ID.
-
-    DocumentReference.status stays `current` (the default for `_build_document_bundle`).
-    The Klinicki Dokumenti vodič suggests `entered-in-error`, but the live
-    CEZIH test environment rejects that with `ERR_DOM_10057` (verified
-    2026-04-13, see `docs/CEZIH/findings/TC20-cancel-document-blocker.md`)
-    and HZZO's 2026-05-04 rejection email did not raise storno as an issue,
-    so we keep the verified-green mechanism unchanged.
-    """
-    fhir_client = CezihFhirClient(client)
-
-    # Look up document OID from CEZIH - relatesTo target needs OID, not numeric ID.
-    if not original_document_oid:
-        original_document_oid = await _lookup_document_oid(
-            fhir_client,
-            reference_id,
-            _require_identifier_value(patient_data),
-            identifier_system=_require_identifier_system(patient_data),
-        )
-    if not original_document_oid:
-        raise CezihError(
-            f"TC20 cancel: nije moguće pronaći OID dokumenta {reference_id} u CEZIH-u "
-            "(ITI-67 search nije vratio masterIdentifier). Storno se ne može poslati "
-            "bez OID-a originalnog dokumenta."
-        )
-
-    oid_value = (
-        original_document_oid
-        if original_document_oid.startswith("urn:oid:")
-        else f"urn:oid:{original_document_oid}"
-    )
-    relates_to = {
-        "code": "replaces",
-        "target": {
-            "type": "DocumentReference",
-            "identifier": {
-                "system": "urn:ietf:rfc:3986",
-                "value": oid_value,
-            },
-        },
-    }
-
-    bundle_dict, new_oid = await _build_document_bundle(
-        fhir_client,
-        patient_data,
-        record_data,
-        djelatnost_code=djelatnost_code,
-        djelatnost_display=djelatnost_display,
-        practitioner_id=practitioner_id,
-        org_code=org_code,
-        encounter_id=encounter_id,
-        case_id=case_id,
-        practitioner_name=practitioner_name,
-        org_name=org_name,
-        relates_to=relates_to,
-        use_external_profile=False,
-        procedures=procedures,
-        attachments=attachments,
-    )
-
-    # Outer ITI-65 transaction is not signed (signing is on the inner Document Bundle).
-    response = await fhir_client.post(
-        "doc-mhd-svc/api/v1/iti-65-service",
-        json_body=bundle_dict,
-    )
-
-    ref_id = _extract_ref_id_from_response(response)
-    if not ref_id:
-        ref_id = f"FHIR-C-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
-
-    return {
-        "success": True,
-        "reference_id": reference_id,
-        "new_reference_id": ref_id,
-        "new_document_oid": new_oid,
-        "status": "current",
-    }
-
-
 async def cancel_document_canonical(
     client: httpx.AsyncClient,
     reference_id: str,
@@ -1138,9 +1072,9 @@ async def cancel_document_canonical(
 ) -> dict:
     """Cancel/storno via canonical HRCancelDocumentBundle (2-entry, status=entered-in-error).
 
-    Lightweight alternative to the replace-style cancel_document(). No OID
-    generation, no inner Document Bundle, no signing. Tests the canonical
-    Klinicki Dokumenti IG profile that was never validated against live CEZIH.
+    The sole storno path. 2-entry HRCancelDocumentBundle, no OID generation on
+    the bundle, no inner Document Bundle, no signing - the canonical Klinicki
+    Dokumenti IG profile (the legacy replace-style cancel was removed).
 
     `version_id` is the history version for refs that CEZIH has already flipped
     out of `status=current` (i.e. predecessors after an ITI-65 replace) - vread
@@ -1156,7 +1090,7 @@ async def cancel_document_canonical(
     # docs/CEZIH/findings/2026-05-27-exam-fail-patient2-storno-stale-ref.md.
     identifier_value = _require_identifier_value(patient_data)
     identifier_system = _require_identifier_system(patient_data)
-    live = await _resolve_live_document_for_cancel(
+    live = await _resolve_live_document_head(
         fhir_client, reference_id, identifier_system, identifier_value
     )
 
@@ -1183,8 +1117,17 @@ async def cancel_document_canonical(
             "aktualni e-Nalaz iz liste."
         )
 
-    # Prefer the live-resolved current OID over the stored one. Stored OID is a
-    # fallback only when the live read was unavailable (state == unknown).
+    if live["state"] == "unknown":
+        # CEZIH live-status read failed. Do NOT fall back to the stored OID -
+        # that is exactly how a superseded/stale OID got cancelled and produced
+        # ERR_DOM_10035 in the 2026-05-20 provjera. Hard-fail with a retry hint.
+        raise CezihError(
+            "CEZIH trenutno nije dostupan za provjeru statusa dokumenta. "
+            "Osvježite prikaz i pokušajte ponovno."
+        )
+
+    # Use the live-resolved current OID. (state is now current; stored OID is no
+    # longer trusted as a silent fallback - see the unknown-state guard above.)
     original_document_oid = live.get("oid") or original_document_oid
     if not original_document_oid:
         original_document_oid = await _lookup_document_oid(
@@ -1328,7 +1271,6 @@ __all__ = [
     "replace_document",
     "_lookup_document_oid",
     "build_cancel_bundle",
-    "cancel_document",
     "cancel_document_canonical",
     "retrieve_document",
 ]

@@ -55,11 +55,20 @@ async def _write_audit(
     )
 
 
+# Case clinical statuses a new posjeta/nalaz must NOT be linked to. Mirrors the
+# eligible-status rule visit-create already enforces (active/remission/relapse/
+# recurrence are linkable); a resolved/inactive/entered-in-error case is closed
+# and CEZIH rejects authoring fresh clinical data against it.
+TERMINAL_CASE_STATUSES = frozenset({"resolved", "inactive", "entered-in-error"})
+
+
 async def assert_case_registered_on_cezih(
     db: AsyncSession,
     tenant_id: UUID,
     patient_id: UUID,
     case_id: str,
+    *,
+    require_active: bool = False,
 ) -> str:
     """Verify a case_id maps to a CEZIH-registered case before it is threaded
     into a posjeta↔slučaj or nalaz↔slučaj link.
@@ -71,6 +80,10 @@ async def assert_case_registered_on_cezih(
     provjera (seed CUID ``cmj2rchq5…``). Returns the id unchanged when valid so
     the verified-green identifier semantics are preserved; raises ``CezihError``
     otherwise (no silent fallback).
+
+    When ``require_active`` is set (e-Nalaz send/replace), a registered case in a
+    terminal clinical status (resolved/inactive/entered-in-error) is also
+    rejected - authoring a fresh nalaz against a closed slučaj is invalid.
     """
     if not case_id:
         return case_id  # empty = "no linked case"; callers handle linkage rules
@@ -80,7 +93,7 @@ async def assert_case_registered_on_cezih(
 
     row = (
         await db.execute(
-            select(CezihCase.id).where(
+            select(CezihCase.clinical_status).where(
                 CezihCase.tenant_id == tenant_id,
                 CezihCase.patient_id == patient_id,
                 or_(
@@ -94,6 +107,11 @@ async def assert_case_registered_on_cezih(
         raise CezihError(
             "Odabrani slučaj nije registriran na CEZIH-u. Najprije otvorite "
             "slučaj na CEZIH-u, zatim povežite posjetu ili nalaz s njim."
+        )
+    if require_active and (row[0] or "").lower() in TERMINAL_CASE_STATUSES:
+        raise CezihError(
+            "Odabrani slučaj je zatvoren (riješen ili neaktivan). Otvorite "
+            "slučaj ponovno ili odaberite aktivan slučaj prije slanja nalaza."
         )
     return case_id
 
