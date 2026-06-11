@@ -58,11 +58,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   // Pre-flight check uses current user's djelatnost (falls back to clinic default,
   // mirroring backend _resolve_djelatnost). If neither is set, BE returns 422 first.
   const djelatnostCode = user?.djelatnost_code || tenant?.djelatnost_code || null
-  const isExamTenant = !!tenant?.is_exam_tenant
-  // Doc types this tenant can emit. Exam tenants get all three so HZZO can
-  // demo every type on one account; production tenants only see what their
-  // šifra djelatnosti permits.
-  const allowedDocTypes = new Set<string>(getAllowedDocTypes(djelatnostCode, isExamTenant))
+  const allowedDocTypes = new Set<string>(getAllowedDocTypes(djelatnostCode))
 
   // Load patient visits and cases for linking
   // API returns list of dicts: {visit_id, status, period_start, visit_type_display, ...}
@@ -112,8 +108,6 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
     if (!isCezihEligible.has(r.tip)) return false
     if (r.cezih_sent) return false
     if (onlyRecordId && r.id !== onlyRecordId) return false
-    // Production: hide records whose doc type the clinic's djelatnost doesn't
-    // permit. Exam tenants bypass this so the full TC matrix can be demoed.
     const docCode = CEZIH_DOC_TYPE_BY_TIP[r.tip]
     if (docCode && !allowedDocTypes.has(docCode)) return false
     return true
@@ -334,15 +328,11 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
             </>
           )}
 
-          {/* Doc-type ↔ djelatnost pre-flight warning. Exam tenants see an
-              informational label but submit stays enabled - the backend
-              validator also bypasses on is_exam_tenant. */}
+          {/* Doc-type ↔ djelatnost pre-flight warning */}
           {hasDjelatnostMismatch && !sending && (
             <div className="rounded-lg border border-amber-500/50 bg-amber-50 p-3 space-y-1">
               <p className="text-sm font-medium text-amber-900">
-                {isExamTenant
-                  ? `Exam mode: tip dokumenta ne odgovara šifri djelatnosti (${djelatnostCode}). U produkciji bi ovo bilo blokirano:`
-                  : `Tip dokumenta ne odgovara šifri djelatnosti (${djelatnostCode}):`}
+                {`Tip dokumenta ne odgovara šifri djelatnosti (${djelatnostCode}):`}
               </p>
               {djelatnostMismatches.map((m) => (
                 <p key={m.id} className="text-xs text-amber-800">
@@ -350,9 +340,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
                 </p>
               ))}
               <p className="text-xs text-amber-800 pt-1">
-                {isExamTenant
-                  ? "Slanje dozvoljeno radi HZZO certifikacijske provjere."
-                  : "Postavite ispravnu šifru djelatnosti u Postavke → Korisnici ili odznačite nalaz."}
+                Postavite ispravnu šifru djelatnosti u Postavke → Korisnici ili odznačite nalaz.
               </p>
             </div>
           )}
@@ -392,14 +380,14 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
               || !hasCezihIdentifier
               || !selectedEncounterId
               || !selectedCaseId
-              || (hasDjelatnostMismatch && !isExamTenant)
+              || hasDjelatnostMismatch
             }
             title={
               !hasCezihIdentifier
                 ? "Pacijent nema CEZIH identifikator - potreban za CEZIH"
                 : (!selectedEncounterId || !selectedCaseId)
                   ? "Odaberite posjetu i slučaj"
-                  : hasDjelatnostMismatch && !isExamTenant
+                  : hasDjelatnostMismatch
                     ? "Tip dokumenta ne odgovara šifri djelatnosti - pogledajte upozorenje iznad"
                     : undefined
             }

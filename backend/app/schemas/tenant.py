@@ -42,7 +42,6 @@ class TenantRead(BaseModel):
     is_active: bool
     cezih_status: str
     has_hzzo_contract: bool
-    is_exam_tenant: bool = False
 
     model_config = {"from_attributes": True}
 

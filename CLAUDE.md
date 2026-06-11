@@ -233,7 +233,7 @@ AKD card (local JWS)   Certilia (push to mobile)
 | Phase 14 | DONE | CEZIH live verification — 12/22 TCs verified against real CEZIH, FHIR compliance fixes (2026-04-11) |
 | Phase 15 | DONE | CEZIH exam prep — TC19/20/22 fixes (agent binary transport, PUT method, relatesTo format) (2026-04-13) |
 | Phase 16 | DONE | CEZIH live verification — TC19 + TC22 verified; TC20 + TC11 investigated (2026-04-13) |
-| Phase 17 | DONE | TC20 cancel document — VERIFIED via ITI-65 replace with OID lookup (2026-04-13) |
+| Phase 17 | DONE | TC20 cancel document — VERIFIED via ITI-65 HRCancelDocumentBundle with entered-in-error (2026-04-13, corrected 2026-05-27) |
 | Phase 18 | DONE | E2E production test — all 16 TCs verified on app.hmdigital.hr against real CEZIH (2026-04-13) |
 | Phase 19 | DONE | TC11 PMIR foreigner registration — VERIFIED (Patient/1348216, 4 stacked fixes) (2026-04-13) |
 | Phase 20 | DONE | Structured logging — JSON formatter, request IDs, client error relay (merged 2026-05-04 after exam) |
@@ -320,9 +320,11 @@ AKD card (local JWS)   Certilia (push to mobile)
 - **Certilia card certs:** Active (valid until 26.03.2029, waiting for physical card delivery)
 - **OAuth2:** WORKING (client_credentials via certsso2, needs `/auth/` prefix)
 - **22/22 TCs VERIFIED** against real CEZIH (smart card sweep 2026-04-22 + 2026-04-23; Certilia mobile sweep 2026-04-22 afternoon reverify). Certilia path subsequently outaged 2026-04-23–04-28 due to CEZIH Bearer requirement, re-verified after fix on 2026-04-28.
-- **On-site exam:** PASSED (Zapisnik signed with HZZO agent, confirmed 2026-05-04).
-- **Provjera spremnosti:** REJECTED 2026-05-04 (Natalija Malkoč, HZZO) — clinical documents were sent as plain text/PDF in Binary instead of signed `Bundle.type=document`. **Fix implemented same day** (Phase 21). **New termin requested 2026-05-05** (email to Provjera.Spremnosti@hzzo.hr).
-- **Awaiting:** new provjera spremnosti exam termin from HZZO. After passing: (a) cooperation agreement with HZZO, (b) publication on `cezih.hr/certificirani_proizvodjaci_aplikacija.html`, (c) production access (`pvpri.cezih.hr`). Test env on `pvsek.cezih.hr` continues to work; production switch is env-vars-only (see `docs/runbooks/pvpri-production-switch.md`).
+- **On-site exam:** Attended 2026-05-20. Went well but patient #2 (DRAŽEN, MBO 999999870) data not visible on eKarton (stale-ref storno bug ERR_DOM_10035). Fix deployed 2026-05-27 (commit `1f5c681`). DRAŽEN data re-created and verified on eKarton; reply sent 2026-05-27. **HZZO accepted 2026-05-28 ("su uredu podaci"); signed Zapisnik returned same day - PROVJERA PASSED.** Natalija confirmed 2026-06-03: next step is contract signing, HZZO will invite us when the contract arrives at their location.
+- **Provjera spremnosti #1:** REJECTED 2026-05-04 (Natalija Malkoč, HZZO) — clinical documents were sent as plain text/PDF in Binary instead of signed `Bundle.type=document`. **Fix implemented same day** (Phase 21).
+- **Provjera spremnosti #2:** REJECTED 2026-05-11 — 3 more reasons: (a) foreigner inner Bundle missing multi-slice Patient.identifier, (b) JID was CUID instead of CEZIH-assigned numeric, (c) doc-type vs šifra djelatnosti mismatch, (d) visit-case link missing. All fixes deployed 2026-05-11.
+- **Provjera spremnosti #3:** Attended 2026-05-20 (see exam status above). All 4 prior rejection reasons verified GREEN on both signing methods + both patient classes.
+- **After passing:** (a) cooperation agreement with HZZO, (b) publication on `cezih.hr/certificirani_proizvodjaci_aplikacija.html`, (c) production access (`pvpri.cezih.hr`). Test env on `pvsek.cezih.hr` continues to work; production switch is env-vars-only (see `docs/runbooks/pvpri-production-switch.md`).
 
 ## Deployment
 
@@ -388,14 +390,20 @@ Workflow for every code change:
 
 Workflow:
 
-1. **Write the script** and commit it to `backend/scripts/` (or appropriate location) - no ad-hoc one-liners.
-2. **Run locally first** against the dev docker-compose stack with representative data:
+1. **Sync local DB with prod first.** Before any local testing, verify local DB is up-to-date:
+   - Check prod Alembic head: `ssh root@178.104.169.150 "cd /opt/medical-mvp && docker compose exec backend alembic heads"`
+   - Check local Alembic head matches: `alembic heads` (run in local backend)
+   - Compare key counts (patients, CEZIH cases, visits) between prod and local
+   - If out of sync, dump and restore prod data locally before proceeding
+   - **Never test migrations on a stale local DB** - schema drift produces false results
+2. **Write the script** and commit it to `backend/scripts/` (or appropriate location) - no ad-hoc one-liners.
+3. **Run locally first** against the dev docker-compose stack with representative data:
    ```bash
    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
    # run the script against local DB on :5433
    ```
-3. **Verify locally**: row counts, spot-check rows, check for orphans (missing tenant_id, broken FKs, missing MBO/OID linkages), run app smoke test against the resulting DB.
-4. **Only after local run is clean**, run the same script against prod via SSH, or import the prepared output file.
+4. **Verify locally**: row counts, spot-check rows, check for orphans (missing tenant_id, broken FKs, missing MBO/OID linkages), run app smoke test against the resulting DB.
+5. **Only after local run is clean**, run the same script against prod via SSH, or import the prepared output file.
 
 **Why:** Bad import on prod can corrupt tenant data, break CEZIH linkages (MBO, OIDs, refIDs), or silently drop rows. The cost of a 10-minute local rehearsal is trivial compared to hours of prod recovery.
 

@@ -179,19 +179,6 @@ async def _resolve_djelatnost(
     )
 
 
-async def _is_exam_tenant(db: AsyncSession, tenant_id: UUID) -> bool:
-    """True if this tenant is the HZZO exam ordinacija.
-
-    Exam tenants bypass the doc-type ↔ djelatnost pre-flight so the full TC
-    matrix can be demoed on one djelatnost during certification. Production
-    tenants are unaffected (server_default=false on tenants.is_exam_tenant).
-    """
-    from app.models.tenant import Tenant
-
-    tenant = await db.get(Tenant, tenant_id)
-    return bool(tenant and tenant.is_exam_tenant)
-
-
 async def _get_medical_record_by_id(db: AsyncSession | None, tenant_id: UUID | None, record_id: UUID | None):
     """Fetch medical record by ID with tenant validation only."""
     if not db or not tenant_id or not record_id:
@@ -279,7 +266,6 @@ async def send_enalaz(
     validate_doc_type_djelatnost(
         doc_type_code,
         djelatnost_code,
-        is_exam_tenant=await _is_exam_tenant(db, tenant_id),
     )
 
     # Never thread a case id that CEZIH has no registered slučaj for (seed/
@@ -612,7 +598,6 @@ async def dispatch_replace_document(
         validate_doc_type_djelatnost(
             get_cezih_document_coding(tip)["code"],
             djelatnost_code,
-            is_exam_tenant=await _is_exam_tenant(db, tenant_id),
         )
 
     attachments: list[dict] = []
@@ -769,7 +754,6 @@ async def dispatch_replace_document_with_edit(
     validate_doc_type_djelatnost(
         get_cezih_document_coding(new_tip)["code"],
         djelatnost_code,
-        is_exam_tenant=await _is_exam_tenant(db, tenant_id),
     )
 
     # Fetch performed procedures so the replaced bundle carries the postupci
@@ -1007,7 +991,6 @@ async def dispatch_edit_document_via_amend(
     validate_doc_type_djelatnost(
         get_cezih_document_coding(new_tip)["code"],
         djelatnost_code,
-        is_exam_tenant=await _is_exam_tenant(db, tenant_id),
     )
 
     # Carry the procedures + attachments into the appended bundle, same as replace
