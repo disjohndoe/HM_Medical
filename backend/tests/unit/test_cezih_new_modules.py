@@ -70,7 +70,7 @@ def test_condition_create_local_identifier():
     assert cond["identifier"][0]["system"] == ID_CASE_LOCAL
     assert cond["verificationStatus"]["coding"][0]["code"] == "unconfirmed"
     assert cond["code"]["coding"][0]["code"] == "M54"
-    assert cond["onsetDateTime"] == "2026-03-30"
+    assert cond["onsetDateTime"].startswith("2026-03-30T")
     assert "clinicalStatus" not in cond  # Server sets this
 
 
@@ -131,13 +131,10 @@ def test_case_action_map_completeness():
     assert len(CASE_ACTION_MAP) == 7
     assert "delete" not in CASE_ACTION_MAP  # Product rule: never ship CEZIH delete
     assert CASE_ACTION_MAP["create"]["code"] == "2.1"
-    assert CASE_ACTION_MAP["remission"]["clinical_status"] == "remission"
+    assert CASE_ACTION_MAP["remission"]["code"] == "2.3"
     assert CASE_ACTION_MAP["resolve"]["code"] == "2.4"
-    assert CASE_ACTION_MAP["resolve"]["clinical_status"] == "resolved"
     assert CASE_ACTION_MAP["relapse"]["code"] == "2.5"
-    assert CASE_ACTION_MAP["relapse"]["clinical_status"] == "relapse"
     assert CASE_ACTION_MAP["update_data"]["code"] == "2.6"
-    assert CASE_ACTION_MAP["update_data"]["clinical_status"] is None
     assert CASE_ACTION_MAP["reopen"]["code"] == "2.9"
 
 

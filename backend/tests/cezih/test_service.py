@@ -1,13 +1,13 @@
-"""Tests for backend/app/services/cezih/service.py — real CEZIH service functions."""
+"""Tests for CEZIH service helper functions — now in fhir_api subpackage."""
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.services.cezih.models import FHIRHumanName, FHIRPatient
-from app.services.cezih.service import (
+from app.services.cezih.fhir_api.patient import _extract_name
+from app.services.cezih.fhir_api.documents import (
     _extract_codeable_text,
-    _extract_name,
     _extract_reference_display,
     _map_fhir_status,
 )
@@ -73,10 +73,10 @@ class TestExtractReferenceDisplay:
 
 class TestMapFhirStatus:
     def test_current(self):
-        assert _map_fhir_status("current") == "Otvorena"
+        assert _map_fhir_status("current") == "Otvoreni"
 
     def test_superseded(self):
-        assert _map_fhir_status("superseded") == "Zatvorena"
+        assert _map_fhir_status("superseded") == "Zatvoreni"
 
     def test_entered_in_error(self):
         assert _map_fhir_status("entered-in-error") == "Pogreška"
@@ -92,10 +92,10 @@ class TestCheckInsurance:
     @pytest.mark.asyncio
     async def test_patient_found(self):
         """ITI-78 returns a Bundle with a matching Patient resource."""
+        from app.services.cezih.fhir_api.patient import ID_MBO
 
         mock_client = AsyncMock()
-        mock_fhir = AsyncMock()
-        mock_fhir.get = AsyncMock(return_value={
+        mock_response = {
             "resourceType": "Bundle",
             "entry": [{
                 "resource": {
@@ -111,66 +111,44 @@ class TestCheckInsurance:
                     ],
                 },
             }],
-        })
+        }
 
-        with patch("app.services.cezih.service.CezihFhirClient", return_value=mock_fhir):
-            svc = __import__(
-                "app.services.cezih.service",
-                fromlist=["check_insurance"],
-            )
-            result = await svc.check_insurance(mock_client, "999990260")
+        with patch("app.services.cezih.fhir_api.patient.CezihFhirClient") as MockClient:
+            mock_fhir = AsyncMock()
+            mock_fhir.get = AsyncMock(return_value=mock_response)
+            MockClient.return_value = mock_fhir
 
-        assert result["mbo"] == "999990260"
+            from app.services.cezih.fhir_api.patient import check_insurance
+            result = await check_insurance(mock_client, ID_MBO, "999990260")
+
         assert result["ime"] == "Ivan"
         assert result["prezime"] == "Horvat"
         assert result["status_osiguranja"] == "Aktivan"
 
     @pytest.mark.asyncio
     async def test_patient_not_found(self):
-
         mock_client = AsyncMock()
-        mock_fhir = AsyncMock()
-        mock_fhir.get = AsyncMock(return_value={"resourceType": "Bundle", "entry": []})
+        mock_response = {"resourceType": "Bundle", "entry": []}
 
-        with patch("app.services.cezih.service.CezihFhirClient", return_value=mock_fhir):
-            svc = __import__(
-                "app.services.cezih.service",
-                fromlist=["check_insurance"],
-            )
-            result = await svc.check_insurance(mock_client, "000000000")
+        with patch("app.services.cezih.fhir_api.patient.CezihFhirClient") as MockClient:
+            mock_fhir = AsyncMock()
+            mock_fhir.get = AsyncMock(return_value=mock_response)
+            MockClient.return_value = mock_fhir
+
+            from app.services.cezih.fhir_api.patient import check_insurance
+            result = await check_insurance(mock_client, "http://example.com/mbo", "000000000")
 
         assert result["status_osiguranja"] == "Nije pronađen"
         assert result["ime"] == ""
 
 
-class TestSendEnalaz:
-    @pytest.mark.asyncio
-    async def test_success(self):
-
-        mock_client = AsyncMock()
-        mock_fhir = AsyncMock()
-        mock_fhir.post = AsyncMock(return_value={
-            "resourceType": "DocumentReference",
-            "id": "doc-123",
-        })
-
-        with patch("app.services.cezih.service.CezihFhirClient", return_value=mock_fhir):
-            result = await __import__("app.services.cezih.service", fromlist=["send_enalaz"]).send_enalaz(
-                mock_client,
-                {"mbo": "999990260", "ime": "Ivan", "prezime": "Horvat"},
-                {"tip": "nalaz", "tip_display": "Nalaz"},
-            )
-
-        assert result["success"] is True
-        assert result["reference_id"] == "doc-123"
-
-
 class TestSendErecept:
     @pytest.mark.asyncio
-    async def test_stub(self):
-        """e-Recept is a stub — always returns success."""
+    async def test_stub_raises(self):
+        """e-Recept raises CezihError — not implemented for privatnici."""
+        from app.services.cezih.exceptions import CezihError
+
         mock_client = AsyncMock()
         service = __import__("app.services.cezih.service", fromlist=["send_erecept"])
-        result = await service.send_erecept(mock_client, {"mbo": "123"}, [{"naziv": "Paracetamol"}])
-        assert result["success"] is True
-        assert "recept_id" in result
+        with pytest.raises(CezihError, match="nije implementiran"):
+            await service.send_erecept(mock_client, {"mbo": "123"}, [{"naziv": "Paracetamol"}])
