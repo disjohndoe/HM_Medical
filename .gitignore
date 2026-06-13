@@ -83,8 +83,13 @@ backend/C*/
 bug-report-email*.txt
 klijenti/
 
-# One-off importers (local rehearsal only)
+# One-off importers (local rehearsal only — never commit; a push redeploys prod
+# and wipes the manually-installed python-docx these depend on)
 backend/scripts/import_podgajski_sample.py
+backend/scripts/import_podgajski_archive.py
+backend/scripts/convert_podgajski_office.py
+backend/scripts/fix_podgajski_names.py
+backend/scripts/verify_podgajski_migration.py
 
 # Local scratch
 .tmp/
