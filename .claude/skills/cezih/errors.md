@@ -94,3 +94,35 @@ easy.post_redirections(PostRedirections::new().redirect_all(true))
 | 401 | Token expired | Auto-retry with fresh token |
 | 403 | Wrong auth tier | Use mTLS for port 8443 |
 | 500 | Server error | CEZIH side — rare, retry |
+
+## ERR_DOM_10035 - Target Resource Not in Valid Status
+
+**Meaning:** Attempting to cancel a document that is already `superseded` or `entered-in-error`.
+
+**Common cause:** Using a stored OID instead of resolving the live document state from CEZIH first. After an ITI-65 replace, the old doc becomes `superseded` - canceling it again fails.
+
+**Fix:** `cancel_document_canonical()` now resolves live state via ITI-67 before canceling. If already `entered-in-error`, treated as idempotent success (no-op). If `superseded`, resolves the current head first.
+
+## ERR_ENCOUNTER_2001 - Visit Storno Blocked by Active Documents
+
+**Meaning:** Visit cancel rejected because not all documents on the encounter are `entered-in-error`.
+
+**Fix:** Visit storno cascade now asks CEZIH (via `list_active_documents_on_encounter()`) which `status=current` docs exist, then cancels each one before attempting visit cancel. Cascade is CEZIH-authoritative, not local-mirror-based.
+
+## ERR_DOCTRANSVAL_1000 / ERR_HEALTH_ISSUE_2000 - Transient Test-Env Errors
+
+**Meaning:** CEZIH test environment occasionally returns these transient validation errors. The payload is correct.
+
+**Fix:** Retry once with a short delay before investigating the payload. These are test-env instabilities, not real issues. See `docs/CEZIH/findings/` for related entries.
+
+## ERR_EHE_1099 - Wrong Profile Version
+
+**Meaning:** ITI-65 bundle uses a FHIR profile version that CEZIH does not accept (e.g., `HRExternalMinimalProvideDocumentBundle` v1.0.1 returned 415).
+
+**Fix:** Use the correct profile versions. Check Simplifier.net for the latest published versions.
+
+## ERR_DOM_10074 - Invalid Foreign Identifier
+
+**Meaning:** Foreigner registration with a fake/invalid EHIC value.
+
+**Fix:** Use valid test EHIC values for test environment, or omit EHIC and use passport-only identifier.

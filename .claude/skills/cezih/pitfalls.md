@@ -18,7 +18,7 @@ These are hard-won lessons from debugging sessions. Breaking these rules wastes 
 
 - **DO NOT use standard HL7 ActCode** for Encounter.class. CEZIH uses `nacin-prijema` CodeSystem.
 - **DO NOT use literal URLs** in FHIR references. Use identifier-based logical references.
-- **DO NOT use LOINC codes** for document types. CEZIH uses `HRTipDokumenta` numeric codes 001-010.
+- **DO NOT use LOINC codes** for document types. CEZIH uses `HRTipDokumenta` numeric codes (privatnici: 011-013, HZZO-contracted: 001-010).
 - **DO NOT use `/v1/`** for mCSD endpoints (Organization, Practitioner search).
 
 ## Authentication
@@ -56,6 +56,14 @@ These are hard-won lessons from debugging sessions. Breaking these rules wastes 
 - **DO NOT pull the smart card** during active operations. It terminates the VPN session.
 - **DO NOT forget PIN lockout** — 3 failed attempts locks the card. Need PUK to reset.
 - **DO NOT assume Certilia can't do something.** Both smart card AND Certilia mobile/cloud work for ALL CEZIH actions independently.
+
+## Document Operations
+
+- **DO NOT use `relatesTo` (appends/replaces) for doctor-facing document edits.** Using `appends` leaves the NEW doc `superseded` on CEZIH. Using `replaces` sets the OLD doc `superseded` which then PERMANENTLY deadlocks visit storno (visit-cancel demands all docs `entered-in-error` but `superseded` docs refuse cancellation with ERR_DOM_10035). Doctor edit = submit-new (NO relatesTo, status=current) + cancel-old (entered-in-error).
+- **DO NOT cancel a doc using a stored OID.** Always resolve live document state from CEZIH (ITI-67) first. Stored OIDs may point to superseded docs, and canceling a superseded doc returns ERR_DOM_10035. Live resolution: already-EIE = idempotent no-op, current = cancel, superseded = resolve current head first.
+- **DO NOT check local mirror for visit storno blockers.** CEZIH may have documents not in our DB (orphan docs from failed syncs or replaced docs). Visit storno cascade must ask CEZIH directly which `status=current` docs exist on the encounter via `list_active_documents_on_encounter()`.
+- **DO NOT use HRTipDokumenta codes 001-010 for privatnici.** Those are for HZZO-contracted providers. Privatnici use 011-013 only. Using wrong codes causes doc-type vs djelatnost mismatch rejection.
+- **DO NOT put plain text/PDF in ITI-65 Binary.** Binary must hold a signed `Bundle.type=document` (HRDocument profile, 9 entries) since Phase 21. Plain text was the reason for provjera spremnosti rejection #1 (2026-05-04).
 
 ## Common Debugging Traps
 

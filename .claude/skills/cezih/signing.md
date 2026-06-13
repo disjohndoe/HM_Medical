@@ -163,6 +163,22 @@ StructureDefinition constraints (`hr-request-message`):
 
 ---
 
+## Inner Document Bundle Signing (Phase 21, since 2026-05-04)
+
+ITI-65 Binary does NOT hold plain text. It holds a signed `Bundle.type=document` (HRDocument profile). This inner bundle has its own separate signature element, distinct from the outer ITI-65 transaction bundle signature.
+
+**Function:** `sign_document_bundle()` in `signing.py` (line ~437)
+
+**Key differences from outer bundle signing:**
+- `signature.who.reference` = `urn:uuid:{practitioner-uuid}` (HRDocument DOC-3 requirement)
+- Practitioner must appear as `attester` with mode `professional` (HRDocument DOC-4)
+- `practitioner_full_url` param required (must be `urn:uuid:` format)
+- Both smartcard + extsigner paths supported via `_sign_document_bundle_smartcard()` and `_sign_document_bundle_extsigner()`
+
+**When:** Called during ITI-65 submit (TC18) and doctor edit (amend). NOT called for cancel (cancel bundle is unsigned).
+
+---
+
 ## Debug Logging
 
 Set `CEZIH_SIGNING_DEBUG=true` on server. Emits:
@@ -191,16 +207,18 @@ JWS: EC coords extracted x=... y=...
 
 | Component | File | Function | Line |
 |-----------|------|----------|------|
-| Signing method dispatch | `backend/app/services/cezih/message_builder.py` | `add_signature()` | ~348 |
-| Smart card signing | `backend/app/services/cezih/message_builder.py` | `_add_signature_smartcard()` | ~477 |
-| Extsigner signing | `backend/app/services/cezih/message_builder.py` | `_add_signature_extsigner()` | ~377 |
-| Debug JWS dump | `backend/app/services/cezih/message_builder.py` | `_debug_dump_jws()` | ~269 |
-| Extsigner API client | `backend/app/services/cezih_signing.py` | `sign_bundle_via_extsigner()` | — |
+| Signing method dispatch | `backend/app/services/cezih/signing.py` | `add_signature()` | ~127 |
+| Smart card signing | `backend/app/services/cezih/signing.py` | `_add_signature_smartcard()` | ~276 |
+| Extsigner signing | `backend/app/services/cezih/signing.py` | `_add_signature_extsigner()` | ~156 |
+| Inner Document Bundle signing | `backend/app/services/cezih/signing.py` | `sign_document_bundle()` | ~437 |
+| Inner Bundle smartcard | `backend/app/services/cezih/signing.py` | `_sign_document_bundle_smartcard()` | ~497 |
+| Inner Bundle extsigner | `backend/app/services/cezih/signing.py` | `_sign_document_bundle_extsigner()` | ~553 |
+| Debug JWS dump | `backend/app/services/cezih/signing.py` | `_debug_dump_jws()` | ~28 |
 | Windows CNG signing | `local-agent/src-tauri/src/signing.rs` | `sign_for_jws_inner()` | ~129 |
 | EC coord extraction | `local-agent/src-tauri/src/signing.rs` | inside `sign_for_jws_inner` CNG branch | ~250 |
 | x5c chain builder | `local-agent/src-tauri/src/signing.rs` | `build_x5c_chain()` | ~77 |
 | Cert selector | `local-agent/src-tauri/src/signing.rs` | `find_all_certs()` | ~817 |
-| DER→P1363 converter | `local-agent/src-tauri/src/signing.rs` | `der_ecdsa_to_p1363()` | ~885 |
+| DER to P1363 converter | `local-agent/src-tauri/src/signing.rs` | `der_ecdsa_to_p1363()` | ~885 |
 | WebSocket handler | `local-agent/src-tauri/src/websocket.rs` | `sign_jws` command | ~614 |
 
 ---
