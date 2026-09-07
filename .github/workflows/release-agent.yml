@@ -109,25 +109,35 @@ jobs:
           DRAFT_TAG="${TAG}"
           LATEST_JSON_URL=$(gh release view "$DRAFT_TAG" --json assets --jq '.assets[] | select(.name == "latest.json") | .url')
 
-          # Download latest.json
+          # Download latest.json and rewrite download URLs to the PUBLIC repo.
+          # tauri-action generates them against this private repo; unauthenticated
+          # clients (the updater) would get 404s from private-repo asset URLs.
+          LATEST_JSON=""
           if [ -n "$LATEST_JSON_URL" ]; then
             gh release download "$DRAFT_TAG" --pattern "latest.json" --dir /tmp
             LATEST_JSON="/tmp/latest.json"
+            sed -i 's#disjohndoe/HM_Medical#disjohndoe/agent#g' "$LATEST_JSON"
+            if grep -q "disjohndoe/HM_Medical" "$LATEST_JSON"; then
+              echo "ERROR: latest.json still contains private-repo URLs after rewrite"
+              cat "$LATEST_JSON"
+              exit 1
+            fi
           fi
 
-          # Create release on the public agent repo
+          # Create release on the public agent repo (idempotent on re-runs)
           RELEASE_NOTES="Auto-generated release for HM Digital Agent v${VERSION}."
 
-          gh release create "$TAG" \
-            --repo disjohndoe/agent \
-            --title "HM Digital Agent v${VERSION}" \
-            --notes "$RELEASE_NOTES" \
-            --latest
+          gh release view "$TAG" --repo disjohndoe/agent >/dev/null 2>&1 || \
+            gh release create "$TAG" \
+              --repo disjohndoe/agent \
+              --title "HM Digital Agent v${VERSION}" \
+              --notes "$RELEASE_NOTES" \
+              --latest
 
           # Upload artifacts
-          gh release upload "$TAG" --repo disjohndoe/agent "$INSTALLER"
-          [ -n "$SIG_FILE" ] && gh release upload "$TAG" --repo disjohndoe/agent "$SIG_FILE"
-          [ -f "$LATEST_JSON" ] && gh release upload "$TAG" --repo disjohndoe/agent "$LATEST_JSON"
+          gh release upload "$TAG" --repo disjohndoe/agent "$INSTALLER" --clobber
+          [ -n "$SIG_FILE" ] && gh release upload "$TAG" --repo disjohndoe/agent "$SIG_FILE" --clobber
+          [ -n "$LATEST_JSON" ] && gh release upload "$TAG" --repo disjohndoe/agent "$LATEST_JSON" --clobber
 
           echo "✅ Published to disjohndoe/agent"
 
