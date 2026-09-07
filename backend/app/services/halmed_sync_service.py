@@ -6,11 +6,12 @@ parses all drug entries, and upserts into the local drug_list table.
 Data source: https://hzzo.hr/zdravstvena-zastita/objavljene-liste-lijekova
 Updated monthly by HZZO, no auth required.
 
-Columns in HZZO .xlsx:
-  ATK šifra, Oznaka ograničenja primjene, Nezaštićeni naziv lijeka (INN),
-  Način primjene, Nositelj odobrenja, Zaštićeni naziv lijeka (brand),
-  Oblik/jačina i pakiranje, [Doplata], R/RS, PSL, Oznaka indikacije,
-  Oznaka smjernice, Stopa PDV-a
+Column positions in the HZZO .xlsx files are NOT stable between publications
+(e.g. the July 2026 DLL-1. dio gained a "DDD i mjerna jed. za DDD" column at
+index 3). Fields are therefore located BY HEADER NAME per sheet
+(_sheet_column_map); see _COLUMN_MATCHERS for the recognized headers. The
+same parser handles the OLL layout, both DLL layouts (with/without DDD) and
+the magistralni pripravci sheets.
 """
 
 from __future__ import annotations
@@ -58,6 +59,52 @@ def _cell(row: tuple, idx: int) -> str:
     return str(val).strip() if val is not None else ""
 
 
+def _norm(s) -> str:
+    """Normalize a header cell: strip, lowercase, collapse whitespace."""
+    return re.sub(r"\s+", " ", str(s).strip().lower())
+
+
+# Canonical field key -> substring matched against normalized header text.
+# Columns are located BY HEADER NAME, never by fixed index: HZZO inserts and
+# reorders columns between publications (the July 2026 DLL-1. dio added
+# "DDD i mjerna jed. za DDD" at index 3, shifting Doplata/R-RS by one and
+# breaking index-based parsing). Order matters only for first-match wins.
+_COLUMN_MATCHERS: tuple[tuple[str, str], ...] = (
+    ("atk", "atk šifra"),
+    ("inn", "nezaštićeni naziv"),
+    ("nacin_primjene", "način primjene"),
+    ("nositelj_odobrenja", "nositelj odobrenja"),
+    ("brand", "zaštićeni naziv"),
+    ("oblik", "oblik"),
+    ("naziv_pripravka", "naziv pripravka"),
+    ("doplata", "doplata"),
+    ("r_rs", "r/rs"),
+)
+
+# Fields a sheet cannot do without: the ATK identifier plus at least one
+# name column (brand / INN / magistrali "Naziv pripravka").
+_NAME_KEYS = ("brand", "inn", "naziv_pripravka")
+
+
+def _sheet_column_map(header_row: tuple) -> dict[str, int]:
+    """Resolve canonical field -> column index from a sheet's header row."""
+    colmap: dict[str, int] = {}
+    for idx, cell in enumerate(header_row):
+        header = _norm(cell)
+        if not header:
+            continue
+        for key, needle in _COLUMN_MATCHERS:
+            if key not in colmap and needle in header:
+                colmap[key] = idx
+                break
+    return colmap
+
+
+def _cell_opt(row: tuple, colmap: dict[str, int], key: str) -> str:
+    """Extract an optional mapped column ('' if the sheet lacks it)."""
+    return _cell(row, colmap[key]) if key in colmap else ""
+
+
 def _parse_atk(raw: str) -> tuple[str, str]:
     """Parse HZZO 'ATK šifra' like 'A01AB12 451' into (atk, hzzo_sifra)."""
     raw = raw.strip()
@@ -82,41 +129,30 @@ def _extract_jacina(oblik: str) -> str:
     return ""
 
 
-def _parse_drug_row(row: tuple, hzzo_lista: str, has_doplata: bool) -> dict | None:
-    """Parse a single drug row from HZZO .xlsx into a drug dict."""
-    # Column mapping (0-indexed):
-    # 0: ATK šifra
-    # 1: Oznaka ograničenja primjene
-    # 2: Nezaštićeni naziv lijeka (INN)
-    # 3: Način primjene
-    # 4: Nositelj odobrenja
-    # 5: Zaštićeni naziv lijeka (brand)
-    # 6: Oblik, jačina i pakiranje
-    # 7: Doplata (only in DLL) OR R/RS (in OLL without doplata)
-    # 8+: R/RS, PSL, etc.
+def _parse_drug_row(row: tuple, colmap: dict[str, int]) -> dict | None:
+    """Parse a single drug row into a drug dict using the sheet's column map.
 
-    atk_raw = _cell(row, 0)
+    Columns are resolved by header name (see _COLUMN_MATCHERS) — the same
+    function handles OLL (no doplata), DLL (with doplata, with or without the
+    DDD column) and the magistralni pripravci layouts. Unknown/absent optional
+    columns read as ''.
+    """
+    atk_raw = _cell(row, colmap["atk"])
     if not atk_raw:
         return None
 
     atk, hzzo_sifra = _parse_atk(atk_raw)
-    inn_name = _cell(row, 2)  # Nezaštićeni naziv (generic)
-    nacin = _cell(row, 3)  # Način primjene
-    nositelj = _cell(row, 4)  # Nositelj odobrenja
-    brand = _cell(row, 5)  # Zaštićeni naziv (brand)
-    oblik = _cell(row, 6)  # Oblik, jačina i pakiranje
+    inn_name = _cell_opt(row, colmap, "inn")
+    nacin = _cell_opt(row, colmap, "nacin_primjene")
+    nositelj = _cell_opt(row, colmap, "nositelj_odobrenja")
+    brand = _cell_opt(row, colmap, "brand")
+    oblik = _cell_opt(row, colmap, "oblik")
+    doplata = _cell_opt(row, colmap, "doplata")
+    r_rs = _cell_opt(row, colmap, "r_rs")
+    naziv_pripravka = _cell_opt(row, colmap, "naziv_pripravka")
 
-    # Determine R/RS and Doplata based on whether the sheet has doplata column
-    doplata = ""
-    r_rs = ""
-    if has_doplata:
-        doplata = _cell(row, 7)
-        r_rs = _cell(row, 8)
-    else:
-        r_rs = _cell(row, 7)
-
-    # Use brand name as naziv; if empty, use INN
-    naziv = brand if brand else inn_name
+    # Brand name first; INN or magistrali "Naziv pripravka" as fallbacks
+    naziv = brand or inn_name or naziv_pripravka
     if not naziv:
         return None  # Skip rows with no name at all
 
@@ -133,9 +169,8 @@ def _parse_drug_row(row: tuple, hzzo_lista: str, has_doplata: bool) -> dict | No
         "inn": inn_name,
         "nositelj_odobrenja": nositelj,
         "hzzo_sifra": hzzo_sifra,
-        "hzzo_lista": hzzo_lista,
-        "r_rs": r_rs[:3],  # Max 3 chars for safety
-        "nacin_primjene": nacin[:5],
+        "r_rs": r_rs,
+        "nacin_primjene": nacin,
         "doplata": doplata,
         "aktivan": True,
         "search_text": search,
@@ -153,18 +188,31 @@ def _parse_xlsx(data: bytes, hzzo_lista: str) -> list[dict]:
             continue
 
         ws = wb[sheet_name]
-        has_doplata = "DLL" in sheet_name.upper() or "DL-" in sheet_name.lower()
+        colmap: dict[str, int] = {}
 
         for i, row in enumerate(ws.iter_rows(values_only=True)):
-            # Skip header row(s) — first row is always headers
+            # First row is headers — build the column map and validate it
             if i == 0:
+                colmap = _sheet_column_map(row)
+                headers = [_norm(c) for c in row if _norm(c)]
+                if "atk" not in colmap:
+                    raise ValueError(
+                        f"HZZO sheet {sheet_name!r}: 'ATK šifra' column not found — "
+                        f"HZZO changed the layout again. Headers: {headers}"
+                    )
+                if not any(k in colmap for k in _NAME_KEYS):
+                    raise ValueError(
+                        f"HZZO sheet {sheet_name!r}: no drug-name column found — "
+                        f"HZZO changed the layout again. Headers: {headers}"
+                    )
                 continue
             # Skip empty rows
             if not row or not row[0]:
                 continue
 
-            drug = _parse_drug_row(row, hzzo_lista, has_doplata)
+            drug = _parse_drug_row(row, colmap)
             if drug:
+                drug["hzzo_lista"] = hzzo_lista
                 drugs.append(drug)
 
     wb.close()
