@@ -4,6 +4,28 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::process::Command;
 use std::time::Duration;
 
+// Console commands (rasdial/ipconfig/route) must not flash a visible window:
+// the agent is a GUI-subsystem app, so every spawned console process would
+// open its own black console for the fraction of a second it runs — with the
+// 2-second status poll that meant constant flashing whenever VPN was down.
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Run a detection command without showing a console window.
+#[cfg(windows)]
+fn hidden_command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+#[cfg(not(windows))]
+fn hidden_command(program: &str) -> Command {
+    Command::new(program)
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct VpnStatus {
     pub connected: bool,
@@ -103,7 +125,7 @@ fn check_tcp_connectivity() -> Option<String> {
 
 /// Check Windows RAS dial-up/VPN connections.
 fn check_rasdial() -> Option<String> {
-    let output = Command::new("rasdial").output().ok()?;
+    let output = hidden_command("rasdial").output().ok()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     debug!("rasdial output: {}", stdout);
 
@@ -127,7 +149,7 @@ fn check_rasdial() -> Option<String> {
 
 /// Check for VPN-like network adapters via ipconfig.
 fn check_vpn_adapters() -> Option<String> {
-    let output = Command::new("ipconfig")
+    let output = hidden_command("ipconfig")
         .args(["/all"])
         .output()
         .ok()?;
@@ -168,7 +190,7 @@ fn check_vpn_adapters() -> Option<String> {
 /// Check if CEZIH VPN subnet is routable via Windows routing table.
 fn check_cezih_route() -> bool {
     // Use substring "172.30." — more reliable than "172.30.*" on Windows
-    let output = match Command::new("route").args(["print", "172.30."]).output() {
+    let output = match hidden_command("route").args(["print", "172.30."]).output() {
         Ok(o) => o,
         Err(_) => return false,
     };

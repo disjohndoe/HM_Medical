@@ -299,7 +299,7 @@ AKD card (local JWS)   Certilia (push to mobile)
 - Agent returns `body_bytes` (base64) for binary, `body` (text) for JSON
 - `Accept: */*` required (406 with `application/fhir+json`)
 
-**Agent (v0.13.0):**
+**Agent (v0.13.2):**
 - Binary detection + base64 encoding for PDF content
 - PUT method: `custom_request("PUT")` — do NOT chain `.post(true)` (overrides method)
 
