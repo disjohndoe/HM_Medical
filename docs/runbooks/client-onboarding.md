@@ -31,14 +31,20 @@ VPN authenticates with the card certificate regardless of signing method.
 Order matters: card software BEFORE the certificate step.
 
 1. **AKDSHCard Utility** (current name of CezihCard Utility; v1.20+)
-   - Download from http://www.cezih.hr → "aplikacije"
+   - Direct: http://www.cezih.hr/aplikacije/akdSHCard_1.20.exe
+     (site navigation: cezih.hr → sidebar "Osobni certifikati" — near
+     "VPN klijent"; also linked from "Često postavljana pitanja")
    - The installation package BUNDLES the smart-card software support
      (reader middleware) — do not skip it if the reader "already works";
      the reader working ≠ card certificate visible.
    - Manual: http://www.cezih.hr/aplikacije/Upute_za_koristenje_aplikacije_1_20_za_promjenu_PIN.pdf
 2. **Cisco AnyConnect (Secure Mobility Client)**
    - Official CEZIH build: http://www.cezih.hr/VPN_klijent.html
-     (`anyconnect-win-…-core-vpn-predeploy-k9`, Windows 10/11)
+     (direct MSI: `infog2/anyconnect-win-4.10.07065-core-vpn-predeploy-k9.msi`,
+     Windows 10/11)
+   - Same page: **HZZO CA root certificate** (`certifikat/hzzo-cert.der`)
+     — install once per machine (Open → Install certificate → Next →
+     Next → Finish) or certificate chain validation fails later.
    - Install with the default Core VPN feature set only.
 3. **HM Digital Agent**
    - Public download (no login): https://github.com/disjohndoe/agent/releases
