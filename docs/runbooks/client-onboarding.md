@@ -30,14 +30,19 @@ VPN authenticates with the card certificate regardless of signing method.
 
 Order matters: card software BEFORE the certificate step.
 
-1. **AKDSHCard Utility** (current name of CezihCard Utility; v1.20+)
-   - Direct: http://www.cezih.hr/aplikacije/akdSHCard_1.20.exe
-     (site navigation: cezih.hr → sidebar "Osobni certifikati" — near
-     "VPN klijent"; also linked from "Često postavljana pitanja")
-   - The installation package BUNDLES the smart-card software support
-     (reader middleware) — do not skip it if the reader "already works";
-     the reader working ≠ card certificate visible.
-   - Manual: http://www.cezih.hr/aplikacije/Upute_za_koristenje_aplikacije_1_20_za_promjenu_PIN.pdf
+1. **Certilia Middleware** (REQUIRED — our cards are Certilia-issued; this is
+   what makes Windows claim the card and import its certificate)
+   - Download: https://www.certilia.com/preuzimanja →
+     `Certilia_Middleware_v3.9.10.exe` (Win 10/11 x64; MSI 3.9.9 available
+     for enterprise deployment)
+   - After install, insert the card — Windows auto-imports the certificate.
+     If it doesn't: Certilia's support article "uvoz certifikata s kartice
+     nije uspio – Windows" (same page).
+   - The same page also hosts CA root certificates (AKDCA, KIDCA, Certilia)
+     if chain validation is ever needed.
+   - ⚠️ Do NOT confuse with the AKD "akdSHCard" utility on cezih.hr — that is
+     for the HZZO osigurane-osobe "smartica", a different card family; it is
+     useless for our cards (verified the hard way 2026-09-07).
 2. **Cisco AnyConnect (Secure Mobility Client)**
    - Official CEZIH build: http://www.cezih.hr/VPN_klijent.html
      (direct MSI: `infog2/anyconnect-win-4.10.07065-core-vpn-predeploy-k9.msi`,
@@ -50,19 +55,14 @@ Order matters: card software BEFORE the certificate step.
    - Public download (no login): https://github.com/disjohndoe/agent/releases
    - Auto-updates itself within 30 min of every release — one-time install.
 
-## 3. Card certificate registration (per doctor, once)
+## 3. Card certificate (per doctor)
 
-1. Insert the card into the reader.
-2. Open AKDSHCard Utility → **Load data** → enter card PIN.
-3. **Otvori karticu** ("Open card") → PIN again.
-4. "Click here to view certificate properties" → **Install Certificate…**
-   → Next through the wizard.
-5. **Registriraj certifikat** ("Register certificate") → OK.
-6. The utility confirms the card + certificate are ready for use.
-7. If the CEZIH root certificate is not yet on the machine (first setup),
-   install it per the HZZO FAQ (e-zdravstveno → pitanja i odgovori).
-
-Windows 7-only legacy fix (CezihCard-FixCertReg) does not apply to Win 10/11.
+1. Install Certilia Middleware first (section 2.1), then insert the card.
+2. Windows automatically imports the card certificate into the user store —
+   verify in `certmgr.msc` > Personal (a certificate with "Certilia"/AKD
+   subject, private key on the smart card).
+3. If the import didn't happen, follow Certilia's "uvoz certifikata s
+   kartice nije uspio – Windows" article.
 
 ## 4. VPN connection (AnyConnect)
 
