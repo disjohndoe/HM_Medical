@@ -92,7 +92,10 @@ jobs:
 
       - name: Publish release to disjohndoe/agent
         env:
-          GH_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN }}
+          # Job token: read the draft release + assets on THIS (source) repo.
+          # The fine-grained PAT only has write access to the public repo.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AGENT_PAT: ${{ secrets.AGENT_RELEASE_TOKEN }}
         shell: bash
         run: |
           TAG="agent-v${VERSION}"
@@ -127,17 +130,18 @@ jobs:
           # Create release on the public agent repo (idempotent on re-runs)
           RELEASE_NOTES="Auto-generated release for HM Digital Agent v${VERSION}."
 
-          gh release view "$TAG" --repo disjohndoe/agent >/dev/null 2>&1 || \
-            gh release create "$TAG" \
+          if ! GH_TOKEN="$AGENT_PAT" gh release view "$TAG" --repo disjohndoe/agent >/dev/null 2>&1; then
+            GH_TOKEN="$AGENT_PAT" gh release create "$TAG" \
               --repo disjohndoe/agent \
               --title "HM Digital Agent v${VERSION}" \
               --notes "$RELEASE_NOTES" \
               --latest
+          fi
 
           # Upload artifacts
-          gh release upload "$TAG" --repo disjohndoe/agent "$INSTALLER" --clobber
-          [ -n "$SIG_FILE" ] && gh release upload "$TAG" --repo disjohndoe/agent "$SIG_FILE" --clobber
-          [ -n "$LATEST_JSON" ] && gh release upload "$TAG" --repo disjohndoe/agent "$LATEST_JSON" --clobber
+          GH_TOKEN="$AGENT_PAT" gh release upload "$TAG" --repo disjohndoe/agent "$INSTALLER" --clobber
+          [ -n "$SIG_FILE" ] && GH_TOKEN="$AGENT_PAT" gh release upload "$TAG" --repo disjohndoe/agent "$SIG_FILE" --clobber
+          [ -n "$LATEST_JSON" ] && GH_TOKEN="$AGENT_PAT" gh release upload "$TAG" --repo disjohndoe/agent "$LATEST_JSON" --clobber
 
           echo "✅ Published to disjohndoe/agent"
 
