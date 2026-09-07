@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.config import settings
-from app.services.cezih.exceptions import CezihSigningError
+from app.services.cezih.exceptions import CezihError, CezihSigningError
 
 
 def _extract_signature_from_cms(cms_der: bytes) -> bytes:
@@ -493,9 +493,15 @@ async def sign_bundle_via_extsigner(
     if not _should_use_agent():
         raise CezihSigningError("Neispravna CEZIH konekcija — agent nije spojen")
 
-    signer_oib = settings.CEZIH_SIGNER_OIB
-    if not signer_oib:
-        raise CezihSigningError("CEZIH_SIGNER_OIB nije postavljen. Potrebno je za udaljeno potpisivanje (extsigner).")
+    # Per-user signer identity: each doctor signs with their own OIB
+    # (User.card_certificate_oib, set in Postavke > Korisnici or auto-filled
+    # from the AKD card). Lazy import — signing.py imports from this module.
+    from app.services.cezih.signing import resolve_signer_oib
+
+    try:
+        signer_oib = await resolve_signer_oib()
+    except CezihError as e:
+        raise CezihSigningError(str(e)) from e
 
     # Extsigner uses public hostname (no VPN needed), falls back to VPN URL.
     base_url = settings.CEZIH_FHIR_PUB_BASE_URL or settings.CEZIH_FHIR_BASE_URL

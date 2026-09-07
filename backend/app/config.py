@@ -66,7 +66,6 @@ class Settings(BaseSettings):
     CEZIH_SIGNING_METHOD: str = (
         "extsigner"  # "extsigner" (Certilia remote, working) or "smartcard" (NCrypt JWS, broken)
     )
-    CEZIH_SIGNER_OIB: str = ""  # OIB of the signer (required for extsigner)
     CEZIH_TIMEOUT: int = 30
     CEZIH_RETRY_ATTEMPTS: int = 3
     CEZIH_SMARTCARD_DUMMY_SIG: bool = (
@@ -85,8 +84,9 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "json"  # "json" (prod) or "text" (dev readability)
 
     RATE_LIMIT_ENABLED: bool = True
-    CEZIH_ORG_CODE: str = ""  # HZZO sifra zdravstvene organizacije
-    CEZIH_OID: str = ""  # FHIR system OID (auto-generated via TC6 generateOIDBatch, NOT from HZZO)
+    # NOTE: institution identity is per-tenant, not env config:
+    # šifra ustanove + info-system OID live on Tenant (sifra_ustanove, oid),
+    # the extsigner signer OIB on User.card_certificate_oib.
 
     @property
     def is_production(self) -> bool:

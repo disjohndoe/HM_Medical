@@ -18,7 +18,10 @@ real client is ready. Full hostname/env mapping lives in
 3. Client machine(s): Cisco AnyConnect profile → `pvpri.cezih.hr`
    (161.53.103.153, tcp/443 — verified live 2026-09-07). Auth = AKD card
    certificate; no separate VPN credentials exist.
-4. `CEZIH_ORG_CODE` of the first client known (their HZZO šifra ustanove).
+4. First client's CEZIH identity configured on their Tenant: šifra ustanove +
+   generated info-system OID (Postavke > Organizacija → "Generiraj OID")
+   and each doctor's OIB (auto-filled from the AKD card, or Postavke >
+   Korisnici). Institution identity is per-tenant/per-user in the DB — not env.
 
 ## The flip
 
@@ -38,8 +41,10 @@ CEZIH_SIGNING_URL=https://ws2.cezih.hr:8443
 CEZIH_SIGNING_OAUTH2_URL=<prod signing realm — confirm, see prerequisite 1>
 CEZIH_CLIENT_ID=<production client id>
 CEZIH_CLIENT_SECRET=<production client secret>
-CEZIH_ORG_CODE=<first client's šifra ustanove — NOT 999001464>
 ```
+
+(Institution identity — šifra ustanove, info-system OID, signer OIB — lives
+on Tenant/User rows in the DB, not in `.env`.)
 
 ```bash
 docker compose up -d backend          # recreate to load new .env
@@ -69,9 +74,11 @@ pointed at the test environment (see `cezih-env-switch.md`).
 
 - Certification-era test tenants/patients still live in the prod DB — decide
   on cleanup before more real client data lands.
-- **Second client is blocked** until the per-tenant CEZIH config refactor:
-  `CEZIH_ORG_CODE`/`CEZIH_OID` are global env vars today and must become
-  per-tenant DB columns.
+- Multi-client identity is per-tenant/per-user in the DB (no env identity):
+  `Tenant.sifra_ustanove` + `Tenant.oid` (Postavke > Organizacija) and
+  `User.card_certificate_oib` for the Certilia signer OIB (Postavke >
+  Korisnici, auto-filled from the AKD card). Onboard each client's values
+  there — a second client needs no code or env changes.
 - Agent-side VPN status check hosts (`HM_CEZIH_VPN_HOSTS`) default to the
   test hosts; point prod clients' installs at `ws2.cezih.hr:8443,...` or make
   it backend-driven.

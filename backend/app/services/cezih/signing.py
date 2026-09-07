@@ -124,6 +124,51 @@ async def _resolve_signing_method() -> str:
     return method
 
 
+async def resolve_signer_oib() -> str:
+    """Resolve the current user's OIB for remote signing (extsigner/Certilia).
+
+    Source is the per-user ``User.card_certificate_oib`` — auto-populated when
+    the user's AKD card is read, or set by an admin in Postavke > Korisnici.
+    Deliberately per-user (each doctor signs with their own identity); there is
+    no global fallback.
+
+    Raises CezihError if no user is in context, DB is unavailable, or the
+    user has no OIB configured.
+    """
+    from sqlalchemy import select
+
+    from app.models.user import User
+    from app.services.cezih.client import current_db_session, current_user_id
+
+    user_id = current_user_id.get()
+    db = current_db_session.get()
+
+    if not user_id:
+        logger.error("Signer OIB resolution failed: no user in context")
+        raise CezihError("Nema prijavljenog korisnika za potpisivanje.")
+
+    if db is None:
+        logger.error("Signer OIB resolution failed: no database session")
+        raise CezihError("Baza podataka nije dostupna.")
+
+    try:
+        oib = await db.scalar(select(User.card_certificate_oib).where(User.id == user_id))
+    except Exception as e:
+        logger.error("DB lookup failed for signer OIB (user_id=%s): %s", user_id, e)
+        raise CezihError("OIB za potpisivanje nije dostupan. Kontaktirajte administratora.") from e
+
+    if not oib:
+        logger.error("User has no OIB configured (user_id=%s)", user_id)
+        raise CezihError(
+            "Korisniku nije postavljen OIB za udaljeno potpisivanje (Certilia). "
+            "Postavite OIB u Postavke > Korisnici — automatski se popuni i prilikom "
+            "umetanja AKD kartice."
+        )
+
+    logger.info("Resolved signer OIB for user_id=%s", user_id)
+    return oib
+
+
 async def add_signature(
     bundle: dict[str, Any],
     practitioner_id: str,

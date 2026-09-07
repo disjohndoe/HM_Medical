@@ -169,7 +169,7 @@ AKD card (local JWS)   Certilia (push to mobile)
    CEZIH FHIR API (certws2.cezih.hr:8443, via VPN)
 ```
 
-**Per-user preference:** Each user chooses their signing method in Postavke → Korisnici (`cezih_signing_method`: `smartcard` or `extsigner`). System default configurable via `CEZIH_SIGNING_METHOD` env var.
+**Per-user preference:** Each user chooses their signing method in Postavke → Korisnici (`cezih_signing_method`: `smartcard` or `extsigner`). The extsigner signer OIB is also per-user (`User.card_certificate_oib`, auto-filled from the AKD card or set in Postavke → Korisnici) — there is no global signer OIB anymore. Institution identity is per-tenant: šifra ustanove + info-system OID live on the Tenant row (`sifra_ustanove`, `oid`), not env vars.
 
 **⚠️ HARD RULE:** Never treat one method as a fallback for the other. Both must be independently tested and verified for ALL 22 test cases. If one method breaks, it's a P0 bug — not a "use the other method" situation. Both methods share the same VPN + agent + card baseline; choosing Certilia replaces the local signing step, not the network stack.
 

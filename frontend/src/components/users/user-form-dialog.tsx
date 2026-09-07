@@ -73,6 +73,10 @@ const userSchema = z.object({
     z.string().regex(DOCTOR_ID_RULES.mbo.pattern, DOCTOR_ID_RULES.mbo.message).nullable().optional()
   ),
   cezih_signing_method: z.enum(["smartcard", "extsigner"]),
+  card_certificate_oib: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z.string().regex(/^\d{11}$/, "OIB mora imati točno 11 znamenki").nullable().optional()
+  ),
   djelatnost_code: z.preprocess(
     (v) => (v === "" ? null : v),
     z.string().regex(/^\d{7}$/, "Šifra djelatnosti mora imati točno 7 znamenki").nullable().optional()
@@ -131,6 +135,7 @@ export function UserFormDialog({
     practitioner_id: user?.practitioner_id ?? null,
     mbo_lijecnika: user?.mbo_lijecnika ?? null,
     cezih_signing_method: user?.cezih_signing_method ?? "extsigner",
+    card_certificate_oib: user?.card_certificate_oib ?? null,
     djelatnost_code: user?.djelatnost_code ?? null,
     djelatnost_display: user?.djelatnost_display ?? null,
   }), [user])
@@ -148,6 +153,8 @@ export function UserFormDialog({
   })
 
   const selectedRole = useWatch({ control, name: "role" })
+  const selectedSigningMethod = useWatch({ control, name: "cezih_signing_method" })
+  const signerOibVisible = selectedSigningMethod === "extsigner"
   const canHoldDoctorIds = (ROLES_CAN_HOLD_DOCTOR_IDS as readonly string[]).includes(
     selectedRole
   )
@@ -356,6 +363,26 @@ export function UserFormDialog({
                 </Select>
               )}
             />
+            {signerOibVisible && (
+              <div className="space-y-2">
+                <Label htmlFor="card_certificate_oib">OIB za Certilia potpis</Label>
+                <Input
+                  id="card_certificate_oib"
+                  inputMode="numeric"
+                  maxLength={11}
+                  placeholder="11-znamenkasti OIB korisnika"
+                  {...register("card_certificate_oib")}
+                />
+                <p className="text-xs text-muted-foreground">
+                  OIB liječnika koji odobrava potpis u Certilia aplikaciji. Automatski se
+                  popuni prilikom povezivanja AKD kartice; unesite ručno ako korisnik
+                  koristi isključivo Certilia potpis.
+                </p>
+                {errors.card_certificate_oib && (
+                  <p className="text-xs text-destructive">{errors.card_certificate_oib.message}</p>
+                )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               Mobitel = Certilia push potvrda za CEZIH. Kartica = AKD smart
               kartica preko Local Agenta.

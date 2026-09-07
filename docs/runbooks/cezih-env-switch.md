@@ -28,9 +28,13 @@ CEZIH_FHIR_BASE_URL=https://{certws2|ws2}.cezih.hr:8443
 CEZIH_FHIR_AUX_URL=https://{certws2|ws2}.cezih.hr:9443
 CEZIH_SIGNING_URL=https://{certws2|ws2}.cezih.hr:8443
 CEZIH_SIGNING_OAUTH2_URL=https://{certpubsso|sso2}.cezih.hr/auth/realms/CEZIH/protocol/openid-connect/token
-CEZIH_ORG_CODE=<test 999001464 | real client šifra ustanove>
 CEZIH_CLIENT_ID / CEZIH_CLIENT_SECRET=<test realm | PRODUCTION sso2 realm creds>
 ```
+
+Institution identity is NOT env config: šifra ustanove + info-system OID live
+on each Tenant (`sifra_ustanove`, `oid` — Postavke > Organizacija) and the
+extsigner signer OIB on each User (`card_certificate_oib` — Postavke >
+Korisnici, auto-filled from the AKD card).
 
 Agent side (optional): `HM_CEZIH_VPN_HOSTS` — hosts used for the VPN status
 check (defaults to the test hosts; point to `ws2.cezih.hr:8443,...` for prod clients).
@@ -60,7 +64,7 @@ ssh root@178.104.169.150
 cd /opt/medical-mvp
 cp .env .env.backup-test-$(date +%Y%m%d)   # rollback point
 # edit .env: swap cert* hosts for prod hosts per table above,
-# set prod CEZIH_CLIENT_ID/SECRET, set real client CEZIH_ORG_CODE
+# set prod CEZIH_CLIENT_ID/SECRET
 docker compose up -d backend                 # recreate to load new .env
 docker compose logs backend --tail 50        # verify startup
 ```
@@ -69,7 +73,8 @@ Rollback: restore the backup `.env` and `docker compose up -d backend` again.
 
 ## Known gaps (2026-09-07)
 
-- `CEZIH_ORG_CODE` / `CEZIH_OID` / signer OIB are **global** env vars — fine for
-  one client, must become per-tenant (DB) config before the second institution.
+- ~~Per-tenant CEZIH config~~ — resolved: org code/OID on Tenant, signer OIB
+  per User (`card_certificate_oib`) since the extsigner refactor; the old
+  global env vars (`CEZIH_ORG_CODE`/`CEZIH_OID`/`CEZIH_SIGNER_OIB`) are removed.
 - Prod DB still contains certification-era test tenants/patients — decide on
   cleanup before real client data lands.
