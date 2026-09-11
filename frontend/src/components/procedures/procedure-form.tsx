@@ -117,8 +117,8 @@ export function ProcedureForm({ open, onOpenChange, procedure }: ProcedureFormPr
         toast.success("Postupak kreiran")
       }
       onOpenChange(false)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
+    } catch {
+      // procedure mutation hooks already surface an error toast
     }
   }
 

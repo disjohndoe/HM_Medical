@@ -98,9 +98,6 @@ export default function PacijentiPage() {
           resetImportDialog()
           router.push(`/pacijenti/${result.id}`)
         },
-        onError: (err) => {
-          toast.error(err instanceof Error ? err.message : "Greška pri uvozu pacijenta")
-        },
       },
     )
   }
@@ -111,8 +108,8 @@ export default function PacijentiPage() {
       await deletePatient.mutateAsync(deleteTarget.id)
       toast.success("Pacijent izbrisan")
       setDeleteTarget(null)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri brisanju")
+    } catch {
+      // useDeletePatient already surfaces an error toast
     }
   }
 
