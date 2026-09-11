@@ -54,7 +54,6 @@ const clinicSchema = z.object({
     z.string().regex(/^\d{7}$/, "Šifra djelatnosti mora imati točno 7 znamenki").nullable().optional()
   ),
   djelatnost_display: nullableString,
-  has_hzzo_contract: z.boolean().optional(),
 })
 
 type ClinicFormData = z.infer<typeof clinicSchema>
@@ -102,7 +101,6 @@ export default function KlinikaSettingsPage() {
         sifra_ustanove: clinic.sifra_ustanove ?? null,
         djelatnost_code: clinic.djelatnost_code ?? null,
         djelatnost_display: clinic.djelatnost_display ?? null,
-        has_hzzo_contract: clinic.has_hzzo_contract ?? false,
       })
     }
   }, [clinic, reset])
@@ -308,25 +306,6 @@ export default function KlinikaSettingsPage() {
                     </Button>
                   </div>
                 )}
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="has_hzzo_contract"
-                className="h-4 w-4 rounded border-gray-300"
-                {...register("has_hzzo_contract")}
-              />
-              <div>
-                <Label htmlFor="has_hzzo_contract" className="cursor-pointer">
-                  Ugovor s HZZO-om
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Omogućuje slanje e-Recepata i e-Uputnica putem CEZIH-a
-                </p>
               </div>
             </div>
 

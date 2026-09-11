@@ -82,8 +82,8 @@ export default function CezihPage() {
       const pairRes = await createPairingToken.mutateAsync()
       window.location.href = pairRes.pairing_url
       setTimeout(() => setPairingFallback(true), 3000)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri povezivanju agenta")
+    } catch {
+      // generate-secret/pairing-token hooks already surface an error toast
     }
   }
 
@@ -115,10 +115,9 @@ export default function CezihPage() {
           toast.success("Kartica automatski povezana s vašim računom")
           refreshUser()
         },
-        onError: (err) => {
+        onError: () => {
           bindingInFlight.current = false
           setSuppressedHolder(cezihStatus?.card_holder ?? "")
-          toast.error(err instanceof Error ? err.message : "Automatsko povezivanje kartice nije uspjelo")
         },
       })
     }
@@ -133,10 +132,9 @@ export default function CezihPage() {
         toast.success("Kartica povezana s vašim računom")
         refreshUser()
       },
-      onError: (err) => {
+      onError: () => {
         bindingInFlight.current = false
         setSuppressedHolder(cezihStatus?.card_holder ?? "")
-        toast.error(err instanceof Error ? err.message : "Povezivanje kartice nije uspjelo")
       },
     })
   }
@@ -148,9 +146,8 @@ export default function CezihPage() {
         toast.success("Kartica odpojena")
         refreshUser()
       },
-      onError: (err) => {
+      onError: () => {
         setSuppressedHolder(null)
-        toast.error(err instanceof Error ? err.message : "Greška pri odpajanju kartice")
       },
     })
   }

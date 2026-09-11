@@ -212,8 +212,8 @@ export function AppointmentForm({
         toast.success("Termin kreiran")
       }
       onOpenChange(false)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
+    } catch {
+      // appointment mutation hooks already surface an error toast
     }
   }
 
