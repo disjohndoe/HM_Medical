@@ -146,6 +146,9 @@ services:
       APP_DEBUG: "false"
       DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/medical_mvp
       CORS_ORIGINS: https://${DOMAIN}
+      # Caddy (172.16.0.0/12) is the only ingress — port 8000 is not published.
+      # Trust its X-Forwarded-For so slowapi rate limits key on real client IPs.
+      FORWARDED_ALLOW_IPS: 172.16.0.0/12
     volumes:
       - ./uploads:/app/uploads
     depends_on:
