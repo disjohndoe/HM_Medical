@@ -94,7 +94,14 @@ services:
           echo "[$$TIMESTAMP] WARNING: /backups exceeds 10 GB, removing $$OLDEST"
           rm -f "$$OLDEST"
         done
-        sleep 14400
+        # Daily schedule: next backup at 03:00 UTC
+        TARGET=$$(date -d "today 03:00" +%s)
+        NOW=$$(date +%s)
+        while [ "$$TARGET" -le "$$NOW" ]; do
+          TARGET=$$((TARGET + 86400))
+        done
+        echo "[$$TIMESTAMP] Next backup at $$(date -u -d @$$TARGET +%Y-%m-%d_%H:%M) UTC"
+        sleep $$((TARGET - NOW))
       done'
     depends_on:
       db:
