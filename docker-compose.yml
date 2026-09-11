@@ -72,6 +72,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./backups:/backups
+      - ./upload-backups:/upload-backups
+      - ./uploads:/uploads:ro
+      - ./.env:/secrets/envfile:ro
     environment:
       PGPASSWORD: ${DB_PASSWORD}
       BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:?Set BACKUP_PASSPHRASE for encrypted backups}
@@ -86,13 +89,36 @@ services:
         else
           echo "[$$TIMESTAMP] Backup completed and encrypted ($$BACKUP_SIZE bytes)"
         fi
-        # Retention: keep all backups (5-year legal requirement)
+        # Config archive: .env secrets (required for disaster recovery), keep-all
+        CONFIG_FILE="/backups/config_$$TIMESTAMP.tar.gz.gpg"
+        tar -C /secrets -cf - envfile | gzip | gpg --batch --yes --passphrase "$$BACKUP_PASSPHRASE" --symmetric --cipher-algo AES256 -o "$$CONFIG_FILE"
+        CONFIG_SIZE=$$(stat -c%s "$$CONFIG_FILE" 2>/dev/null || echo 0)
+        if [ "$$CONFIG_SIZE" -lt 1024 ]; then
+          echo "[$$TIMESTAMP] WARNING: Config archive may be empty ($$CONFIG_SIZE bytes)"
+        else
+          echo "[$$TIMESTAMP] Config archive completed and encrypted ($$CONFIG_SIZE bytes)"
+        fi
+        # Retention: keep all DB+config backups (5-year legal requirement)
         # Safety valve: if /backups exceeds 10 GB, remove oldest until under limit
         while [ "$$(du -sb /backups 2>/dev/null | cut -f1)" -gt 10737418240 ]; do
           OLDEST=$$(ls -t /backups/medical_mvp_*.gpg 2>/dev/null | tail -1)
           if [ -z "$$OLDEST" ]; then break; fi
           echo "[$$TIMESTAMP] WARNING: /backups exceeds 10 GB, removing $$OLDEST"
           rm -f "$$OLDEST"
+        done
+        # Uploads archive: client documents (fastest-growing data), separate dir
+        UPLOADS_FILE="/upload-backups/uploads_$$TIMESTAMP.tar.gz.gpg"
+        tar --ignore-failed-read -C / -cf - uploads | gzip | gpg --batch --yes --passphrase "$$BACKUP_PASSPHRASE" --symmetric --cipher-algo AES256 -o "$$UPLOADS_FILE"
+        UPLOADS_SIZE=$$(stat -c%s "$$UPLOADS_FILE" 2>/dev/null || echo 0)
+        if [ "$$UPLOADS_SIZE" -lt 1024 ]; then
+          echo "[$$TIMESTAMP] WARNING: Uploads archive may be empty ($$UPLOADS_SIZE bytes)"
+        else
+          echo "[$$TIMESTAMP] Uploads archive completed and encrypted ($$UPLOADS_SIZE bytes)"
+        fi
+        # Uploads retention: keep newest 14 daily archives
+        ls -t /upload-backups/uploads_*.gpg 2>/dev/null | tail -n +15 | while read OLD_UPLOAD; do
+          echo "[$$TIMESTAMP] Uploads retention: removing $$OLD_UPLOAD"
+          rm -f "$$OLD_UPLOAD"
         done
         # Daily schedule: next backup at 03:00 UTC
         TARGET=$$(date -d "today 03:00" +%s)
@@ -109,7 +135,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 64M
+          memory: 128M
 
   backend:
     build: ./backend
