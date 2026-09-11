@@ -457,12 +457,13 @@ async def _persist_insurance_to_patient_by_id(
     db: AsyncSession,
     patient_id: UUID,
     status_osiguranja: str,
+    tenant_id: UUID | None = None,
 ) -> None:
     """Update patient's cached insurance status by patient UUID."""
     from app.models.patient import Patient
 
     patient = await db.get(Patient, patient_id)
-    if patient:
+    if patient and (tenant_id is None or patient.tenant_id == tenant_id):
         patient.cezih_insurance_status = status_osiguranja
         patient.cezih_insurance_checked_at = datetime.now(UTC)
         await db.flush()
@@ -598,6 +599,7 @@ async def insurance_check(
         db,
         patient_id,
         result.get("status_osiguranja", ""),
+        tenant_id=tenant_id,
     )
 
     await _write_audit(

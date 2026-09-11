@@ -370,7 +370,7 @@ async def send_erecept(
             detail="Interna greška: nedostaje veza s bazom podataka za CEZIH operaciju.",
         )
     patient = await db.get(Patient, patient_id)
-    if not patient:
+    if not patient or patient.tenant_id != tenant_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Pacijent nije pronađen.",
@@ -565,7 +565,7 @@ async def dispatch_replace_document(
                 }
             if not patient_data and record.patient_id:
                 patient = await db.get(Patient, record.patient_id)
-                if patient:
+                if patient and patient.tenant_id == tenant_id:
                     try:
                         id_sys, id_val = real_service.resolve_cezih_identifier(patient)
                         all_ids = real_service.resolve_all_cezih_identifiers(patient)
@@ -1164,7 +1164,7 @@ async def dispatch_cancel_document_canonical(
             record_id = record.id
             if record.patient_id:
                 patient = await db.get(Patient, record.patient_id)
-                if patient:
+                if patient and patient.tenant_id == tenant_id:
                     try:
                         id_sys, id_val = real_service.resolve_cezih_identifier(patient)
                         all_ids = real_service.resolve_all_cezih_identifiers(patient)

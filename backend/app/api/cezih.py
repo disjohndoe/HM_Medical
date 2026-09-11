@@ -490,6 +490,8 @@ async def get_patient_cezih_summary(
     )
 
     patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
     insurance = PatientCezihInsurance()
     if patient and patient.cezih_insurance_status:
         insurance = PatientCezihInsurance(
@@ -1321,6 +1323,8 @@ async def diag_doc_chains(
     _require_audit_params(db, current_user.id, current_user.tenant_id)
     await check_cezih_access(db, current_user.tenant_id)
     patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
     id_sys, id_val = real_service.resolve_cezih_identifier(patient)
     fhir = CezihFhirClient(_http_client(request), tenant_id=current_user.tenant_id)
 
