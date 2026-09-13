@@ -4,6 +4,10 @@ const relaunch = window.__TAURI__.process?.relaunch;
 
 function $(id) { return document.getElementById(id); }
 
+// Error set by a failed user action; alert() is a no-op in WebView2, so
+// errors must surface through the error boxes instead.
+let manualError = null;
+
 // --- View switching ---
 
 function showSetupView() {
@@ -34,9 +38,10 @@ function updateUI(state) {
 
     // Show error in setup view
     const errorBox = $("error-box");
-    if (state.last_error) {
+    const setupError = manualError || state.last_error;
+    if (setupError) {
       errorBox.style.display = "block";
-      errorBox.textContent = state.last_error;
+      errorBox.textContent = setupError;
     } else {
       errorBox.style.display = "none";
     }
@@ -108,9 +113,10 @@ function updateUI(state) {
 
   // Error (status view)
   const errorBox2 = $("error-box-2");
-  if (state.last_error && !state.ws_connected) {
+  const statusError = manualError || (state.last_error && !state.ws_connected ? state.last_error : null);
+  if (statusError) {
     errorBox2.style.display = "block";
-    errorBox2.textContent = state.last_error;
+    errorBox2.textContent = statusError;
   } else {
     errorBox2.style.display = "none";
   }
@@ -119,13 +125,15 @@ function updateUI(state) {
 // --- Config management ---
 
 async function resetConfig() {
+  manualError = null;
   try {
     await invoke("clear_config_cmd");
     // Force immediate UI refresh
     poll();
   } catch (e) {
     console.error("Failed to clear config:", e);
-    alert("Greška pri odspajanju: " + e);
+    manualError = "Greška pri odspajanju: " + e;
+    poll();
   }
 }
 
@@ -284,6 +292,10 @@ async function poll() {
     console.error("Failed to get state:", e);
   }
 }
+
+// --- Button bindings (CSP's script-src-attr blocks inline onclick attributes) ---
+$("restart-btn")?.addEventListener("click", restartNow);
+$("disconnect-btn")?.addEventListener("click", resetConfig);
 
 // Initial + poll every 2 seconds
 poll();

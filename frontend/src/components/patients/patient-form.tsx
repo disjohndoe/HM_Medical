@@ -172,8 +172,8 @@ export function PatientForm({ patient, onSubmit, isSubmitting }: PatientFormProp
       } else {
         router.push(`/pacijenti/${patient.id}`)
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
+    } catch {
+      // create/update patient hooks already surface an error toast
     }
   }
 

@@ -82,8 +82,8 @@ export default function CezihPage() {
       const pairRes = await createPairingToken.mutateAsync()
       window.location.href = pairRes.pairing_url
       setTimeout(() => setPairingFallback(true), 3000)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri povezivanju agenta")
+    } catch {
+      // generate-secret/pairing-token hooks already surface an error toast
     }
   }
 
@@ -94,49 +94,46 @@ export default function CezihPage() {
   const suppressAutoBind =
     suppressedHolder !== null && suppressedHolder === (cezihStatus?.card_holder ?? null)
 
-  // Guard against double-fire of auto-bind mutation
-  const bindingInFlight = useRef(false)
+  // Auto-bind attempts at most once per inserted card (keyed by holder).
+  // A boolean in-flight flag reset in onSuccess would re-open the window
+  // before refreshUser() lands, re-firing the mutation and double-toasting.
+  const attemptedBindHolderRef = useRef<string | null>(null)
 
   // Auto-bind card when detected and user has no binding
   useEffect(() => {
+    const holder = cezihStatus?.card_holder
     if (
       !user?.card_holder_name &&
       cezihStatus?.agent_connected &&
       cezihStatus?.card_inserted &&
-      cezihStatus?.card_holder &&
+      holder &&
       !selfBind.isPending &&
       !suppressAutoBind &&
-      !bindingInFlight.current
+      attemptedBindHolderRef.current !== holder
     ) {
-      bindingInFlight.current = true
+      attemptedBindHolderRef.current = holder
       selfBind.mutate(undefined, {
         onSuccess: () => {
-          bindingInFlight.current = false
           toast.success("Kartica automatski povezana s vašim računom")
           refreshUser()
         },
-        onError: (err) => {
-          bindingInFlight.current = false
-          setSuppressedHolder(cezihStatus?.card_holder ?? "")
-          toast.error(err instanceof Error ? err.message : "Automatsko povezivanje kartice nije uspjelo")
+        onError: () => {
+          setSuppressedHolder(holder ?? "")
         },
       })
     }
   }, [user?.card_holder_name, cezihStatus?.agent_connected, cezihStatus?.card_inserted, cezihStatus?.card_holder, selfBind, refreshUser, suppressAutoBind])
 
   const handleManualBind = () => {
-    bindingInFlight.current = true
+    if (selfBind.isPending) return
     setSuppressedHolder(null)
     selfBind.mutate(undefined, {
       onSuccess: () => {
-        bindingInFlight.current = false
         toast.success("Kartica povezana s vašim računom")
         refreshUser()
       },
-      onError: (err) => {
-        bindingInFlight.current = false
+      onError: () => {
         setSuppressedHolder(cezihStatus?.card_holder ?? "")
-        toast.error(err instanceof Error ? err.message : "Povezivanje kartice nije uspjelo")
       },
     })
   }
@@ -148,9 +145,8 @@ export default function CezihPage() {
         toast.success("Kartica odpojena")
         refreshUser()
       },
-      onError: (err) => {
+      onError: () => {
         setSuppressedHolder(null)
-        toast.error(err instanceof Error ? err.message : "Greška pri odpajanju kartice")
       },
     })
   }

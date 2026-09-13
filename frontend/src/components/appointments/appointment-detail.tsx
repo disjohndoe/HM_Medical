@@ -94,8 +94,8 @@ export function AppointmentDetail({ appointment, open, onOpenChange, onEdit, onU
       if (newStatus === "zavrsen") {
         setShowProcedurePrompt(true)
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri promjeni statusa")
+    } catch {
+      // useUpdateAppointment already surfaces an error toast
     }
   }
 
@@ -105,8 +105,8 @@ export function AppointmentDetail({ appointment, open, onOpenChange, onEdit, onU
       toast.success("Termin otkazan")
       onUpdated?.(updated)
       handleDialogChange(false)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri otkazivanju")
+    } catch {
+      // useUpdateAppointment already surfaces an error toast
     }
   }
 
@@ -142,8 +142,8 @@ export function AppointmentDetail({ appointment, open, onOpenChange, onEdit, onU
       }
       toast.success(`${validRows.length} postupak/a zabilježen/o`)
       handleDialogChange(false)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri spremanju postupaka")
+    } catch {
+      // useCreatePerformed already surfaces an error toast
     } finally {
       setSaving(false)
     }

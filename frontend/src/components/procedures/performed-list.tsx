@@ -144,8 +144,8 @@ export function PerformedList({ patientId }: PerformedListProps) {
       await createMutation.mutateAsync(payload)
       toast.success("Postupak zabilježen")
       setFormOpen(false)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
+    } catch {
+      // useCreatePerformed already surfaces an error toast
     }
   }
 

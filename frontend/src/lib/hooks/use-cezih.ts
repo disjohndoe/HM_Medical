@@ -227,7 +227,8 @@ export function useSendENalaz() {
       queryClient.invalidateQueries({ queryKey: ["cezih", "patient"], exact: false })
     },
     onError: (err, vars) => {
-      showCezihErrorToast(err)
+      // No toast here: call sites own the error toast (record-form inline send,
+      // send-nalaz-dialog summary) — toasting here would duplicate bubbles.
       setError(vars.record_id, err.message, cezihErrorParts(err).code, cezihErrorParts(err).diagnostics)
     },
   })
@@ -417,7 +418,7 @@ export function useRegisterForeigner() {
       qc.invalidateQueries({ queryKey: ["cezih", "activity"] })
       qc.invalidateQueries({ queryKey: ["cezih", "patients", "search"] })
     },
-    onError: (err) => showCezihErrorToast(err),
+    // No toast here: foreigner-registration owns the (409-aware) error toast
   })
 }
 

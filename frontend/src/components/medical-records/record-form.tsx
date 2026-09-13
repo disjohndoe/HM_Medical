@@ -506,10 +506,8 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
       }
       onOpenChange(false)
       dialogRef.current?.close()
-    } catch (err) {
-      if (!submitOverride) {
-        toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
-      }
+    } catch {
+      // Mutation hooks already surface an error toast for each failure path
     }
   }
 

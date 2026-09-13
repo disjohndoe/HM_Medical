@@ -117,8 +117,8 @@ export function BiljeskaForm({ open, onOpenChange, patientId, biljeska }: Biljes
       }
       onOpenChange(false)
       dialogRef.current?.close()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Greška pri spremanju")
+    } catch {
+      // bilješka mutation hooks already surface an error toast
     }
   }
 

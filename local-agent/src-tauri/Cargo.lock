@@ -1763,7 +1763,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hm-digital-agent"
-version = "0.13.2"
+version = "0.13.3"
 dependencies = [
  "base64 0.22.1",
  "curl",
@@ -2299,7 +2299,9 @@ version = "3.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
 dependencies = [
+ "byteorder",
  "log",
+ "windows-sys 0.60.2",
  "zeroize",
 ]
 
