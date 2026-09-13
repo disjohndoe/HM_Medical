@@ -7,6 +7,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import tenant_id_ctx, user_id_ctx
 from app.database import get_db
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
@@ -59,6 +60,9 @@ async def get_current_user(
     )
     if not has_active.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesija je istekla")
+
+    tenant_id_ctx.set(str(user.tenant_id))
+    user_id_ctx.set(str(user.id))
 
     return user
 
