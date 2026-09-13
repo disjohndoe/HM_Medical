@@ -93,3 +93,7 @@ backend/scripts/verify_podgajski_migration.py
 
 # Local scratch
 .tmp/
+
+# CEZIH FHIR IG spec packages (downloaded locally, too large/binary for git;
+# re-download from simplifier.net when needed)
+backend/app/services/cezih/simplifier_specs/
