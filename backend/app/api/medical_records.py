@@ -255,6 +255,25 @@ async def update_medical_record(
     return updated
 
 
+@router.delete("/medical-records/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_medical_record(
+    record_id: uuid.UUID,
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Local hard delete of an unsent finding. Nothing is sent to CEZIH."""
+    snapshot = await medical_record_service.delete_record(db, current_user.tenant_id, record_id)
+    await audit_service.write_audit(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="medical_record_delete",
+        resource_type="medical_record",
+        resource_id=record_id,
+        details=snapshot,
+    )
+
+
 @router.patch("/medical-records/{record_id}/attachments", response_model=list[DocumentRead])
 async def set_record_attachments(
     record_id: uuid.UUID,

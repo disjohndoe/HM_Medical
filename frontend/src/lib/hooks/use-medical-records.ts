@@ -85,3 +85,15 @@ export function useUpdateMedicalRecord() {
     onError: (err: Error) => { toast.error(err.message) },
   })
 }
+
+export function useDeleteMedicalRecord() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/medical-records/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["medical-records"] })
+      queryClient.invalidateQueries({ queryKey: ["cezih", "dashboard-stats"] })
+    },
+    onError: (err: Error) => { toast.error(err.message) },
+  })
+}

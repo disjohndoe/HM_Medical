@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Send, AlertTriangle, Info } from "lucide-react"
+import { Send, AlertTriangle, Info, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,12 +24,16 @@ import { useTableSort } from "@/lib/hooks/use-table-sort"
 import { PageHeader } from "@/components/shared/page-header"
 import { LoadingSpinner } from "@/components/shared/loading-spinner"
 import { TablePagination } from "@/components/shared/table-pagination"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { NalazCezihGlossary } from "@/components/cezih/nalaz-cezih-glossary"
 import { SendNalazDialog } from "@/components/cezih/send-nalaz-dialog"
-import { useCezihUnsentRecords } from "@/lib/hooks/use-medical-records"
+import { CezihStatusBadge } from "@/components/cezih/cezih-status-badge"
+import { useCezihUnsentRecords, useDeleteMedicalRecord } from "@/lib/hooks/use-medical-records"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import { formatDateHR } from "@/lib/utils"
+import { toast } from "sonner"
+import type { MedicalRecord } from "@/lib/types"
 
 const PAGE_SIZE = 20
 
@@ -45,6 +49,19 @@ export default function CezihNalaziPage() {
   )
 
   const [sendTarget, setSendTarget] = useState<{ patientId: string; hasCezihIdentifier: boolean; recordId: string } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<MedicalRecord | null>(null)
+  const deleteRecord = useDeleteMedicalRecord()
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    try {
+      await deleteRecord.mutateAsync(deleteTarget.id)
+      toast.success("Nalaz obrisan")
+      setDeleteTarget(null)
+    } catch {
+      // useDeleteMedicalRecord already surfaces an error toast
+    }
+  }
 
   const { sorted, sortKey, sortDir, toggleSort } = useTableSort(records, {
     defaultKey: "datum",
@@ -110,7 +127,8 @@ export default function CezihNalaziPage() {
                 <SortableTableHead columnKey="tip" label="Tip" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortableTableHead columnKey="dijagnoza" label="Dijagnoza" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden md:table-cell" />
                 <SortableTableHead columnKey="doktor" label="Doktor" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} className="hidden lg:table-cell" />
-                <TableHead className="w-32 text-right">Akcija</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-44 text-right">Akcija</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -145,23 +163,47 @@ export default function CezihNalaziPage() {
                       ? `${r.doktor_ime} ${r.doktor_prezime}`
                       : "—"}
                   </TableCell>
+                  <TableCell>
+                    {r.cezih_last_error_code ? (
+                      <CezihStatusBadge record={r} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Nije pokušano</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                      disabled={!r.patient_has_cezih_identifier}
-                      title={!r.patient_has_cezih_identifier ? "Pacijent nema CEZIH identifikator — potreban za CEZIH" : undefined}
-                      onClick={() =>
-                        setSendTarget({
-                          patientId: r.patient_id,
-                          hasCezihIdentifier: !!r.patient_has_cezih_identifier,
-                          recordId: r.id,
-                        })
-                      }
-                    >
-                      <Send className="mr-2 h-4 w-4" />
-                      Pošalji
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={!r.patient_has_cezih_identifier}
+                        title={
+                          !r.patient_has_cezih_identifier
+                            ? "Pacijent nema CEZIH identifikator (potreban za CEZIH)"
+                            : r.cezih_last_error_code
+                              ? "Pokušaj ponovno poslati na CEZIH"
+                              : undefined
+                        }
+                        onClick={() =>
+                          setSendTarget({
+                            patientId: r.patient_id,
+                            hasCezihIdentifier: !!r.patient_has_cezih_identifier,
+                            recordId: r.id,
+                          })
+                        }
+                      >
+                        <Send className="mr-2 h-4 w-4" />
+                        Pošalji
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive hover:text-destructive"
+                        title="Trajno obriši nalaz lokalno (ne šalje se ništa na CEZIH)"
+                        onClick={() => setDeleteTarget(r)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -188,6 +230,25 @@ export default function CezihNalaziPage() {
           onlyRecordId={sendTarget.recordId}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Brisanje nalaza"
+        description={
+          <>
+            <span className="block">
+              Spremate se obrisati nalaz: &quot;{deleteTarget ? tipLabelMap[deleteTarget.tip] || deleteTarget.tip : ""}&quot;
+            </span>
+            <span className="mt-1 block">Obrišite ovaj nalaz?</span>
+          </>
+        }
+        warning="Ova akcija se ne može poništiti!"
+        confirmLabel="Obriši"
+        variant="destructive"
+        onConfirm={confirmDelete}
+        loading={deleteRecord.isPending}
+      />
     </div>
   )
 }

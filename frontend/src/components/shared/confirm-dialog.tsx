@@ -1,5 +1,7 @@
 "use client"
 
+import type { ReactNode } from "react"
+
 import {
   Dialog,
   DialogContent,
@@ -14,7 +16,8 @@ interface ConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title?: string
-  description?: string
+  description?: ReactNode
+  warning?: string
   confirmLabel?: string
   cancelLabel?: string
   variant?: "default" | "destructive"
@@ -27,6 +30,7 @@ export function ConfirmDialog({
   onOpenChange,
   title = "Potvrda",
   description = "Jeste li sigurni?",
+  warning,
   confirmLabel = "Potvrdi",
   cancelLabel = "Odustani",
   variant = "default",
@@ -39,6 +43,9 @@ export function ConfirmDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
+          {warning && (
+            <p className="text-sm font-medium text-destructive">{warning}</p>
+          )}
         </DialogHeader>
         <DialogFooter>
           <Button

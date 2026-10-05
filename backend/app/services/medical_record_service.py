@@ -6,8 +6,11 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import RECORD_TIP_ALLOWED
+from app.models.document import Document
 from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
+from app.models.prescription import Prescription
+from app.models.procedure import PerformedProcedure
 from app.models.record_type import RecordType
 from app.models.user import User
 from app.schemas.medical_record import MedicalRecordCreate, MedicalRecordUpdate
@@ -227,3 +230,44 @@ async def update_record(
         )
 
     return await get_record(db, tenant_id, record_id)
+
+
+async def delete_record(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    record_id: uuid.UUID,
+) -> dict:
+    """Hard-delete an unsent medical record locally. No CEZIH calls.
+
+    Records already sent to CEZIH (including stornoed ones) are rejected:
+    the local row holds the CEZIH reference needed for storno/replace.
+    Linked attachments, draft prescriptions and performed procedures are
+    unlinked (kept), not deleted.
+    """
+    record = await db.get(MedicalRecord, record_id)
+    if not record or record.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medicinski zapis nije pronađen")
+
+    if record.cezih_sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Poslani e-Nalaz se ne može obrisati lokalno — koristite storno na CEZIH-u",
+        )
+
+    snapshot = {
+        "patient_id": str(record.patient_id),
+        "tip": record.tip,
+        "datum": str(record.datum),
+        "dijagnoza_mkb": record.dijagnoza_mkb,
+    }
+
+    for model in (Document, Prescription, PerformedProcedure):
+        linked = await db.execute(
+            select(model).where(model.medical_record_id == record_id, model.tenant_id == tenant_id)
+        )
+        for row in linked.scalars().all():
+            row.medical_record_id = None
+
+    await db.delete(record)
+    await db.flush()
+    return snapshot
