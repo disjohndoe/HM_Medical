@@ -22,7 +22,7 @@ import {
   useUpdateMedicalRecord,
 } from "@/lib/hooks/use-medical-records"
 import { useDocuments, useUploadDocument, useSetRecordAttachments } from "@/lib/hooks/use-documents"
-import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch } from "@/lib/hooks/use-cezih"
+import { useDrugSearch, useSendENalaz, useListVisits, useRetrieveCases, useDtsSearch, useCezihConnectionDisplay } from "@/lib/hooks/use-cezih"
 import { useResolveDtsProcedure, useCreatePerformed, useDeletePerformed, usePerformedProcedures } from "@/lib/hooks/use-procedures"
 import { useAppointments } from "@/lib/hooks/use-appointments"
 import { formatDateHR, formatDateTimeHR } from "@/lib/utils"
@@ -110,6 +110,13 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
   const [selectedCaseId, setSelectedCaseId] = useState("")
   const [cezihSending, setCezihSending] = useState(false)
   const sendENalaz = useSendENalaz()
+  // 5 s status poll (shared queryKey). Used to skip the inline send when the
+  // agent/VPN is known down, instead of hanging the form until the send times out.
+  const cezihConnection = useCezihConnectionDisplay()
+  const cezihKnownUnavailable =
+    cezihConnection.raw != null &&
+    (cezihConnection.raw.agent_connected !== true ||
+      (cezihConnection.raw.agent_connected === true && cezihConnection.raw.vpn_connected !== true))
   const { isCezihEligible } = useRecordTypeMaps()
   const watchedTip = watch("tip")
   const isEligibleType = isCezihEligible.has(watchedTip ?? "")
@@ -477,24 +484,45 @@ export function RecordForm({ open, onOpenChange, patientId, record, onSaved, sub
           })
         }
 
-        // Inline CEZIH send: save succeeded, now send if applicable
+        // Inline CEZIH send: save succeeded, now send if applicable.
+        // Skip the attempt when the status poll already shows the agent/VPN
+        // down — the record is durably saved and sending later from
+        // /cezih-nalazi is the recovery path.
         if (cezihAutoSendOnCreate && activeVisits.length > 0 && activeCases.length > 0 && created.id) {
-          setCezihSending(true)
-          try {
-            await sendENalaz.mutateAsync({
-              patient_id: patientId,
-              record_id: created.id,
-              encounter_id: selectedEncounterId,
-              case_id: selectedCaseId,
+          if (cezihKnownUnavailable) {
+            toast.warning("CEZIH nije dostupan. Zapis je sigurno spremljen.", {
+              description: "Poslat ćete ga kasnije sa stranice Slanje e-Nalaza.",
+              action: {
+                label: "Otvori neposlane",
+                onClick: () => (window.location.href = "/cezih-nalazi"),
+              },
+              duration: 10_000,
             })
-            toast.success("Zapis kreiran i poslan na CEZIH")
-          } catch (cezihErr) {
-            toast.error(
-              `Zapis spremljen, ali slanje na CEZIH nije uspjelo: ${cezihErr instanceof Error ? cezihErr.message : "Nepoznata greška"}`,
-              { duration: 8000 },
-            )
-          } finally {
-            setCezihSending(false)
+          } else {
+            setCezihSending(true)
+            try {
+              await sendENalaz.mutateAsync({
+                patient_id: patientId,
+                record_id: created.id,
+                encounter_id: selectedEncounterId,
+                case_id: selectedCaseId,
+              })
+              toast.success("Zapis kreiran i poslan na CEZIH")
+            } catch (cezihErr) {
+              toast.error(
+                `Zapis spremljen, ali slanje na CEZIH nije uspjelo: ${cezihErr instanceof Error ? cezihErr.message : "Nepoznata greška"}`,
+                {
+                  description: "Zapis je sigurno spremljen. Poslat ćete ga kasnije sa stranice Slanje e-Nalaza.",
+                  action: {
+                    label: "Otvori neposlane",
+                    onClick: () => (window.location.href = "/cezih-nalazi"),
+                  },
+                  duration: 10_000,
+                },
+              )
+            } finally {
+              setCezihSending(false)
+            }
           }
         } else if (!onSaved) {
           toast.success("Zapis kreiran")

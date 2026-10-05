@@ -25,7 +25,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { useMedicalRecords } from "@/lib/hooks/use-medical-records"
-import { useSendENalaz, useListVisits, useRetrieveCases } from "@/lib/hooks/use-cezih"
+import { useSendENalaz, useListVisits, useRetrieveCases, useCezihConnectionDisplay } from "@/lib/hooks/use-cezih"
+import { CezihApiError } from "@/lib/api-client"
 import { useRecordTypeMaps } from "@/lib/hooks/use-record-types"
 import {
   CEZIH_DOC_TYPE_BY_TIP,
@@ -47,11 +48,17 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
   const [progress, setProgress] = useState({ current: 0, total: 0 })
-  const [failedRecords, setFailedRecords] = useState<{ id: string; error: string }[]>([])
+  const [failedRecords, setFailedRecords] = useState<{ id: string; error: string; code?: string }[]>([])
   const [selectedEncounterId, setSelectedEncounterId] = useState("")
   const [selectedCaseId, setSelectedCaseId] = useState("")
 
   const { data } = useMedicalRecords(patientId)
+  // Warn (never block) when the 5 s status poll positively shows the agent or
+  // VPN down — sends would hang until timeout. Unknown (loading/error) stays silent.
+  const connection = useCezihConnectionDisplay()
+  const agentDown = connection.raw != null && connection.raw.agent_connected !== true
+  const vpnDown = connection.raw != null && connection.raw.agent_connected === true && connection.raw.vpn_connected !== true
+  const cezihUnavailable = agentDown || vpnDown
   const sendENalaz = useSendENalaz()
   const { tipLabelMap, tipColorMap, isCezihEligible } = useRecordTypeMaps()
   const { user, tenant } = useAuth()
@@ -150,7 +157,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
     setProgress({ current: 0, total: ids.length })
     setFailedRecords([])
     let successCount = 0
-    const failed: { id: string; error: string }[] = []
+    const failed: { id: string; error: string; code?: string }[] = []
 
     for (let i = 0; i < ids.length; i++) {
       setProgress({ current: i + 1, total: ids.length })
@@ -166,6 +173,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
         failed.push({
           id: ids[i],
           error: err instanceof Error ? err.message : "Nepoznata greška",
+          code: err instanceof CezihApiError ? err.cezih_error?.code : undefined,
         })
       }
     }
@@ -185,6 +193,11 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
     if (failed.length === 0) {
       setSelectedIds(new Set())
       onOpenChange(false)
+    } else {
+      // Keep only the failed records selected: succeeded ones already left
+      // eligibleRecords after the refetch, and re-sending them would create
+      // duplicate signed documents on CEZIH (no backend idempotency guard).
+      setSelectedIds(new Set(failed.map((f) => f.id)))
     }
     // Keep dialog open on partial failure so user can see which records failed
   }, [selectedIds, patientId, sendENalaz, onOpenChange, selectedEncounterId, selectedCaseId])
@@ -222,6 +235,17 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
         </DialogHeader>
 
         <div className="space-y-3 py-2">
+          {/* Proactive connectivity warning — the send would hang until timeout */}
+          {cezihUnavailable && (
+            <div className="rounded-lg border border-amber-500/50 bg-amber-50 p-3 space-y-1">
+              <p className="text-sm font-medium text-amber-900">CEZIH trenutno nije dostupan</p>
+              <p className="text-xs text-amber-800">
+                {agentDown ? "Agent nije povezan" : "VPN nije spojen"}. Slanje najvjerojatnije
+                neće uspjeti. Nalazi ostaju spremljeni i možete ih poslati kasnije.
+              </p>
+            </div>
+          )}
+
           {/* Visit and Case selection (required by CEZIH) */}
           {hasCezihIdentifier && eligibleRecords.length > 0 && (
             <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
@@ -367,6 +391,15 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
                   </p>
                 )
               })}
+              {failedRecords.some((f) =>
+                f.code === "CEZIH_CONNECTION_ERROR" || f.code === "CEZIH_TIMEOUT" || f.code === "CEZIH_AUTH_FAILED",
+              ) && (
+                <p className="pt-1 text-xs font-medium text-destructive">CEZIH je trenutno nedostupan.</p>
+              )}
+              <p className="pt-1 text-xs text-destructive/80">
+                Nalazi su sigurno spremljeni lokalno. Kada veza s CEZIH-om bude uspostavljena,
+                kliknite Pošalji ponovno.
+              </p>
             </div>
           )}
         </div>

@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
 import { TablePagination } from "@/components/shared/table-pagination"
 import { useTableSort } from "@/lib/hooks/use-table-sort"
@@ -43,21 +44,25 @@ const PAGE_SIZE = 30
 const isVanjskiNalaz = (r: { external?: boolean; is_ours?: boolean }) =>
   r.external === true && r.is_ours !== true
 
-type NalazStatusKey = "poslan" | "izmijenjen" | "storniran" | "neposlan"
+type NalazStatusKey = "poslan" | "izmijenjen" | "storniran" | "neposlan" | "greska"
 
 // Status = CEZIH document lifecycle only (ownership lives in the Izvor column).
 // Prefer the live FHIR status from ITI-67; fall back to locally-tracked cezih_*
 // fields when the doc isn't on CEZIH (or the live fetch was unavailable).
+// "greska" = unsent local record whose last send attempt failed (persisted
+// cezih_last_error_* columns); distinct from "neposlan" (never attempted).
 function resolveNalazStatus(item: {
   cezih_doc_status?: string | null
   cezih_storno?: boolean
   cezih_last_replaced_at?: string | null
   cezih_sent_at?: string | null
+  cezih_last_error_code?: string | null
 }): NalazStatusKey {
   const s = item.cezih_doc_status
   if (s === "entered-in-error" || item.cezih_storno) return "storniran"
   if (s === "superseded" || item.cezih_last_replaced_at) return "izmijenjen"
   if (s === "current" || item.cezih_sent_at) return "poslan"
+  if (item.cezih_last_error_code) return "greska"
   return "neposlan"
 }
 
@@ -66,6 +71,7 @@ const NALAZ_STATUS_META: Record<NalazStatusKey, { label: string; cls: string; ra
   izmijenjen: { label: "Izmijenjen", cls: "bg-blue-100 text-blue-800 border-blue-200", rank: 1 },
   storniran: { label: "Storniran", cls: "bg-red-100 text-red-800 border-red-200", rank: 2 },
   neposlan: { label: "Neposlan", cls: "bg-amber-100 text-amber-800 border-amber-200", rank: 3 },
+  greska: { label: "Greška pri slanju", cls: "bg-red-100 text-red-800 border-red-200", rank: 4 },
 }
 
 interface PatientCezihTabProps {
@@ -628,13 +634,36 @@ function ENalazStatusCell({
     cezih_sent_at: string | null
     cezih_storno: boolean
     cezih_last_replaced_at: string | null
+    cezih_last_error_code?: string | null
+    cezih_last_error_display?: string | null
   }
 }) {
   // Status = CEZIH document lifecycle only (Naš/Vanjski lives in the Izvor column).
-  const { label, cls } = NALAZ_STATUS_META[resolveNalazStatus(item)]
+  const status = resolveNalazStatus(item)
+  const { label, cls } = NALAZ_STATUS_META[status]
   return (
     <TableCell>
-      <Badge variant="outline" className={cls}>{label}</Badge>
+      {status === "greska" ? (
+        <Popover>
+          <PopoverTrigger aria-label={label}>
+            <Badge variant="outline" className={cls}>{label}</Badge>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 space-y-1">
+            <p className="text-sm font-medium text-destructive">Greška pri slanju na CEZIH</p>
+            <p className="text-sm">
+              {item.cezih_last_error_display || "Nepoznata greška"}
+            </p>
+            {item.cezih_last_error_code && (
+              <p className="text-xs text-muted-foreground">Šifra: {item.cezih_last_error_code}</p>
+            )}
+            <p className="pt-1 text-xs text-muted-foreground">
+              Nalaz je spremljen lokalno. Ponovno pošaljite kada je veza s CEZIH-om uspostavljena.
+            </p>
+          </PopoverContent>
+        </Popover>
+      ) : (
+        <Badge variant="outline" className={cls}>{label}</Badge>
+      )}
     </TableCell>
   )
 }
