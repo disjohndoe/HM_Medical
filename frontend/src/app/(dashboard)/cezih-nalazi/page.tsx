@@ -37,6 +37,13 @@ import type { MedicalRecord } from "@/lib/types"
 
 const PAGE_SIZE = 20
 
+function nalazName(record: MedicalRecord | null, tipLabelMap: Record<string, string>): string {
+  if (!record) return ""
+  const tip = tipLabelMap[record.tip] || record.tip
+  const patient = `${record.patient_ime ?? ""} ${record.patient_prezime ?? ""}`.trim()
+  return [tip, patient, formatDateHR(record.datum)].filter(Boolean).join(", ")
+}
+
 export default function CezihNalaziPage() {
   const { canPerformCezihOps } = usePermissions()
   const [page, setPage] = useState(0)
@@ -238,7 +245,7 @@ export default function CezihNalaziPage() {
         description={
           <>
             <span className="block">
-              Spremate se obrisati nalaz: &quot;{deleteTarget ? tipLabelMap[deleteTarget.tip] || deleteTarget.tip : ""}&quot;
+              Spremate se obrisati nalaz: &quot;{nalazName(deleteTarget, tipLabelMap)}&quot;
             </span>
             <span className="mt-1 block">Obrišite ovaj nalaz?</span>
           </>
