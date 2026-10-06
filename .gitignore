@@ -55,7 +55,8 @@ testni_pacijent.txt
 backend/test_signed.pdf
 *test*.*
 # ...except real test-suite sources (the blanket pattern above swallows new test files)
-!backend/tests/**
+!backend/tests/*.py
+!backend/tests/*/*.py
 
 # Screenshots/snapshots
 snapshot*.txt
