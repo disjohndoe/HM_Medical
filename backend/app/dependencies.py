@@ -22,8 +22,11 @@ async def get_current_user(
     bearer_token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    # Dual-source: try cookie first, then Authorization header (backward compat)
-    token = access_token_cookie or bearer_token
+    # Dual-source: an explicit Authorization header wins (API clients mean it
+    # literally — a lingering browser cookie must not silently override it and
+    # run the request as another user); fall back to the cookie for the
+    # browser flow, which never sends a header.
+    token = bearer_token or access_token_cookie
 
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Nije autentificiran")
