@@ -66,7 +66,10 @@ async def _build_document_bundle(
     coding = get_cezih_document_coding(record_data.get("tip", "nalaz"))
     patient_display = f"{patient_data.get('ime', '')} {patient_data.get('prezime', '')}".strip()
 
-    # Generate document OID via CEZIH identifier registry
+    # Generate document OID via CEZIH identifier registry. idempotent=True:
+    # minting draws fresh unique OIDs from a registry pool, so a retry after a
+    # lost response just abandons an unused OID - unlike the ITI-65 submission
+    # further down, which must never auto-retry (duplicate signed nalaz).
     oid_result = await fhir_client.post(
         "identifier-registry-services/api/v1/oid/generateOIDBatch",
         json_body={
@@ -76,6 +79,7 @@ async def _build_document_bundle(
             },
             "quantity": 1,
         },
+        idempotent=True,
     )
     logger.info("OID generation response: %s", oid_result)
     oids = oid_result.get("oid") or oid_result.get("oids") or []

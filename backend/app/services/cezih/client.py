@@ -297,6 +297,7 @@ class CezihFhirClient:
         accept: str | None = None,
         content_type: str | None = None,
         absolute_url: str | None = None,
+        idempotent: bool = False,
     ) -> dict | bytes:
         signing_method = await self._get_signing_method()
         url = absolute_url if absolute_url else self._full_url(path, signing_method)
@@ -305,9 +306,10 @@ class CezihFhirClient:
         max_attempts = settings.CEZIH_RETRY_ATTEMPTS
 
         # One attempt loop shared by both transports: every retry condition just
-        # sets `retry_delay` and lets the loop continue. POSTs never set it, so a
-        # document submission is never auto-retried - it could duplicate a signed
-        # nalaz (the manual resend flow with its 409 guard is the safe retry path).
+        # sets `retry_delay` and lets the loop continue. POSTs never set it unless
+        # the caller marks the call idempotent (e.g. OID minting) - a document
+        # submission is never auto-retried, it could duplicate a signed nalaz
+        # (the manual resend flow with its 409 guard is the safe retry path).
         for attempt in range(max_attempts):
             headers = {
                 "Accept": accept or _FHIR_CONTENT_TYPE,
@@ -334,10 +336,12 @@ class CezihFhirClient:
                         raise
                 except CezihConnectionError:
                     # No HTTP status came back, so the request may or may not have
-                    # reached CEZIH. Auto-retry only idempotent reads: re-POSTing a
-                    # document submission could duplicate a signed nalaz (the manual
-                    # resend flow with its 409 guard is the safe retry path).
-                    if method.upper() == "GET" and attempt < max_attempts - 1:
+                    # reached CEZIH. Auto-retry only idempotent calls - reads by
+                    # default, plus POSTs the caller explicitly opted in (OID
+                    # minting): re-POSTing anything else could duplicate a signed
+                    # nalaz (the manual resend flow with its 409 guard is the
+                    # safe retry path).
+                    if (method.upper() == "GET" or idempotent) and attempt < max_attempts - 1:
                         logger.warning(
                             "CEZIH connection error via agent on GET, retrying (attempt %d/%d)",
                             attempt + 1, max_attempts,
@@ -386,13 +390,15 @@ class CezihFhirClient:
                     logger.warning("CEZIH 401, invalidating token and retrying")
                     invalidate_token(oauth2_url)
                     retry_delay = 1.0 * (2**attempt)
-                # 5xx — retry idempotent reads with exponential backoff. POSTs are never
-                # auto-retried: a 5xx may mean the request was processed upstream, and
-                # re-submitting a signed document bundle would duplicate it (the manual
-                # resend flow with its 409 guard is the safe retry path).
+                # 5xx — retry idempotent calls with exponential backoff (reads by
+                # default, plus opted-in POSTs like OID minting). Other POSTs are
+                # never auto-retried: a 5xx may mean the request was processed
+                # upstream, and re-submitting a signed document bundle would
+                # duplicate it (the manual resend flow with its 409 guard is the
+                # safe retry path).
                 elif (
                     response.status_code >= 500
-                    and method.upper() == "GET"
+                    and (method.upper() == "GET" or idempotent)
                     and attempt < max_attempts - 1
                 ):
                     logger.warning("CEZIH %d, retrying (attempt %d/%d)", response.status_code, attempt + 1, max_attempts)
@@ -480,8 +486,8 @@ class CezihFhirClient:
             raise CezihError("Neočekivani binarni odgovor na paginacijski poziv.")
         return result
 
-    async def post(self, path: str, *, json_body: dict | None = None) -> dict:
-        result = await self.request("POST", path, json_body=json_body)
+    async def post(self, path: str, *, json_body: dict | None = None, idempotent: bool = False) -> dict:
+        result = await self.request("POST", path, json_body=json_body, idempotent=idempotent)
         return result  # type: ignore[return-value]
 
     async def process_message(self, service_path: str, bundle: dict) -> dict:

@@ -74,6 +74,9 @@ async def generate_oid(client, quantity: int = 1) -> dict:
     Uses the same generateOIDBatch call proven in send_enalaz (TC18).
     """
     fhir_client = CezihFhirClient(client)
+    # idempotent=True: minting draws fresh unique OIDs from a registry pool, so
+    # a retry after a lost response just abandons an unused OID (same rationale
+    # as the send_enalaz call site).
     response = await fhir_client.post(
         "identifier-registry-services/api/v1/oid/generateOIDBatch",
         json_body={
@@ -83,6 +86,7 @@ async def generate_oid(client, quantity: int = 1) -> dict:
             },
             "quantity": quantity,
         },
+        idempotent=True,
     )
     oids = response.get("oid") or response.get("oids") or []
     return {

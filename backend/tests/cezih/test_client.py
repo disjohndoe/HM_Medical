@@ -245,3 +245,111 @@ class TestRetrySemantics:
 
         assert result["resourceType"] == "Bundle"
         assert mock_http.request.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_agent_connection_error_on_idempotent_post_retried(
+        self, mock_settings, mock_token, monkeypatch
+    ):
+        self._setup_settings(mock_settings)
+
+        oid_body = {"oid": ["2.16.840.1.113883.2.66.99.1"]}
+
+        def handler(n):
+            if n == 1:
+                raise RuntimeError("agent websocket gone")
+            return {"status_code": 200, "body": json.dumps(oid_body), "headers": {}}
+
+        calls = self._proxy_agent(monkeypatch, handler)
+
+        client = CezihFhirClient(AsyncMock(), tenant_id=uuid.uuid4())
+        result = await client.post(
+            "identifier-registry-services/api/v1/oid/generateOIDBatch",
+            json_body={"oidType": {}, "quantity": 1},
+            idempotent=True,
+        )
+
+        assert result["oid"][0] == "2.16.840.1.113883.2.66.99.1"
+        assert len(calls) == 2, "idempotent POST (OID minting) must be retried on a connection error"
+
+    @pytest.mark.asyncio
+    async def test_direct_5xx_idempotent_post_retried(self, mock_settings, mock_token, monkeypatch):
+        self._setup_settings(mock_settings)
+        monkeypatch.setattr("app.services.cezih.client.asyncio.sleep", AsyncMock())
+
+        ok_response = MagicMock()
+        ok_response.status_code = 200
+        ok_response.json.return_value = {"oid": ["2.16.1"]}
+        ok_response.text = "{}"
+
+        # No tenant context -> direct path.
+        mock_http = AsyncMock()
+        mock_http.request = AsyncMock(side_effect=[_make_mock_client(500)[1], ok_response])
+
+        client = CezihFhirClient(mock_http)
+        result = await client.post(
+            "identifier-registry-services/api/v1/oid/generateOIDBatch",
+            json_body={"oidType": {}, "quantity": 1},
+            idempotent=True,
+        )
+
+        assert result["oid"] == ["2.16.1"]
+        assert mock_http.request.await_count == 2
+
+
+class TestOidMintRetryOptIn:
+    """generateOIDBatch minting must opt into idempotent retry: each call draws
+    fresh unique OIDs from a registry pool, so a retry after a lost response
+    just abandons an unused OID. The document POSTs around it must keep the
+    default (never auto-retried) — see TestRetrySemantics."""
+
+    @pytest.mark.asyncio
+    async def test_build_document_bundle_oid_post_is_idempotent(self, monkeypatch):
+        from app.services.cezih.fhir_api import documents as fhir_documents
+
+        monkeypatch.setattr(
+            fhir_documents,
+            "build_clinical_document_bundle",
+            lambda **kwargs: ({"resourceType": "Bundle"}, "urn:uuid:attester"),
+        )
+        monkeypatch.setattr(
+            fhir_documents,
+            "sign_document_bundle",
+            AsyncMock(return_value={"resourceType": "Bundle", "signature": {"data": "x"}}),
+        )
+        monkeypatch.setattr(
+            fhir_documents,
+            "build_iti65_transaction_bundle",
+            lambda entries, **kwargs: {"resourceType": "Bundle", "entry": []},
+        )
+
+        fhir_client = MagicMock()
+        fhir_client.post = AsyncMock(return_value={"oid": ["2.16.840.1.113883.2.66.99.1"]})
+
+        _, doc_oid = await fhir_documents._build_document_bundle(
+            fhir_client,
+            {
+                "ime": "Ime",
+                "prezime": "Prezime",
+                "identifier_system": "http://hr.example/mbo",
+                "identifier_value": "1234567",
+            },
+            {"tip": "nalaz"},
+            djelatnost_code="1",
+            djelatnost_display="Opća medicina",
+        )
+
+        assert doc_oid == "2.16.840.1.113883.2.66.99.1"
+        post_args, post_kwargs = fhir_client.post.call_args
+        assert "generateOIDBatch" in post_args[0]
+        assert post_kwargs.get("idempotent") is True
+
+    @pytest.mark.asyncio
+    async def test_generate_oid_registry_call_is_idempotent(self):
+        from app.services.cezih.fhir_api.registries import generate_oid
+
+        with patch("app.services.cezih.fhir_api.registries.CezihFhirClient") as mock_cls:
+            mock_cls.return_value.post = AsyncMock(return_value={"oid": ["2.16.1"]})
+            result = await generate_oid(MagicMock(), quantity=2)
+
+        assert result["generated_oid"] == "2.16.1"
+        assert mock_cls.return_value.post.call_args.kwargs.get("idempotent") is True
