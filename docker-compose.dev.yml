@@ -20,7 +20,12 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD:-postgres}@db:5432/medical_mvp
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env or shell environment}
-      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      # Rate limiting off by default in dev: the in-memory limiter keys on the
+      # docker-gateway IP (one key for the whole host) and its state survives
+      # across restarts of the test runner, which locks out the live-integration
+      # test suite (tests/test_cezih_tenant_isolation.py) and the developer's
+      # own manual logins. Set RATE_LIMIT_ENABLED=true to opt back in.
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-false}
     volumes:
       - ./backend:/app
 

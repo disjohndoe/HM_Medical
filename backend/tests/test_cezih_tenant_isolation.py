@@ -1,11 +1,14 @@
 """Integration tests for per-tenant CEZIH configuration and isolation.
 
-Tests against the LIVE backend running in Docker (localhost:8000).
+Tests against the LIVE dev backend (docker compose -f docker-compose.yml
+-f docker-compose.dev.yml up, backend on localhost:8000).
 Registers 3 separate clinics with unique identifiers, sets distinct
 sifra_ustanove/OID on each, and verifies CEZIH case management
 endpoints work per-tenant with full data isolation.
 
-Requires: docker compose up (backend + db running on ports 8000, 5433)
+The dev compose disables rate limiting by default; if this suite 429s, the
+backend predates that change — recreate the container (docker compose ...
+up -d --force-recreate backend) or start the stack with RATE_LIMIT_ENABLED=false.
 """
 import uuid
 
@@ -97,6 +100,15 @@ async def _register_clinic(client: httpx.AsyncClient, name: str, email: str) -> 
         resp = await client.post(
             f"{BASE_URL}/auth/login",
             json={"email": email, "password": "Test1234!"},
+        )
+    if resp.status_code == 429:
+        # The limiter is in-memory INSIDE the backend container and keyed on
+        # the docker-gateway IP (one bucket for the whole host), so it survives
+        # across test runs. Point at the fix instead of failing cryptically.
+        pytest.fail(
+            "Live backend rate limit hit (429). The dev compose disables rate "
+            "limiting by default - recreate the backend container or start the "
+            f"stack with RATE_LIMIT_ENABLED=false. Body: {resp.text}"
         )
     assert resp.status_code in (200, 201), f"Auth failed for {email}: {resp.text}"
     data = resp.json()
@@ -196,6 +208,18 @@ async def _ensure_clinics(client: httpx.AsyncClient) -> dict[str, dict]:
     return _CLINICS
 
 
+async def _skip_without_cezih_agent(client: httpx.AsyncClient, headers: dict) -> None:
+    """Skip tests that submit real documents/cases to CEZIH (agent + VPN +
+    signing) when the agent isn't connected — same graceful-degradation rule as
+    the live-backend skip. These tests exercise the real dispatch path; the
+    pure tenant-isolation checks run regardless."""
+    resp = await client.get(f"{BASE_URL}/settings/cezih-status", headers=headers)
+    if resp.status_code != 200:
+        pytest.skip(f"cezih-status unavailable ({resp.status_code}) — live CEZIH tests skipped")
+    if resp.json().get("agent_connected") is not True:
+        pytest.skip("CEZIH agent not connected — live CEZIH tests skipped")
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -267,6 +291,7 @@ async def test_create_case_per_tenant():
             pytest.skip("Backend not running at localhost:8000")
 
         c = await _ensure_clinics(client)
+        await _skip_without_cezih_agent(client, c["a"]["headers"])
 
         for key in ("a", "b", "c"):
             resp = await client.post(
@@ -284,7 +309,6 @@ async def test_create_case_per_tenant():
             assert resp.status_code == 200, f"create_case failed for clinic {key}: {resp.text}"
             data = resp.json()
             assert data["success"] is True
-            assert data["mock"] is True
             assert "cezih_case_id" in data
 
 
@@ -296,6 +320,7 @@ async def test_update_case_status_per_tenant():
             pytest.skip("Backend not running at localhost:8000")
 
         c = await _ensure_clinics(client)
+        await _skip_without_cezih_agent(client, c["a"]["headers"])
 
         for key in ("a", "b"):
             mbo = c[key]["mbo"]
@@ -330,6 +355,7 @@ async def test_update_case_data_per_tenant():
             pytest.skip("Backend not running at localhost:8000")
 
         c = await _ensure_clinics(client)
+        await _skip_without_cezih_agent(client, c["a"]["headers"])
 
         for key in ("a", "c"):
             mbo = c[key]["mbo"]
@@ -369,6 +395,7 @@ async def test_enalaz_send_and_isolation():
             pytest.skip("Backend not running at localhost:8000")
 
         c = await _ensure_clinics(client)
+        await _skip_without_cezih_agent(client, c["a"]["headers"])
 
         # Create and send a record from Clinic A
         record_id = await _create_medical_record(client, c["a"]["headers"], c["a"]["patient_id"])
@@ -426,6 +453,7 @@ async def test_dashboard_stats_isolation():
             pytest.skip("Backend not running at localhost:8000")
 
         c = await _ensure_clinics(client)
+        await _skip_without_cezih_agent(client, c["a"]["headers"])
 
         # Create and send a record from Clinic A
         record_id = await _create_medical_record(client, c["a"]["headers"], c["a"]["patient_id"])
