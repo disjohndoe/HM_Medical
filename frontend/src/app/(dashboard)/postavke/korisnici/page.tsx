@@ -97,9 +97,9 @@ export default function KorisniciPage() {
   }
 
   const handleDeactivate = (user: User) => {
-    if (!confirm(`Deaktivirati korisnika ${user.ime} ${user.prezime}?`)) return
+    if (!confirm(`Obrisati korisnika ${user.ime} ${user.prezime}?`)) return
     deactivateUser.mutate(user.id, {
-      onSuccess: () => toast.success("Korisnik deaktiviran"),
+      onSuccess: () => toast.success("Korisnik obrisan"),
     })
   }
 

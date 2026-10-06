@@ -8,6 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.plan_enforcement import check_user_limit
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
+from app.models.appointment import Appointment
+from app.models.biljeska import Biljeska
+from app.models.document import Document
+from app.models.medical_record import MedicalRecord
+from app.models.predracun import Predracun
+from app.models.prescription import Prescription
+from app.models.procedure import PerformedProcedure
 from app.models.user import User
 from app.schemas.user import CardBindingRequest, UserCreate, UserRead, UserUpdate
 from app.services.agent_connection_manager import agent_manager
@@ -104,6 +111,27 @@ async def _flush_or_conflict(db: AsyncSession) -> None:
         )
 
 
+# Patient-history columns with NOT NULL FKs into users. A user anchored by any
+# of them cannot be row-deleted — the clinical rows must keep their author.
+_CLINICAL_REFERENCES = (
+    Appointment.doktor_id,
+    MedicalRecord.doktor_id,
+    Biljeska.doktor_id,
+    Prescription.doktor_id,
+    PerformedProcedure.doktor_id,
+    Document.uploaded_by,
+    Predracun.created_by,
+)
+
+
+async def _has_clinical_references(db: AsyncSession, user_id: uuid.UUID) -> bool:
+    for column in _CLINICAL_REFERENCES:
+        found = await db.execute(select(1).where(column == user_id).limit(1))
+        if found.first():
+            return True
+    return False
+
+
 @router.get("/doctors", response_model=PaginatedResponse[UserRead])
 async def list_doctors(
     skip: int = Query(0, ge=0),
@@ -134,7 +162,9 @@ async def list_users(
     current_user: User = Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),
 ):
-    base = select(User).where(User.tenant_id == current_user.tenant_id)
+    # Deleted users are gone from the admin view: hard-deleted rows no longer
+    # exist, tombstones exist only to anchor clinical FKs.
+    base = select(User).where(User.tenant_id == current_user.tenant_id, User.is_active.is_(True))
     if role:
         base = base.where(User.role == role)
     count_q = select(func.count()).select_from(base.subquery())
@@ -270,12 +300,25 @@ async def delete_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Korisnik nije pronadjen")
 
     if user.id == current_user.id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ne mozete deaktivirati vlastiti racun")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ne mozete obrisati vlastiti racun")
 
+    if not await _has_clinical_references(db, user.id):
+        # Hard delete: nothing anchors the row, so remove it entirely (refresh
+        # tokens cascade). Email, HZJZ and MBO all become immediately reusable.
+        await db.delete(user)
+        return
+
+    # The user authored clinical rows that must keep their author (NOT NULL
+    # FKs). Keep the row as an inactive tombstone but release every reusable
+    # identifier so a replacement user can be onboarded — previously the HZJZ
+    # sifra stayed locked on deleted users and blocked reassignment.
     user.is_active = False
+    user.practitioner_id = None
+    user.mbo_lijecnika = None
     user.card_holder_name = None
     user.card_certificate_oib = None
     user.card_certificate_serial = None
+    user.email = f"deleted+{user.id}@deleted.invalid"
     await db.flush()
 
 
