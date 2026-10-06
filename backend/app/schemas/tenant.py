@@ -58,6 +58,10 @@ class TenantUpdate(BaseModel):
     zupanija: str | None = None
     web: str | None = None
     sifra_ustanove: str | None = None
+    # CeZIH document OID. Without this field the PATCH silently dropped it —
+    # callers (e.g. the tenant-isolation suite) set it and never saw an error,
+    # while tenant.oid stayed null and CeZIH sends later failed config checks.
+    oid: str | None = None
     djelatnost_code: str | None = None
     djelatnost_display: str | None = None
     has_hzzo_contract: bool | None = None
