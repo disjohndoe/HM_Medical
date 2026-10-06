@@ -23,7 +23,7 @@ from app.services.cezih.builders.common import (
     _now_iso,
 )
 from app.services.cezih.client import CezihFhirClient
-from app.services.cezih.exceptions import CezihError
+from app.services.cezih.exceptions import CezihError, CezihFhirError
 from app.services.cezih.fhir_api.identifiers import _require_identifier_system, _require_identifier_value
 from app.services.cezih.signing import sign_document_bundle
 
@@ -534,6 +534,47 @@ def _extract_ref_id_from_response(response: dict) -> str:
     return ""
 
 
+def _require_reference_id(response: dict, action: str) -> str:
+    """Extract the ITI-65 DocumentReference id or fail loudly.
+
+    A 2xx response without a parsable reference id means the document may
+    already be registered on CEZIH - fabricating an id would fake success and
+    break later storno/replace, while letting the caller resend blind would
+    duplicate the document. Shared by send/replace/amend so the
+    ``CEZIH_MISSING_REFERENCE_ID`` outcome shape can't drift between them.
+
+    ``action`` names the operation in the Croatian message (e.g. "slanje",
+    "zamjena", "izmjena").
+    """
+    ref_id = _extract_ref_id_from_response(response)
+    if ref_id:
+        return ref_id
+    raise CezihFhirError(
+        f"CEZIH je odgovorio bez greške, ali u odgovoru nema referentni ID "
+        f"dokumenta ({action}). Provjerite je li dokument zaprimljen na "
+        "CEZIH-u prije ponovnog slanja - ponovno slanje može stvoriti duplikat.",
+        operation_outcome={
+            "issue": [
+                {
+                    "severity": "error",
+                    "details": {
+                        "coding": [
+                            {
+                                "code": "CEZIH_MISSING_REFERENCE_ID",
+                                "display": "Nedostaje referentni ID dokumenta",
+                            }
+                        ]
+                    },
+                    "diagnostics": (
+                        "ITI-65 odgovor ne sadrži DocumentReference u "
+                        "entry[].response.location"
+                    ),
+                }
+            ]
+        },
+    )
+
+
 async def send_enalaz(
     client: httpx.AsyncClient,
     patient_data: dict,
@@ -579,9 +620,7 @@ async def send_enalaz(
 
     logger.info("ITI-65 response: %s", json.dumps(response, ensure_ascii=False, default=str)[:3000])
 
-    ref_id = _extract_ref_id_from_response(response)
-    if not ref_id:
-        ref_id = f"FHIR-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    ref_id = _require_reference_id(response, action="slanje")
     logger.info("Extracted document reference ID: %s", ref_id)
 
     return {
@@ -926,9 +965,10 @@ async def replace_document(
         json_body=bundle_dict,
     )
 
-    ref_id = _extract_ref_id_from_response(response)
-    if not ref_id:
-        ref_id = f"FHIR-R-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    # No fabricated fallback: a stored "FHIR-R-…" id would silently poison every
+    # later replace/storno of this document. Fail loudly so the caller can
+    # verify on CEZIH (live-head resolution makes a retry recoverable).
+    ref_id = _require_reference_id(response, action="zamjena")
 
     return {
         "success": True,
@@ -1038,9 +1078,10 @@ async def amend_document(
         json_body=bundle_dict,
     )
 
-    ref_id = _extract_ref_id_from_response(response)
-    if not ref_id:
-        ref_id = f"FHIR-A-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    # No fabricated fallback - same rule as send/replace. Note the caller then
+    # never cancels the old version, so the new doc (if CEZIH accepted it) needs
+    # manual verification; the error message says exactly that.
+    ref_id = _require_reference_id(response, action="izmjena")
 
     return {
         "success": True,

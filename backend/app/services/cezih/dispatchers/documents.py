@@ -8,8 +8,11 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select as sa_select
+from sqlalchemy import select as sa_select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
 
 from app.constants import CEZIH_ELIGIBLE_TYPES, get_cezih_document_coding
 from app.services.cezih import service as real_service
@@ -19,9 +22,15 @@ from app.services.cezih.dispatchers.common import (
     _require_audit_params,
     _write_audit,
     assert_case_registered_on_cezih,
+    assert_visit_registered_on_cezih,
 )
 from app.services.cezih.error_persistence import clear_cezih_error, record_cezih_error
-from app.services.cezih.exceptions import CezihError, CezihFhirError, CezihSigningError
+from app.services.cezih.exceptions import (
+    CezihError,
+    CezihFhirError,
+    CezihLocalPersistError,
+    CezihSigningError,
+)
 from app.services.cezih.validation import validate_doc_type_djelatnost
 
 logger = logging.getLogger(__name__)
@@ -89,18 +98,35 @@ async def _load_attachments_for_record(
     return payload
 
 
-async def _get_medical_record(db: AsyncSession, tenant_id: UUID, patient_id: UUID, record_id: UUID):
+async def _get_medical_record(
+    db: AsyncSession,
+    tenant_id: UUID,
+    patient_id: UUID,
+    record_id: UUID,
+    *,
+    for_update: bool = False,
+):
     """Fetch medical record by ID with tenant/patient validation."""
     from app.models.medical_record import MedicalRecord
 
-    result = await db.execute(
-        sa_select(MedicalRecord).where(
-            MedicalRecord.id == record_id,
-            MedicalRecord.tenant_id == tenant_id,
-            MedicalRecord.patient_id == patient_id,
-        )
+    stmt = sa_select(MedicalRecord).where(
+        MedicalRecord.id == record_id,
+        MedicalRecord.tenant_id == tenant_id,
+        MedicalRecord.patient_id == patient_id,
     )
+    if for_update:
+        stmt = stmt.with_for_update()
+    result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+def _is_lock_not_available(exc: DBAPIError) -> bool:
+    """True when a DBAPI error is Postgres' 55P03 (lock timeout / NOWAIT)."""
+    sqlstate = getattr(exc.orig, "sqlstate", None)
+    if sqlstate == "55P03":
+        return True
+    message = str(exc.orig).lower()
+    return "lock timeout" in message or "could not obtain lock" in message
 
 
 async def _get_procedures_for_record(
@@ -194,6 +220,88 @@ async def _get_medical_record_by_id(db: AsyncSession | None, tenant_id: UUID | N
     return result.scalar_one_or_none()
 
 
+async def _load_patient_data(db: AsyncSession, tenant_id: UUID, patient_id: UUID) -> dict:
+    """Fetch the patient, verify tenant scope and resolve CEZIH identifiers into
+    the patient_data payload shared by every document dispatcher."""
+    from app.models.patient import Patient
+
+    patient = await db.get(Patient, patient_id)
+    if not patient or patient.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
+    try:
+        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
+        all_ids = real_service.resolve_all_cezih_identifiers(patient)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+    return {
+        "mbo": id_val,
+        "identifier_system": id_sys,
+        "identifier_value": id_val,
+        "identifiers": all_ids,
+        "ime": patient.ime,
+        "prezime": patient.prezime,
+    }
+
+
+# The five MedicalRecord content fields every CEZIH document bundle carries.
+_RECORD_CONTENT_FIELDS = ("tip", "dijagnoza_mkb", "dijagnoza_tekst", "sadrzaj", "preporucena_terapija")
+
+
+def _record_data_payload(record, edits: dict | None = None) -> dict:
+    """Build the record_data payload for document dispatchers: the five content
+    fields plus created_at. When `edits` is given (replace/amend flows),
+    non-None edit values override the record's current state so a partial edit
+    still produces a complete FHIR bundle."""
+    data = {field: getattr(record, field) for field in _RECORD_CONTENT_FIELDS}
+    if edits:
+        for field in _RECORD_CONTENT_FIELDS:
+            val = edits.get(field)
+            if val is not None:
+                data[field] = val
+    data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
+    return data
+
+
+async def _write_send_failed_audit(
+    tenant_id: UUID,
+    user_id: UUID,
+    patient_id: UUID,
+    record_id: UUID,
+    error: CezihError,
+) -> None:
+    """Audit failed e-Nalaz send attempts in their own transaction - the
+    dispatcher's main session rolls back once the error propagates, so an audit
+    row written there would be lost (same reasoning as record_cezih_error)."""
+    payload = error.to_operation_outcome()
+    try:
+        from app.database import async_session
+        from app.services.audit_service import write_audit
+
+        async with async_session() as session:
+            await write_audit(
+                session,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="e_nalaz_send_failed",
+                resource_type="cezih",
+                resource_id=patient_id,
+                details={
+                    "record_id": str(record_id),
+                    "error_code": payload.get("code") or "CEZIH_ERROR",
+                    "error_display": payload.get("display") or "",
+                    "diagnostics": (payload.get("diagnostics") or "")[:500],
+                },
+            )
+            await session.commit()
+    except Exception:
+        logger.warning(
+            "Failed to write e_nalaz_send_failed audit for record %s (tenant=%s)",
+            record_id,
+            tenant_id,
+            exc_info=True,
+        )
+
+
 async def send_enalaz(
     db: AsyncSession,
     tenant_id: UUID,
@@ -209,15 +317,63 @@ async def send_enalaz(
     case_id: str = "",
     practitioner_name: str = "",
     org_name: str = "",
+    force_resend: bool = False,
 ) -> dict:
     """Send an e-Nalaz (finding) to CEZIH via ITI-65."""
-    from app.models.patient import Patient
-
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
-    record = await _get_medical_record(db, tenant_id, patient_id, record_id)
+    # Row lock for the whole send: signing + ITI-65 can run for tens of seconds,
+    # and a concurrent duplicate POST would otherwise both pass the cezih_sent
+    # guard below and create two signed documents on CEZIH (each attempt gets a
+    # fresh OID, so CEZIH cannot dedupe). The blocked request waits for this
+    # transaction to commit, then hits the 409 — but only up to the bounded
+    # lock_timeout below, so a losing double-click doesn't park a pooled DB
+    # connection for the whole signing round-trip.
+    try:
+        await db.execute(
+            text(f"SET LOCAL lock_timeout = '{int(settings.CEZIH_SEND_LOCK_TIMEOUT)}s'")
+        )
+        record = await _get_medical_record(db, tenant_id, patient_id, record_id, for_update=True)
+    except DBAPIError as exc:
+        if not _is_lock_not_available(exc):
+            raise
+        # Another send of this record is mid-flight and holds the row lock.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Slanje e-Nalaza je već u tijeku. Pričekajte da završi pa osvježite stranicu.",
+        ) from exc
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medicinski zapis nije pronađen")
+
+    if record.cezih_sent:
+        detail = "e-Nalaz je već poslan na CEZIH."
+        if record.cezih_reference_id:
+            detail = f"e-Nalaz je već poslan na CEZIH (referenca: {record.cezih_reference_id})."
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    if record.cezih_storno:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Stornirani e-Nalaz se ne može ponovno poslati.",
+        )
+    if (
+        record.cezih_last_error_code == CezihLocalPersistError.default_code
+        and not force_resend
+    ):
+        # A previous attempt reached CEZIH but we could not record it locally, so
+        # the row still reads unsent while a signed document may exist there.
+        # Resending blind would duplicate it - require explicit verification
+        # first (force_resend) instead.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Prethodno slanje je možda uspjelo na CEZIH-u, ali lokalno "
+                "spremanje nije uspjelo. Provjerite nalaz na CEZIH-u prije "
+                "ponovnog slanja — ponovno slanje može stvoriti duplikat. Ako "
+                "ste provjerili da nalaz nije zaprimljen, pošaljite ga ponovno "
+                "uz opciju prisilnog slanja."
+            ),
+        )
 
     if record.tip not in CEZIH_ELIGIBLE_TYPES:
         raise HTTPException(
@@ -226,31 +382,8 @@ async def send_enalaz(
             f"Dozvoljeni tipovi: {', '.join(sorted(CEZIH_ELIGIBLE_TYPES))}",
         )
 
-    patient = await db.get(Patient, patient_id)
-    if not patient or patient.tenant_id != tenant_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
-
-    try:
-        identifier_system, identifier_value = real_service.resolve_cezih_identifier(patient)
-        all_identifiers = real_service.resolve_all_cezih_identifiers(patient)
-    except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
-
-    patient_data = {
-        "mbo": identifier_value,
-        "identifier_system": identifier_system,
-        "identifier_value": identifier_value,
-        "identifiers": all_identifiers,
-        "ime": patient.ime,
-        "prezime": patient.prezime,
-    }
-    record_data = {
-        "tip": record.tip,
-        "dijagnoza_mkb": record.dijagnoza_mkb,
-        "dijagnoza_tekst": record.dijagnoza_tekst,
-        "sadrzaj": record.sadrzaj,
-        "preporucena_terapija": record.preporucena_terapija,
-    }
+    patient_data = await _load_patient_data(db, tenant_id, patient_id)
+    record_data = _record_data_payload(record)
 
     if not practitioner_id:
         raise HTTPException(
@@ -268,6 +401,14 @@ async def send_enalaz(
         djelatnost_code,
     )
 
+    # Same fail-fast rule as the slučaj check below: a visit id CEZIH can't
+    # resolve only fails after the signing round-trip. Validates only the
+    # caller-provided id (empty means "no link").
+    try:
+        encounter_id = await assert_visit_registered_on_cezih(db, tenant_id, patient_id, encounter_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
+
     # Never thread a case id that CEZIH has no registered slučaj for (seed/
     # local-only cases) into the nalaz↔slučaj link - it produces "Posjeta nije
     # povezana sa Slučajem". require_active also rejects a closed (resolved/
@@ -279,8 +420,6 @@ async def send_enalaz(
         )
     except CezihError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
-
-    record_data["created_at"] = record.created_at.isoformat() if record.created_at else _now_iso()
 
     # Fetch performed procedures with DTS codes for the postupci section
     try:
@@ -313,15 +452,24 @@ async def send_enalaz(
         )
     except CezihError as e:
         logger.error("CEZIH e-Nalaz send failed: %s", e.message)
+        # Roll back first: this session holds the FOR UPDATE row lock from the
+        # initial fetch, and record_cezih_error's own session would otherwise
+        # block on that lock forever (self-deadlock - same trap as TC19).
+        # Nothing has been written in this transaction yet, so this is lossless.
+        await db.rollback()
         await record_cezih_error("medical_record", record_id, tenant_id, e)
+        await _write_send_failed_audit(tenant_id, user_id, patient_id, record_id, e)
         _raise_cezih_error(e)
 
-    await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
+    # Captured before clear_cezih_error wipes it: a stored error means this
+    # send is a retry of a previously failed attempt.
+    was_retry = record.cezih_last_error_code is not None
     ref = result["reference_id"]
     doc_oid = result.get("document_oid", "")
-    now = datetime.now(UTC)
 
-    if record:
+    try:
+        await clear_cezih_error("medical_record", record_id, tenant_id, session=db)
+        now = datetime.now(UTC)
         record.cezih_sent = True
         record.cezih_sent_at = now
         record.cezih_reference_id = ref
@@ -337,16 +485,44 @@ async def send_enalaz(
             record.cezih_signed_at = datetime.fromisoformat(result["signed_at"])
         await db.flush()
 
-    details: dict = {
-        "patient_id": str(patient_id),
-        "record_id": str(record_id),
-        "reference_id": ref,
-    }
+        details: dict = {
+            "patient_id": str(patient_id),
+            "record_id": str(record_id),
+            "reference_id": ref,
+            "retry": was_retry,
+        }
+        if force_resend:
+            details["forced_retry"] = True
 
-    if user_id:
-        await _write_audit(db, tenant_id, user_id, action="e_nalaz_send", resource_id=patient_id, details=details)
+        if user_id:
+            await _write_audit(db, tenant_id, user_id, action="e_nalaz_send", resource_id=patient_id, details=details)
 
-    await db.commit()
+        await db.commit()
+    except Exception as exc:
+        # CEZIH has accepted the signed document but we failed to record it
+        # locally. The record still reads as unsent, so a resend would create a
+        # duplicate on CEZIH - log enough for manual reconciliation and mark the
+        # row so the UI warns instead of inviting a blind retry.
+        logger.critical(
+            "CEZIH e-Nalaz SENT but local persist FAILED - manual reconciliation needed. "
+            "record_id=%s reference_id=%s document_oid=%s tenant_id=%s",
+            record_id, ref, doc_oid, tenant_id,
+            exc_info=True,
+        )
+        persist_error = CezihLocalPersistError(
+            "Dokument je poslan na CEZIH, ali lokalno spremanje nije uspjelo. "
+            "Provjerite nalaz na CEZIH-u prije ponovnog slanja - ponovno slanje "
+            "može stvoriti duplikat."
+        )
+        # Roll back first: this session still holds the FOR UPDATE row lock from
+        # the failed flush, and record_cezih_error's own session would otherwise
+        # self-deadlock waiting on it (same trap as TC19).
+        await db.rollback()
+        await record_cezih_error("medical_record", record_id, tenant_id, persist_error)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"message": persist_error.message, "cezih_error": persist_error.to_operation_outcome()},
+        ) from exc
     return result
 
 
@@ -532,10 +708,9 @@ async def dispatch_replace_document(
     org_name: str = "",
 ) -> dict:
     """Replace a document on CEZIH (ITI-65 replace, used for cancel/storno)."""
-    from app.models.patient import Patient
-
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
+    record = None
     # Load full record and patient data from DB (same pattern as send_enalaz)
     if not record_id and db and tenant_id and not (patient_data and record_data):
         from app.models.medical_record import MedicalRecord
@@ -555,30 +730,9 @@ async def dispatch_replace_document(
             if not practitioner_id and record.doktor_id:
                 practitioner_id = str(record.doktor_id)
             if not record_data:
-                record_data = {
-                    "tip": record.tip,
-                    "dijagnoza_mkb": record.dijagnoza_mkb,
-                    "dijagnoza_tekst": record.dijagnoza_tekst,
-                    "sadrzaj": record.sadrzaj,
-                    "preporucena_terapija": record.preporucena_terapija,
-                    "created_at": record.created_at.isoformat() if record.created_at else _now_iso(),
-                }
+                record_data = _record_data_payload(record)
             if not patient_data and record.patient_id:
-                patient = await db.get(Patient, record.patient_id)
-                if patient and patient.tenant_id == tenant_id:
-                    try:
-                        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
-                        all_ids = real_service.resolve_all_cezih_identifiers(patient)
-                    except CezihError as e:
-                        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
-                    patient_data = {
-                        "mbo": id_val,
-                        "identifier_system": id_sys,
-                        "identifier_value": id_val,
-                        "identifiers": all_ids,
-                        "ime": patient.ime,
-                        "prezime": patient.prezime,
-                    }
+                patient_data = await _load_patient_data(db, tenant_id, record.patient_id)
             if not encounter_id and record.cezih_encounter_id:
                 encounter_id = record.cezih_encounter_id
             if not case_id and record.cezih_case_id:
@@ -625,6 +779,10 @@ async def dispatch_replace_document(
             attachments=attachments,
         )
     except CezihError as e:
+        # Roll back before persisting the error in its own session: nothing has
+        # been written here yet, and if this path ever gains a FOR UPDATE lock
+        # the error write would self-deadlock on it (same trap as TC19).
+        await db.rollback()
         await record_cezih_error("medical_record", record_id, tenant_id, e)
         _raise_cezih_error(e)
 
@@ -675,8 +833,6 @@ async def dispatch_replace_document_with_edit(
     medical_record + swaps cezih_reference_id/oid. On failure the record is
     untouched so local DB does not diverge from CEZIH — exactly the bug the
     old PATCH-then-PUT flow was causing."""
-    from app.models.patient import Patient
-
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     record = await _get_medical_record(db, tenant_id, patient_id, record_id)
@@ -689,47 +845,19 @@ async def dispatch_replace_document_with_edit(
             detail="Referenca e-Nalaza ne odgovara trenutnoj verziji zapisa. Osvježite prikaz i pokušajte ponovno.",
         )
 
-    patient = await db.get(Patient, patient_id)
-    if not patient or patient.tenant_id != tenant_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
-    try:
-        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
-        all_ids = real_service.resolve_all_cezih_identifiers(patient)
-    except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
-
-    patient_data = {
-        "mbo": id_val,
-        "identifier_system": id_sys,
-        "identifier_value": id_val,
-        "identifiers": all_ids,
-        "ime": patient.ime,
-        "prezime": patient.prezime,
-    }
-
+    patient_data = await _load_patient_data(db, tenant_id, patient_id)
     # Merge proposed edits over current record state. Only non-None keys
     # override — so a partial edit still produces a complete FHIR bundle.
-    def _pick(key: str, fallback):
-        val = edits.get(key)
-        return val if val is not None else fallback
-
-    new_tip = _pick("tip", record.tip)
-    new_dijagnoza_mkb = _pick("dijagnoza_mkb", record.dijagnoza_mkb)
-    new_dijagnoza_tekst = _pick("dijagnoza_tekst", record.dijagnoza_tekst)
-    new_sadrzaj = _pick("sadrzaj", record.sadrzaj)
-    new_preporucena = _pick("preporucena_terapija", record.preporucena_terapija)
-
-    record_data = {
-        "tip": new_tip,
-        "dijagnoza_mkb": new_dijagnoza_mkb,
-        "dijagnoza_tekst": new_dijagnoza_tekst,
-        "sadrzaj": new_sadrzaj,
-        "preporucena_terapija": new_preporucena,
-        "created_at": record.created_at.isoformat() if record.created_at else _now_iso(),
-    }
+    record_data = _record_data_payload(record, edits)
 
     if not practitioner_id and record.doktor_id:
         practitioner_id = str(record.doktor_id)
+    # Validate a caller-provided NEW visit link before falling back to the one
+    # already validated at send time.
+    try:
+        encounter_id = await assert_visit_registered_on_cezih(db, tenant_id, patient_id, encounter_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
     if not encounter_id and record.cezih_encounter_id:
         encounter_id = record.cezih_encounter_id
     if not case_id and record.cezih_case_id:
@@ -752,7 +880,7 @@ async def dispatch_replace_document_with_edit(
     )
 
     validate_doc_type_djelatnost(
-        get_cezih_document_coding(new_tip)["code"],
+        get_cezih_document_coding(record_data["tip"])["code"],
         djelatnost_code,
     )
 
@@ -903,8 +1031,6 @@ async def dispatch_edit_document_via_amend(
     docs — degraded but NOT deadlocked (both are cancellable). We never report
     success when the old version is still active. replace_document/TC19 untouched.
     """
-    from app.models.patient import Patient
-
     db, user_id, tenant_id = _require_audit_params(db, user_id, tenant_id)
 
     record = await _get_medical_record(db, tenant_id, patient_id, record_id)
@@ -917,23 +1043,7 @@ async def dispatch_edit_document_via_amend(
             detail="Referenca e-Nalaza ne odgovara trenutnoj verziji zapisa. Osvježite prikaz i pokušajte ponovno.",
         )
 
-    patient = await db.get(Patient, patient_id)
-    if not patient or patient.tenant_id != tenant_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pacijent nije pronađen")
-    try:
-        id_sys, id_val = real_service.resolve_cezih_identifier(patient)
-        all_ids = real_service.resolve_all_cezih_identifiers(patient)
-    except CezihError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
-
-    patient_data = {
-        "mbo": id_val,
-        "identifier_system": id_sys,
-        "identifier_value": id_val,
-        "identifiers": all_ids,
-        "ime": patient.ime,
-        "prezime": patient.prezime,
-    }
+    patient_data = await _load_patient_data(db, tenant_id, patient_id)
 
     # Capture the OLD (pre-edit) content for the cancel-old bundle BEFORE merging
     # edits — the cancel must represent the document being retired, not the new one.
@@ -947,27 +1057,16 @@ async def dispatch_edit_document_via_amend(
     }
 
     # Merge proposed edits over current record state for the NEW appended doc.
-    def _pick(key: str, fallback):
-        val = edits.get(key)
-        return val if val is not None else fallback
-
-    new_tip = _pick("tip", record.tip)
-    new_dijagnoza_mkb = _pick("dijagnoza_mkb", record.dijagnoza_mkb)
-    new_dijagnoza_tekst = _pick("dijagnoza_tekst", record.dijagnoza_tekst)
-    new_sadrzaj = _pick("sadrzaj", record.sadrzaj)
-    new_preporucena = _pick("preporucena_terapija", record.preporucena_terapija)
-
-    record_data = {
-        "tip": new_tip,
-        "dijagnoza_mkb": new_dijagnoza_mkb,
-        "dijagnoza_tekst": new_dijagnoza_tekst,
-        "sadrzaj": new_sadrzaj,
-        "preporucena_terapija": new_preporucena,
-        "created_at": record.created_at.isoformat() if record.created_at else _now_iso(),
-    }
+    record_data = _record_data_payload(record, edits)
 
     if not practitioner_id and record.doktor_id:
         practitioner_id = str(record.doktor_id)
+    # Validate a caller-provided NEW visit link before falling back to the one
+    # already validated at send time.
+    try:
+        encounter_id = await assert_visit_registered_on_cezih(db, tenant_id, patient_id, encounter_id)
+    except CezihError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.message) from e
     if not encounter_id and record.cezih_encounter_id:
         encounter_id = record.cezih_encounter_id
     if not case_id and record.cezih_case_id:
@@ -989,7 +1088,7 @@ async def dispatch_edit_document_via_amend(
     )
 
     validate_doc_type_djelatnost(
-        get_cezih_document_coding(new_tip)["code"],
+        get_cezih_document_coding(record_data["tip"])["code"],
         djelatnost_code,
     )
 

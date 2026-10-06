@@ -81,6 +81,9 @@ caddy_config/
 .claude/
 .claudeignore
 
+# ZCode (local agent workspace)
+.zcode/
+
 # Corrupted paths
 backend/C*/
 bug-report-email*.txt

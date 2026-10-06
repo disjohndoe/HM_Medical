@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     )
     CEZIH_TIMEOUT: int = 30
     CEZIH_RETRY_ATTEMPTS: int = 3
+    # How long a second concurrent e-Nalaz send may wait on the FOR UPDATE row
+    # lock before failing fast with 409 (the winner holds it for the whole
+    # signing round-trip, tens of seconds).
+    CEZIH_SEND_LOCK_TIMEOUT: int = 5
     CEZIH_SMARTCARD_DUMMY_SIG: bool = (
         False  # DEBUG: bypass real signing, inject dummy JWS to test if CEZIH verifies crypto
     )

@@ -117,3 +117,14 @@ class CezihSigningError(CezihError):
             "display": self.default_display,
             "diagnostics": self.signing_service_error or self.message,
         }
+
+
+class CezihLocalPersistError(CezihError):
+    """CEZIH accepted the document but persisting the result locally failed.
+
+    The record stays marked unsent while a signed document exists on CEZIH, so
+    a blind resend would duplicate it - the diagnostics must tell the user to
+    verify on CEZIH first."""
+
+    default_code = "CEZIH_LOCAL_PERSIST_FAILED"
+    default_display = "Dokument je poslan na CEZIH, ali lokalno spremanje nije uspjelo"

@@ -116,6 +116,49 @@ async def assert_case_registered_on_cezih(
     return case_id
 
 
+async def assert_visit_registered_on_cezih(
+    db: AsyncSession,
+    tenant_id: UUID,
+    patient_id: UUID,
+    encounter_id: str,
+) -> str:
+    """Verify an encounter_id maps to a CEZIH-registered visit before it is
+    threaded into a nalaz bundle - same fail-fast rule as
+    ``assert_case_registered_on_cezih``: a stale/local-only id only fails at
+    CEZIH after the ~14 s signing round-trip, producing a signed-but-rejected
+    document. The local ``CezihVisit`` mirror is the source of truth for the
+    visit list the UI offers, so an id without a mirror row was never offered.
+    "finished" visits are fine (nalaz typically follows a concluded visit);
+    only entered-in-error is terminal. Returns the id unchanged when valid,
+    passes empty through (callers apply their own fallbacks)."""
+    if not encounter_id:
+        return encounter_id
+    from sqlalchemy import select
+
+    from app.models.cezih_visit import CezihVisit
+
+    status = (
+        await db.execute(
+            select(CezihVisit.status).where(
+                CezihVisit.tenant_id == tenant_id,
+                CezihVisit.patient_id == patient_id,
+                CezihVisit.cezih_visit_id == encounter_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if status is None:
+        raise CezihError(
+            "Odabrana posjeta nije registrirana na CEZIH-u. Najprije otvorite "
+            "posjetu na CEZIH-u, zatim povežite nalaz s njom."
+        )
+    if (status or "").lower() == "entered-in-error":
+        raise CezihError(
+            "Odabrana posjeta je stornirana na CEZIH-u. Odaberite aktivnu "
+            "posjetu prije slanja nalaza."
+        )
+    return encounter_id
+
+
 def _require_audit_params(
     db: AsyncSession | None,
     user_id: UUID | None,
@@ -149,4 +192,5 @@ __all__ = [
     "_require_audit_params",
     "_raise_cezih_error",
     "assert_case_registered_on_cezih",
+    "assert_visit_registered_on_cezih",
 ]

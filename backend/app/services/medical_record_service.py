@@ -207,6 +207,24 @@ async def update_record(
     if not record or record.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medicinski zapis nije pronađen")
 
+    # A sent nalaz exists as a signed document on CEZIH - editing the local row
+    # would silently diverge from it. Route corrections through the CEZIH
+    # replace/amend flow (atomic edit-and-replace) instead. The dedicated
+    # replace-with-edit endpoint applies edits itself, so it is not affected.
+    if record.cezih_sent:
+        if record.cezih_storno:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stornirani e-Nalaz se ne može uređivati — stvorite novi nalaz.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Poslani e-Nalaz se ne može uređivati lokalno — koristite "
+                "'Uredi i zamijeni' na e-Nalazi kartici da CEZIH ostane usklađen."
+            ),
+        )
+
     update_data = data.model_dump(exclude_unset=True)
 
     if "tip" in update_data:

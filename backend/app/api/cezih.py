@@ -238,6 +238,7 @@ async def send_enalaz(
         case_id=data.case_id,
         practitioner_name=practitioner_name,
         org_name=org_name,
+        force_resend=data.force_resend,
     )
 
 

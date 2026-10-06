@@ -82,6 +82,9 @@ class ENalazRequest(BaseModel):
     record_id: UUID
     encounter_id: str = ""
     case_id: str = ""
+    # Override for the CEZIH_LOCAL_PERSIST_FAILED guard only: resend after the
+    # user has verified on CEZIH that the previous attempt did not arrive.
+    force_resend: bool = False
 
 
 class ENalazResponse(BaseModel):

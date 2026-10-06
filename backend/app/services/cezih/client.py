@@ -297,7 +297,6 @@ class CezihFhirClient:
         accept: str | None = None,
         content_type: str | None = None,
         absolute_url: str | None = None,
-        _attempt: int = 0,
     ) -> dict | bytes:
         signing_method = await self._get_signing_method()
         url = absolute_url if absolute_url else self._full_url(path, signing_method)
@@ -305,100 +304,128 @@ class CezihFhirClient:
         timeout = timeout or settings.CEZIH_TIMEOUT
         max_attempts = settings.CEZIH_RETRY_ATTEMPTS
 
-        headers = {
-            "Accept": accept or _FHIR_CONTENT_TYPE,
-            "Content-Type": content_type or _FHIR_CONTENT_TYPE,
-        }
-        headers = await self._attach_auth(headers, oauth2_url=oauth2_url)
+        # One attempt loop shared by both transports: every retry condition just
+        # sets `retry_delay` and lets the loop continue. POSTs never set it, so a
+        # document submission is never auto-retried - it could duplicate a signed
+        # nalaz (the manual resend flow with its 409 guard is the safe retry path).
+        for attempt in range(max_attempts):
+            headers = {
+                "Accept": accept or _FHIR_CONTENT_TYPE,
+                "Content-Type": content_type or _FHIR_CONTENT_TYPE,
+            }
+            headers = await self._attach_auth(headers, oauth2_url=oauth2_url)
+            retry_delay: float | None = None
 
-        # Route through agent (production server has no direct CEZIH connectivity)
-        if self._should_use_agent(path):
-            result = await self._request_via_agent(method, url, headers, params, json_body, timeout)
-            # Binary responses (bytes) are expected for ITI-68 document retrieval when accept="*/*"
-            if isinstance(result, bytes):
-                if accept == "*/*":
-                    return result  # Return bytes for document downloads
-                raise CezihError("Neočekivani binarni odgovor od agenta (koristiti accept='*/*' za dokumente).")
-            return result
+            # Route through agent (production server has no direct CEZIH connectivity)
+            if self._should_use_agent(path):
+                try:
+                    result = await self._request_via_agent(method, url, headers, params, json_body, timeout)
+                except CezihFhirError as e:
+                    # 401 = token rejected before anything was processed - safe to
+                    # refresh the token and retry, same semantics as the direct path.
+                    if e.status_code == 401 and attempt < max_attempts - 1:
+                        logger.warning(
+                            "CEZIH 401 via agent, invalidating token and retrying (attempt %d/%d)",
+                            attempt + 1, max_attempts,
+                        )
+                        invalidate_token(oauth2_url)
+                        retry_delay = 1.0 * (2**attempt)
+                    else:
+                        raise
+                except CezihConnectionError:
+                    # No HTTP status came back, so the request may or may not have
+                    # reached CEZIH. Auto-retry only idempotent reads: re-POSTing a
+                    # document submission could duplicate a signed nalaz (the manual
+                    # resend flow with its 409 guard is the safe retry path).
+                    if method.upper() == "GET" and attempt < max_attempts - 1:
+                        logger.warning(
+                            "CEZIH connection error via agent on GET, retrying (attempt %d/%d)",
+                            attempt + 1, max_attempts,
+                        )
+                        retry_delay = 2.0 * (2**attempt)
+                    else:
+                        raise
+                else:
+                    # Binary responses (bytes) are expected for ITI-68 document retrieval when accept="*/*"
+                    if isinstance(result, bytes):
+                        if accept == "*/*":
+                            return result  # Return bytes for document downloads
+                        raise CezihError("Neočekivani binarni odgovor od agenta (koristiti accept='*/*' za dokumente).")
+                    return result
+            else:
+                logger.info("CEZIH request: %s %s (attempt %d/%d)", method, url, attempt + 1, max_attempts)
+                if json_body:
+                    import json as _json_for_log
 
-        logger.info("CEZIH request: %s %s (attempt %d/%d)", method, url, _attempt + 1, max_attempts)
-        if json_body:
-            import json as _json_for_log
+                    logger.info(
+                        "CEZIH request body (%d chars): %s",
+                        len(_json_for_log.dumps(json_body)),
+                        _json_for_log.dumps(json_body, ensure_ascii=False)[:5000],
+                    )
+                start = time.perf_counter()
 
-            logger.info(
-                "CEZIH request body (%d chars): %s",
-                len(_json_for_log.dumps(json_body)),
-                _json_for_log.dumps(json_body, ensure_ascii=False)[:5000],
-            )
-        start = time.perf_counter()
+                try:
+                    response = await self._client.request(
+                        method,
+                        url,
+                        params=params,
+                        json=json_body,
+                        headers=headers,
+                        timeout=timeout,
+                    )
+                except httpx.ConnectError as e:
+                    raise CezihConnectionError(f"Cannot connect to CEZIH at {url}. Is VPN connected?") from e
+                except httpx.TimeoutException as e:
+                    raise CezihTimeoutError(f"CEZIH request timed out after {timeout}s: {method} {url}") from e
 
-        try:
-            response = await self._client.request(
-                method,
-                url,
-                params=params,
-                json=json_body,
-                headers=headers,
-                timeout=timeout,
-            )
-        except httpx.ConnectError as e:
-            raise CezihConnectionError(f"Cannot connect to CEZIH at {url}. Is VPN connected?") from e
-        except httpx.TimeoutException as e:
-            raise CezihTimeoutError(f"CEZIH request timed out after {timeout}s: {method} {url}") from e
+                duration_ms = (time.perf_counter() - start) * 1000
+                logger.info("CEZIH response: %s %s -> %d (%.1fms)", method, url, response.status_code, duration_ms)
 
-        duration_ms = (time.perf_counter() - start) * 1000
-        logger.info("CEZIH response: %s %s -> %d (%.1fms)", method, url, response.status_code, duration_ms)
+                # 401 — invalidate token and retry
+                if response.status_code == 401 and attempt < max_attempts - 1:
+                    logger.warning("CEZIH 401, invalidating token and retrying")
+                    invalidate_token(oauth2_url)
+                    retry_delay = 1.0 * (2**attempt)
+                # 5xx — retry idempotent reads with exponential backoff. POSTs are never
+                # auto-retried: a 5xx may mean the request was processed upstream, and
+                # re-submitting a signed document bundle would duplicate it (the manual
+                # resend flow with its 409 guard is the safe retry path).
+                elif (
+                    response.status_code >= 500
+                    and method.upper() == "GET"
+                    and attempt < max_attempts - 1
+                ):
+                    logger.warning("CEZIH %d, retrying (attempt %d/%d)", response.status_code, attempt + 1, max_attempts)
+                    retry_delay = 2.0 * (2**attempt)
+                else:
+                    # Parse response body
+                    try:
+                        body = response.json()
+                    except Exception:
+                        body = {}
 
-        # 401 — invalidate token and retry
-        if response.status_code == 401 and _attempt < max_attempts - 1:
-            logger.warning("CEZIH 401, invalidating token and retrying")
-            invalidate_token(oauth2_url)
-            await asyncio.sleep(1.0 * (2**_attempt))
-            return await self.request(
-                method,
-                path,
-                params=params,
-                json_body=json_body,
-                timeout=timeout,
-                absolute_url=absolute_url,
-                _attempt=_attempt + 1,
-            )
+                    # Check for OperationOutcome errors (4xx and 5xx)
+                    if response.status_code >= 400:
+                        if body.get("resourceType") == "OperationOutcome":
+                            oo = OperationOutcome.model_validate(body)
+                            raise CezihFhirError(
+                                f"FHIR error: {oo.first_error_message}",
+                                status_code=response.status_code,
+                                operation_outcome=body,
+                            )
+                        raise CezihFhirError(
+                            f"CEZIH HTTP {response.status_code}: {response.text[:500]}",
+                            status_code=response.status_code,
+                        )
 
-        # 5xx — retry with exponential backoff
-        if response.status_code >= 500 and _attempt < max_attempts - 1:
-            logger.warning("CEZIH %d, retrying (attempt %d/%d)", response.status_code, _attempt + 1, max_attempts)
-            await asyncio.sleep(2.0 * (2**_attempt))
-            return await self.request(
-                method,
-                path,
-                params=params,
-                json_body=json_body,
-                timeout=timeout,
-                absolute_url=absolute_url,
-                _attempt=_attempt + 1,
-            )
+                    return body
 
-        # Parse response body
-        try:
-            body = response.json()
-        except Exception:
-            body = {}
+            if retry_delay is not None:
+                await asyncio.sleep(retry_delay)
 
-        # Check for OperationOutcome errors (4xx and 5xx)
-        if response.status_code >= 400:
-            if body.get("resourceType") == "OperationOutcome":
-                oo = OperationOutcome.model_validate(body)
-                raise CezihFhirError(
-                    f"FHIR error: {oo.first_error_message}",
-                    status_code=response.status_code,
-                    operation_outcome=body,
-                )
-            raise CezihFhirError(
-                f"CEZIH HTTP {response.status_code}: {response.text[:500]}",
-                status_code=response.status_code,
-            )
-
-        return body
+        # Unreachable: the final attempt never sets a retry delay, so it always
+        # returns or raises above. Kept so the function has no implicit None path.
+        raise CezihError("CEZIH request exhausted all retry attempts.")
 
     @overload
     async def get(
