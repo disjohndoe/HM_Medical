@@ -207,17 +207,22 @@ export function useSendENalaz() {
       record_id,
       encounter_id,
       case_id,
+      force_resend,
     }: {
       patient_id: string
       record_id: string
       encounter_id?: string
       case_id?: string
+      /** Override the CEZIH_LOCAL_PERSIST_FAILED guard — only after the user
+       *  verified on CEZIH that the previous attempt did not arrive. */
+      force_resend?: boolean
     }) =>
       api.post<ENalazResponse>("/cezih/e-nalaz", {
         patient_id,
         record_id,
         encounter_id: encounter_id || "",
         case_id: case_id || "",
+        force_resend: force_resend ?? false,
       }),
     onSuccess: (_resp, vars) => {
       clearError(vars.record_id)

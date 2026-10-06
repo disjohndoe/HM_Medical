@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Send, Loader2, AlertTriangle, Check } from "lucide-react"
 import { toast } from "sonner"
 
@@ -16,6 +16,12 @@ function CheckIcon({ checked }: { checked: boolean }) {
     </div>
   )
 }
+
+/** A record in this state may already exist on CEZIH (document accepted but the
+ *  local "sent" marker was never persisted). Resending blind would duplicate a
+ *  signed document — the backend 409s unless force_resend is passed, and this
+ *  dialog only passes it after an explicit verify-on-CEZIH acknowledgment. */
+const CEZIH_LOCAL_PERSIST_FAILED = "CEZIH_LOCAL_PERSIST_FAILED"
 import {
   Dialog,
   DialogContent,
@@ -51,6 +57,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   const [failedRecords, setFailedRecords] = useState<{ id: string; error: string; code?: string }[]>([])
   const [selectedEncounterId, setSelectedEncounterId] = useState("")
   const [selectedCaseId, setSelectedCaseId] = useState("")
+  const [forceAck, setForceAck] = useState(false)
 
   const { data } = useMedicalRecords(patientId)
   // Warn (never block) when the 5 s status poll positively shows the agent or
@@ -110,7 +117,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeVisits.length, activeCases.length, selectedEncounterId, selectedCaseId])
 
-  const records = data?.items ?? []
+  const records = useMemo(() => data?.items ?? [], [data])
   const eligibleRecords = records.filter((r) => {
     if (!isCezihEligible.has(r.tip)) return false
     if (r.cezih_sent) return false
@@ -128,9 +135,17 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
       setFailedRecords([])
       setSelectedEncounterId("")
       setSelectedCaseId("")
+      setForceAck(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  // Selected records that may already exist on CEZIH — they can only be sent
+  // with force_resend, and only after the user acknowledges the duplicate risk.
+  const persistFailureSelected = records.filter(
+    (r) => selectedIds.has(r.id) && r.cezih_last_error_code === CEZIH_LOCAL_PERSIST_FAILED,
+  )
+  const needsForceAck = persistFailureSelected.length > 0
 
   const toggleRecord = (id: string) => {
     setSelectedIds((prev) => {
@@ -152,6 +167,9 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
   const handleSend = useCallback(async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
+    // The send button is disabled until acknowledged; this guards a stale
+    // render clicking through after the selection changed.
+    if (needsForceAck && !forceAck) return
 
     setSending(true)
     setProgress({ current: 0, total: ids.length })
@@ -167,6 +185,9 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
           record_id: ids[i],
           encounter_id: selectedEncounterId,
           case_id: selectedCaseId,
+          force_resend: records.some(
+            (r) => r.id === ids[i] && r.cezih_last_error_code === CEZIH_LOCAL_PERSIST_FAILED,
+          ),
         })
         successCount++
       } catch (err) {
@@ -180,6 +201,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
 
     setSending(false)
     setFailedRecords(failed)
+    setForceAck(false)
 
     if (successCount > 0) {
       toast.success(`${successCount} nalaz${successCount === 1 ? "" : "a"} poslan${successCount === 1 ? "" : "o"} na CEZIH`)
@@ -200,7 +222,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
       setSelectedIds(new Set(failed.map((f) => f.id)))
     }
     // Keep dialog open on partial failure so user can see which records failed
-  }, [selectedIds, patientId, sendENalaz, onOpenChange, selectedEncounterId, selectedCaseId])
+  }, [selectedIds, patientId, sendENalaz, onOpenChange, selectedEncounterId, selectedCaseId, records, needsForceAck, forceAck])
 
   const allSelected = eligibleRecords.length > 0 && selectedIds.size === eligibleRecords.length
 
@@ -346,6 +368,12 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
                         {r.dijagnoza_tekst}
                       </p>
                     )}
+                    {r.cezih_last_error_code === CEZIH_LOCAL_PERSIST_FAILED && (
+                      <p className="mt-1 ml-6 flex items-center gap-1 text-xs font-medium text-destructive">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        Možda već poslan na CEZIH — potrebna potvrda prije ponovnog slanja
+                      </p>
+                    )}
                   </button>
                 ))}
               </div>
@@ -366,6 +394,42 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
               <p className="text-xs text-amber-800 pt-1">
                 Postavite ispravnu šifru djelatnosti u Postavke → Korisnici ili odznačite nalaz.
               </p>
+            </div>
+          )}
+
+          {/* Possibly-already-sent records: force_resend acknowledgment.
+              The previous attempt reached CEZIH but was never recorded locally,
+              so these rows still look unsent — resending blind would duplicate
+              a signed document. Send only after explicit verification. */}
+          {needsForceAck && !sending && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 space-y-2">
+              <p className="text-sm font-medium text-destructive">
+                {persistFailureSelected.length === 1
+                  ? "Odabrani nalaz je možda već poslan na CEZIH"
+                  : `${persistFailureSelected.length} odabrana nalaza su možda već poslana na CEZIH`}
+              </p>
+              <p className="text-xs text-destructive/80">
+                Prethodno slanje je možda uspjelo, ali nije zabilježeno lokalno. Ponovno
+                slanje može stvoriti duplikat na CEZIH-u. Provjerite u eKartonu da
+                {persistFailureSelected.length === 1 ? " nalaz nije" : " nalazi nisu"} zaprimljeni
+                prije slanja.
+              </p>
+              <button
+                type="button"
+                onClick={() => setForceAck((v) => !v)}
+                className="flex items-start gap-2 text-left"
+              >
+                <span className="mt-0.5">
+                  <CheckIcon checked={forceAck} />
+                </span>
+                <span className="text-xs font-medium text-destructive">
+                  Potvrđujem da sam na CEZIH-u provjerio/la da{" "}
+                  {persistFailureSelected.length === 1
+                    ? "odabrani nalaz nije zaprimljen"
+                    : "odabrani nalazi nisu zaprimljeni"}{" "}
+                  — pošalji unatoč upozorenju.
+                </span>
+              </button>
             </div>
           )}
 
@@ -414,6 +478,7 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
               || !selectedEncounterId
               || !selectedCaseId
               || hasDjelatnostMismatch
+              || (needsForceAck && !forceAck)
             }
             title={
               !hasCezihIdentifier
@@ -422,7 +487,9 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
                   ? "Odaberite posjetu i slučaj"
                   : hasDjelatnostMismatch
                     ? "Tip dokumenta ne odgovara šifri djelatnosti - pogledajte upozorenje iznad"
-                    : undefined
+                    : needsForceAck && !forceAck
+                      ? "Nalaz je možda već poslan na CEZIH - potvrdite provjeru u upozorenju"
+                      : undefined
             }
           >
             {sending ? (
@@ -434,7 +501,9 @@ export function SendNalazDialog({ open, onOpenChange, patientId, hasCezihIdentif
               ? "CEZIH identifikator nedostupan"
               : sending
                 ? `Slanje ${progress.current}/${progress.total}...`
-                : `Pošalji${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}
+                : needsForceAck && forceAck
+                  ? `Pošalji unatoč upozorenju${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`
+                  : `Pošalji${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}
           </Button>
         </DialogFooter>
       </DialogContent>
