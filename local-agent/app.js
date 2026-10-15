@@ -137,17 +137,21 @@ async function resetConfig() {
 }
 
 // --- Update logic ---
-// The agent never self-installs: it only checks for a newer release and
-// shows a notice. Installing is manual (run the setup exe from the releases
-// page).
+// Checks for a newer release and shows a notice with a single "Ažuriraj"
+// button: one click downloads the update and runs the passive installer,
+// which replaces the app and restarts it. Nothing happens without the click.
 
 let updateState = "idle";
 let updateVersion = "";
+let pendingUpdate = null;
+let downloadProgress = "";
 
 function updateUpdateUI() {
   const updateRow = $("update-row");
+  const updateBtn = $("update-btn");
   if (updateState === "idle") {
     updateRow.style.display = "none";
+    if (updateBtn) updateBtn.style.display = "none";
     return;
   }
 
@@ -157,14 +161,22 @@ function updateUpdateUI() {
     $("update-dot").className = "dot blue";
     $("update-label").textContent = "Dostupno je novo ažuriranje programa";
     $("update-detail").textContent = updateVersion;
+    if (updateBtn) updateBtn.style.display = "inline-block";
+  } else if (updateState === "downloading") {
+    $("update-dot").className = "dot blue";
+    $("update-label").textContent = "Preuzimanje ažuriranja...";
+    $("update-detail").textContent = downloadProgress;
+    if (updateBtn) updateBtn.style.display = "none";
   }
 }
 
 async function checkForUpdates() {
   if (!check) return;
+  if (updateState === "downloading") return;
 
   try {
     const update = await check();
+    pendingUpdate = update || null;
     updateVersion = update ? update.version : "";
     updateState = update ? "available" : "idle";
   } catch (e) {
@@ -174,6 +186,46 @@ async function checkForUpdates() {
     updateState = "idle";
   }
   updateUpdateUI();
+}
+
+async function installUpdate() {
+  if (!pendingUpdate || updateState !== "available") return;
+
+  updateState = "downloading";
+  downloadProgress = "0%";
+  updateUpdateUI();
+
+  let downloaded = 0;
+  let total = 0;
+  try {
+    await pendingUpdate.downloadAndInstall(undefined, (event) => {
+      switch (event.event) {
+        case "Started":
+          downloaded = 0;
+          total = event.data.contentLength || 0;
+          break;
+        case "Progress":
+          downloaded += event.data.chunkLength || 0;
+          if (total > 0) {
+            downloadProgress = Math.min(100, Math.round((downloaded / total) * 100)) + "%";
+          }
+          break;
+        case "Finished":
+          downloadProgress = "100%";
+          break;
+      }
+      updateUpdateUI();
+    });
+    // On Windows the passive installer replaces the app and restarts it —
+    // execution usually does not return here.
+    updateState = "idle";
+    updateUpdateUI();
+  } catch (e) {
+    console.error("Update install failed:", e);
+    downloadProgress = "";
+    updateState = "available";
+    updateUpdateUI();
+  }
 }
 
 // --- Polling ---
@@ -188,6 +240,7 @@ async function poll() {
 }
 
 // --- Button bindings (CSP's script-src-attr blocks inline onclick attributes) ---
+$("update-btn")?.addEventListener("click", installUpdate);
 $("disconnect-btn")?.addEventListener("click", resetConfig);
 
 // Initial + poll every 2 seconds
