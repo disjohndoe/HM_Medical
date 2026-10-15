@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -25,6 +25,7 @@ const VALID_TABS = ["posjete", "slucajevi", "stranci", "registri", "aktivnost", 
 
 export default function CezihPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const tabParam = searchParams.get("tab")
   const defaultTab = tabParam && VALID_TABS.includes(tabParam) ? tabParam : "aktivnost"
   const { user, refreshUser } = useAuth()
@@ -173,7 +174,14 @@ export default function CezihPage() {
         <InsuranceCheck />
       </div>
 
-      <Tabs defaultValue={defaultTab} className="space-y-4">
+      {/* Controlled by ?tab= so sidebar links switch tabs without a remount
+          (defaultValue would only apply on first mount) and in-page tab clicks
+          keep the URL in sync. */}
+      <Tabs
+        value={defaultTab}
+        onValueChange={(v) => router.replace(`/cezih?tab=${v}`, { scroll: false })}
+        className="space-y-4"
+      >
         <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
           <TabsTrigger value="posjete">Posjete</TabsTrigger>
           <TabsTrigger value="slucajevi">Slučajevi</TabsTrigger>
