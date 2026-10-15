@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.cezih_case import CezihCase
 from app.models.cezih_visit import CezihVisit
 from app.models.patient import Patient
+from app.models.tenant import Tenant
 from app.models.user import User
 
 pytestmark = pytest.mark.asyncio
@@ -147,3 +148,55 @@ async def test_visits_all_pagination(
     # period_start desc ordering: page 2 starts at the second-newest visit
     starts = [v["period_start"] for v in body["items"]]
     assert starts == sorted(starts, reverse=True)
+
+
+async def test_dashboard_stats_open_work_counts(
+    client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+):
+    tenant_a = await _tenant_id_for_email(db_session, "admin@test.hr")
+    # Give the tenant a šifra ustanove so ownership classification has a signal
+    tenant = await db_session.get(Tenant, tenant_a)
+    tenant.sifra_ustanove = "999001464"
+    patient = await _seed_patient_with_mirror_rows(
+        db_session, tenant_a, ime="Ana", mbo="100000001"
+    )
+
+    def visit(status: str, provider: str) -> CezihVisit:
+        return CezihVisit(
+            tenant_id=tenant_a,
+            patient_id=patient.id,
+            patient_mbo="100000001",
+            cezih_visit_id=f"VISIT-{status}-{provider}",
+            status=status,
+            service_provider_code=provider,
+        )
+
+    def case(clinical_status: str, registered: bool) -> CezihCase:
+        return CezihCase(
+            tenant_id=tenant_a,
+            patient_id=patient.id,
+            patient_mbo="100000001",
+            local_case_id=f"LOCAL-{clinical_status}-{registered}",
+            icd_code="J06.9",
+            icd_display="Akutna infekcija gornjih dišnih puteova",
+            clinical_status=clinical_status,
+            onset_date="2026-10-01",
+            registered=registered,
+        )
+
+    db_session.add_all([
+        visit("in-progress", "999001464"),   # ours, forgotten to close -> counts
+        visit("in-progress", "999001464"),   # ours, forgotten to close -> counts
+        visit("finished", "999001464"),      # ours but closed -> no
+        visit("in-progress", "888001888"),   # external, not ours to close -> no
+        case("active", True),                # ours, not closed -> counts
+        case("resolved", True),              # closed -> no
+        case("active", False),               # mirrored external -> no
+    ])
+    await db_session.commit()
+
+    resp = await client.get("/api/cezih/dashboard-stats", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["otvorene_posjete"] == 2
+    assert body["aktivni_slucajevi"] == 1

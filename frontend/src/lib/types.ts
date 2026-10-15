@@ -696,6 +696,9 @@ export interface CezihDashboardStats {
   danas_operacije: number;
   neposlani_nalazi: number;
   zadnja_operacija: string | null;
+  // Open work signals for the sidebar badges (ours-only, see backend)
+  otvorene_posjete?: number;
+  aktivni_slucajevi?: number;
 }
 
 // --- Drug Search ---

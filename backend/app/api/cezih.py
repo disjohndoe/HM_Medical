@@ -14,6 +14,8 @@ from app.core.plan_enforcement import check_cezih_access, check_hzzo_access
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
 from app.models.audit_log import AuditLog
+from app.models.cezih_case import CezihCase
+from app.models.cezih_visit import CezihVisit
 from app.models.medical_record import MedicalRecord
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -562,10 +564,39 @@ async def get_cezih_dashboard_stats(
     )
     unsent_count = unsent_result.scalar() or 0
 
+    # Open visits (in progress, ours only) — the "forgot to close" signal.
+    # Classified with the same ownership identity as the Posjete table, so
+    # the badge count matches the rows the doctor sees as "Naša".
+    identity = await load_tenant_cezih_identity(db, current_user.tenant_id)
+    open_visits_result = await db.execute(
+        select(CezihVisit.service_provider_code, CezihVisit.practitioner_ids).where(
+            CezihVisit.tenant_id == current_user.tenant_id,
+            CezihVisit.status == "in-progress",
+        )
+    )
+    open_visits = sum(
+        1
+        for sp_code, pids in open_visits_result.all()
+        if identity.owns(org_codes=[sp_code], practitioner_ids=pids or ())
+    )
+
+    # Active (not closed) cases this clinic registered — external mirrored
+    # cases cannot be closed here, so they don't count.
+    active_cases_result = await db.execute(
+        select(func.count()).where(
+            CezihCase.tenant_id == current_user.tenant_id,
+            CezihCase.clinical_status == "active",
+            CezihCase.registered == True,  # noqa: E712
+        )
+    )
+    active_cases = active_cases_result.scalar() or 0
+
     return CezihDashboardStats(
         danas_operacije=danas,
         neposlani_nalazi=unsent_count,
         zadnja_operacija=last_op,
+        otvorene_posjete=open_visits,
+        aktivni_slucajevi=active_cases,
     )
 
 

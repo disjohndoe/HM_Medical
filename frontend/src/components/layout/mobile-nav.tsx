@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { usePermissions } from "@/lib/hooks/use-permissions";
+import { useCezihOpenVisitsCount, useCezihActiveCasesCount } from "@/lib/hooks/use-cezih";
 import { NAV_ITEMS } from "@/lib/constants";
 
 export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -13,6 +14,8 @@ export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange:
   const searchParams = useSearchParams();
   const { tenant } = useAuth();
   const perms = usePermissions();
+  const { data: openVisitsCount } = useCezihOpenVisitsCount();
+  const { data: activeCasesCount } = useCezihActiveCasesCount();
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -45,7 +48,25 @@ export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange:
                 )}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.href === "/cezih?tab=slucajevi" && (activeCasesCount ?? 0) > 0 && (
+                  <span
+                    title={`${activeCasesCount} aktivnih slučajeva (nije zatvoreno)`}
+                    aria-label={`${activeCasesCount} aktivnih slučajeva`}
+                    className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+                  >
+                    {activeCasesCount}
+                  </span>
+                )}
+                {item.href === "/cezih?tab=posjete" && (openVisitsCount ?? 0) > 0 && (
+                  <span
+                    title={`${openVisitsCount} otvorenih posjeta (nije zatvoreno)`}
+                    aria-label={`${openVisitsCount} otvorenih posjeta`}
+                    className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+                  >
+                    {openVisitsCount}
+                  </span>
+                )}
               </Link>
             );
           })}

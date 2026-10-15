@@ -310,6 +310,30 @@ export function useCezihNalaziCount() {
   })
 }
 
+// Same endpoint/queryKey as useCezihNalaziCount — react-query dedupes, so all
+// three sidebar badges cost a single /cezih/dashboard-stats poll.
+export function useCezihOpenVisitsCount() {
+  return useQuery({
+    queryKey: ["cezih", "dashboard-stats"],
+    queryFn: () => api.get<CezihDashboardStats>("/cezih/dashboard-stats"),
+    select: (data) => data.otvorene_posjete ?? 0,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    staleTime: 30_000,
+  })
+}
+
+export function useCezihActiveCasesCount() {
+  return useQuery({
+    queryKey: ["cezih", "dashboard-stats"],
+    queryFn: () => api.get<CezihDashboardStats>("/cezih/dashboard-stats"),
+    select: (data) => data.aktivni_slucajevi ?? 0,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    staleTime: 30_000,
+  })
+}
+
 // --- Feature 4: Drug Search ---
 
 export function useDrugSearch(query: string) {

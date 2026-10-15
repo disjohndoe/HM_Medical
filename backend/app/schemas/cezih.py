@@ -219,6 +219,11 @@ class CezihDashboardStats(BaseModel):
     danas_operacije: int = 0
     neposlani_nalazi: int = 0
     zadnja_operacija: datetime | None = None
+    # Open work signals for the sidebar badges: visits still in progress and
+    # cases still active (not closed) — both restricted to records this
+    # clinic owns, since external ones cannot be closed here.
+    otvorene_posjete: int = 0
+    aktivni_slucajevi: int = 0
 
 
 # --- Feature 4: Drug Search ---
