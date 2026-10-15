@@ -59,12 +59,14 @@ from app.schemas.cezih import (
     UpdateVisitRequest,
     ValueSetExpandResponse,
     VisitActionRequest,
+    VisitItem,
     VisitResponse,
     VisitsListResponse,
 )
 from app.services.card_verification import get_card_status
 from app.services.cezih import dispatcher as cezih
 from app.services.cezih.ownership import load_tenant_cezih_identity
+from app.utils.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/cezih", tags=["cezih"])
 
@@ -888,6 +890,25 @@ async def list_cases(
     return CasesListResponse(cases=[CaseItem.model_validate(c) for c in cases])
 
 
+@router.get("/cases/all", response_model=PaginatedResponse[CaseItem])
+async def list_all_cases(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(require_roles("admin", "doctor", "nurse")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tenant-wide Slučajevi listing: local mirror read across all patients.
+
+    Read-only and mirror-backed (same staleness tradeoff as the unsent-nalazi
+    listing) — no live CEZIH call, so it works even while the agent is offline.
+    """
+    await check_cezih_access(db, current_user.tenant_id)
+    cases, total = await cezih.dispatch_list_all_cases(
+        db, current_user.tenant_id, skip=skip, limit=limit
+    )
+    return PaginatedResponse(items=cases, total=total, skip=skip, limit=limit)
+
+
 @router.post("/cases", response_model=CaseResponse)
 async def create_case(
     request: Request,
@@ -1213,6 +1234,31 @@ async def list_visits(
             practitioner_ids=v.get("practitioner_ids") or (),
         )
     return VisitsListResponse(visits=visits)  # type: ignore[arg-type]
+
+
+@router.get("/visits/all", response_model=PaginatedResponse[VisitItem])
+async def list_all_visits(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(require_roles("admin", "doctor")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tenant-wide Posjete listing: local mirror read across all patients.
+
+    Read-only and mirror-backed (same staleness tradeoff as the unsent-nalazi
+    listing) — no live CEZIH call, so it works even while the agent is offline.
+    """
+    await check_cezih_access(db, current_user.tenant_id)
+    visits, total = await cezih.dispatch_list_all_visits(
+        db, current_user.tenant_id, skip=skip, limit=limit
+    )
+    identity = await load_tenant_cezih_identity(db, current_user.tenant_id)
+    for v in visits:
+        v["is_ours"] = identity.owns(
+            org_codes=[v.get("service_provider_code")],
+            practitioner_ids=v.get("practitioner_ids") or (),
+        )
+    return PaginatedResponse(items=visits, total=total, skip=skip, limit=limit)
 
 
 @router.post("/visits", response_model=VisitResponse)

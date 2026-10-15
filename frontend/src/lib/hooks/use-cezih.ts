@@ -26,6 +26,7 @@ import type {
   LijekItem,
   OidGenerateResponse,
   OrganizationItem,
+  PaginatedResponse,
   PatientCezihSummary,
   CreateVisitRequest,
   PractitionerItem,
@@ -453,6 +454,16 @@ export function useListVisits(patientId: string) {
   })
 }
 
+// Tenant-wide Posjete listing (all patients, local mirror only — no live
+// CEZIH call). Powers the global Posjete tab on /cezih.
+export function useAllVisits(skip = 0, limit = 20) {
+  return useQuery({
+    queryKey: ["cezih", "visits-all", skip, limit],
+    queryFn: () =>
+      api.get<PaginatedResponse<VisitItem>>(`/cezih/visits/all?skip=${skip}&limit=${limit}`),
+  })
+}
+
 export function useCreateVisit() {
   const qc = useQueryClient()
   return useMutation({
@@ -650,6 +661,16 @@ export function useRetrieveCases(patientId: string) {
     queryFn: () =>
       api.get<CasesListResponse>(`/cezih/cases?patient_id=${encodeURIComponent(patientId)}`),
     enabled: !!patientId,
+  })
+}
+
+// Tenant-wide Slučajevi listing (all patients, local mirror only — no live
+// CEZIH call). Powers the global Slučajevi tab on /cezih.
+export function useAllCases(skip = 0, limit = 20) {
+  return useQuery({
+    queryKey: ["cezih", "cases-all", skip, limit],
+    queryFn: () =>
+      api.get<PaginatedResponse<CaseItem>>(`/cezih/cases/all?skip=${skip}&limit=${limit}`),
   })
 }
 

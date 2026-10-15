@@ -11,6 +11,8 @@ import { InsuranceCheck } from "@/components/cezih/insurance-check"
 import { CezihActivityLog } from "@/components/cezih/activity-log"
 import { ForeignerRegistration, ForeignerSearch } from "@/components/cezih/foreigner-registration"
 import { RegistryTools } from "@/components/cezih/registry-tools"
+import { AllVisitsTable } from "@/components/cezih/all-visits-table"
+import { AllCasesTable } from "@/components/cezih/all-cases-table"
 import { toast } from "sonner"
 import { CreditCard, X, Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
@@ -19,7 +21,7 @@ import { useSettingsCezihStatus, useGenerateAgentSecret, useCreatePairingToken }
 import { useCezihStatus } from "@/lib/hooks/use-cezih"
 import { useSelfBindCard, useSelfUnbindCard } from "@/lib/hooks/use-users"
 
-const VALID_TABS = ["stranci", "registri", "aktivnost", "postavke"]
+const VALID_TABS = ["posjete", "slucajevi", "stranci", "registri", "aktivnost", "postavke"]
 
 export default function CezihPage() {
   const searchParams = useSearchParams()
@@ -172,12 +174,22 @@ export default function CezihPage() {
       </div>
 
       <Tabs defaultValue={defaultTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+          <TabsTrigger value="posjete">Posjete</TabsTrigger>
+          <TabsTrigger value="slucajevi">Slučajevi</TabsTrigger>
           <TabsTrigger value="stranci">Stranci</TabsTrigger>
           <TabsTrigger value="registri">Registri</TabsTrigger>
           <TabsTrigger value="aktivnost">Aktivnost</TabsTrigger>
           <TabsTrigger value="postavke">Postavke</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="posjete">
+          <AllVisitsTable />
+        </TabsContent>
+
+        <TabsContent value="slucajevi">
+          <AllCasesTable />
+        </TabsContent>
 
         <TabsContent value="stranci">
           <div className="space-y-4">

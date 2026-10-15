@@ -391,6 +391,11 @@ class VisitItem(BaseModel):
     # visit (ERR_ENCOUNTER_2001 <-> ERR_DOM_10035 deadlock), so the FE hides the
     # storno option. See docs/CEZIH/findings/2026-05-27-visit-storno-replaced-doc-deadlock.md.
     has_replaced_document: bool = False
+    # Populated only by the tenant-wide listing (/visits/all) so the global
+    # Posjete table can link each row to its patient.
+    patient_id: UUID | None = None
+    patient_ime: str | None = None
+    patient_prezime: str | None = None
 
 
 class VisitsListResponse(BaseModel):
@@ -435,6 +440,11 @@ class CaseItem(BaseModel):
     # must not be offered as a slučaj link target - the registration guard rejects
     # them. The full list still returns both for the eKarton/history view.
     registered: bool = False
+    # Populated only by the tenant-wide listing (/cases/all) so the global
+    # Slučajevi table can link each row to its patient.
+    patient_id: UUID | None = None
+    patient_ime: str | None = None
+    patient_prezime: str | None = None
 
 
 class CasesListResponse(BaseModel):

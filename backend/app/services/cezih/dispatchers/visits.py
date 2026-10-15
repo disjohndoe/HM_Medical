@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -493,6 +493,43 @@ async def _list_local_visits_as_dicts(
     except SQLAlchemyError as exc:
         logger.warning("Failed to read local CezihVisit mirror: %s", exc)
         return []
+
+
+async def dispatch_list_all_visits(
+    db: AsyncSession,
+    tenant_id: UUID,
+    skip: int = 0,
+    limit: int = 20,
+) -> tuple[list[dict], int]:
+    """Tenant-wide read of the local CezihVisit mirror (all patients).
+
+    Mirror-only listing for the global Posjete view — no live CEZIH call,
+    no per-patient refresh. Rows refresh whenever a patient's CEZIH tab is
+    opened or a visit mutation runs. Each item additionally carries the
+    patient's local id and name so the UI can link to the patient.
+    """
+    from app.models.cezih_visit import CezihVisit
+    from app.models.patient import Patient
+
+    total = await db.scalar(
+        select(func.count()).select_from(CezihVisit).where(CezihVisit.tenant_id == tenant_id)
+    )
+    result = await db.execute(
+        select(CezihVisit, Patient.ime, Patient.prezime)
+        .join(Patient, CezihVisit.patient_id == Patient.id)
+        .where(CezihVisit.tenant_id == tenant_id)
+        .order_by(CezihVisit.period_start.desc().nullslast(), CezihVisit.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    items = []
+    for row, ime, prezime in result.all():
+        item = _serialize_visit_row(row)
+        item["patient_id"] = str(row.patient_id)
+        item["patient_ime"] = ime
+        item["patient_prezime"] = prezime
+        items.append(item)
+    return items, int(total or 0)
 
 
 async def _update_local_visit(
@@ -1296,4 +1333,5 @@ __all__ = [
     "dispatch_update_visit",
     "dispatch_visit_action",
     "dispatch_list_visits",
+    "dispatch_list_all_visits",
 ]

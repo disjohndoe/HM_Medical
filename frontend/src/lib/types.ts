@@ -842,6 +842,11 @@ export interface CaseItem {
   // CEZIH (backed by a local CezihCase mirror row). Remote-only QEDm cases
   // (opened elsewhere) are false and must not be offered as slučaj-link targets.
   registered?: boolean;
+  // Populated only by the tenant-wide listing (/cezih/cases/all) so the
+  // global Slučajevi table can link each row to its patient.
+  patient_id?: string | null;
+  patient_ime?: string | null;
+  patient_prezime?: string | null;
 }
 
 export interface CasesListResponse {
@@ -907,6 +912,11 @@ export interface VisitItem {
   // True when the visit carries a REPLACED e-Nalaz. CEZIH cannot storno such a
   // visit (predecessor deadlock), so the storno action is hidden for it.
   has_replaced_document?: boolean;
+  // Populated only by the tenant-wide listing (/cezih/visits/all) so the
+  // global Posjete table can link each row to its patient.
+  patient_id?: string | null;
+  patient_ime?: string | null;
+  patient_prezime?: string | null;
   // Frontend-only: set when inserted optimistically after a create/update/action
   // mutation. CEZIH QEDm is eventually consistent so the real record may take
   // several seconds to appear in GET /cezih/visits. Lost on natural refetch.

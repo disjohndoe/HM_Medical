@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -184,6 +184,43 @@ async def _fetch_fresh_local_cases_by_patient(
     except SQLAlchemyError as exc:
         logger.warning("Failed to read local CezihCase mirror: %s", exc)
         return []
+
+
+async def dispatch_list_all_cases(
+    db: AsyncSession,
+    tenant_id: UUID,
+    skip: int = 0,
+    limit: int = 20,
+) -> tuple[list[dict], int]:
+    """Tenant-wide read of the local CezihCase mirror (all patients).
+
+    Mirror-only listing for the global Slučajevi view — no live CEZIH call,
+    no per-patient refresh. Rows refresh whenever a patient's CEZIH tab is
+    opened or a case mutation runs. Each item additionally carries the
+    patient's local id and name so the UI can link to the patient.
+    """
+    from app.models.cezih_case import CezihCase
+    from app.models.patient import Patient
+
+    total = await db.scalar(
+        select(func.count()).select_from(CezihCase).where(CezihCase.tenant_id == tenant_id)
+    )
+    result = await db.execute(
+        select(CezihCase, Patient.ime, Patient.prezime)
+        .join(Patient, CezihCase.patient_id == Patient.id)
+        .where(CezihCase.tenant_id == tenant_id)
+        .order_by(CezihCase.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    items = []
+    for row, ime, prezime in result.all():
+        item = _serialize_case_row(row)
+        item["patient_id"] = str(row.patient_id)
+        item["patient_ime"] = ime
+        item["patient_prezime"] = prezime
+        items.append(item)
+    return items, int(total or 0)
 
 
 async def _read_local_case_as_dict(
@@ -775,4 +812,5 @@ __all__ = [
     "dispatch_create_case",
     "dispatch_update_case",
     "dispatch_update_case_data",
+    "dispatch_list_all_cases",
 ]

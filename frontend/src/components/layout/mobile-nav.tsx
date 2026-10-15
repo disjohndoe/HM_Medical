@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -10,6 +10,7 @@ import { NAV_ITEMS } from "@/lib/constants";
 
 export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { tenant } = useAuth();
   const perms = usePermissions();
 
@@ -25,7 +26,12 @@ export function MobileNav({ open, onOpenChange }: { open: boolean; onOpenChange:
         <nav className="flex flex-col gap-1 px-2 pb-4">
           {NAV_ITEMS.filter((item) => !item.perm || perms[item.perm]).map((item) => {
             const hrefPath = item.href.split("?")[0];
-            const isActive = pathname === hrefPath || pathname.startsWith(hrefPath + "/");
+            const itemTab = item.href.split("tab=")[1];
+            const isActive =
+              (pathname === hrefPath || pathname.startsWith(hrefPath + "/")) &&
+              // Tab-scoped entries (the /cezih sub-pages) only light up when
+              // their own tab is open, so the CEZIH items don't highlight together.
+              (!itemTab || searchParams.get("tab") === itemTab);
             return (
               <Link
                 key={item.href}

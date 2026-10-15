@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -13,6 +13,7 @@ import { usePermissions } from "@/lib/hooks/use-permissions";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { tenant } = useAuth();
   const cezih = useCezihConnectionDisplay();
   const { data: nalaziCount } = useCezihNalaziCount();
@@ -39,7 +40,12 @@ export function Sidebar() {
       <nav className="flex-1 px-2 py-3 space-y-1">
         {NAV_ITEMS.filter((item) => !item.perm || perms[item.perm]).map((item) => {
           const hrefPath = item.href.split("?")[0];
-          const isActive = pathname === hrefPath || pathname.startsWith(hrefPath + "/");
+          const itemTab = item.href.split("tab=")[1];
+          const isActive =
+            (pathname === hrefPath || pathname.startsWith(hrefPath + "/")) &&
+            // Tab-scoped entries (the /cezih sub-pages) only light up when
+            // their own tab is open, so the CEZIH items don't highlight together.
+            (!itemTab || searchParams.get("tab") === itemTab);
           return (
             <Link
               key={item.href}
