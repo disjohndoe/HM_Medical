@@ -243,6 +243,9 @@ async function poll() {
 $("update-btn")?.addEventListener("click", installUpdate);
 $("disconnect-btn")?.addEventListener("click", resetConfig);
 
+// Remove the stale pending-update marker written by pre-0.13.5 versions.
+localStorage.removeItem("hm_update_pending");
+
 // Initial + poll every 2 seconds
 poll();
 setInterval(poll, 2000);
