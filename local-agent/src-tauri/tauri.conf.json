@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "HM Digital Agent",
-  "version": "0.13.7",
+  "version": "0.13.8",
   "identifier": "hr.hmdigital.medical",
   "build": {
     "beforeBuildCommand": "pnpm run build:frontend",
@@ -46,7 +46,7 @@
       }
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFRUIzOTEwMTZDRkY5MUUKUldRZStjOFdFRG5yN2hGYi9UR2hYdHdNWUxCYUJLbDRCQjBlUWRVVkorZlpzUS9QenNqK3QwcUMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERBNzA0NkQwRDU2OTBCRDQKUldUVUMyblYwRVp3Mm41ODh5N0pIRWhyVFowbWtSV2EzaENXYzcrZGdMQUdMTlRoYjR5RCs1Mm8K",
       "endpoints": [
         "https://github.com/disjohndoe/agent/releases/latest/download/latest.json"
       ],

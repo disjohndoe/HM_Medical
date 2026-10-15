@@ -198,7 +198,7 @@ async function installUpdate() {
   let downloaded = 0;
   let total = 0;
   try {
-    await pendingUpdate.downloadAndInstall(undefined, (event) => {
+    await pendingUpdate.downloadAndInstall((event) => {
       switch (event.event) {
         case "Started":
           downloaded = 0;
@@ -215,16 +215,18 @@ async function installUpdate() {
           break;
       }
       updateUpdateUI();
-    });
+    }, undefined);
     // On Windows the passive installer replaces the app and restarts it —
     // execution usually does not return here.
     updateState = "idle";
     updateUpdateUI();
   } catch (e) {
     console.error("Update install failed:", e);
+    const msg = typeof e === "string" ? e : (e && e.message) || "nepoznata greška";
     downloadProgress = "";
     updateState = "available";
     updateUpdateUI();
+    $("update-detail").textContent = updateVersion + " — greška: " + msg.slice(0, 120);
   }
 }
 
