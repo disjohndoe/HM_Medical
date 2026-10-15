@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { PencilIcon, Upload, FileText, Send, PlusIcon, Loader2, Download, CalendarPlus, Stethoscope } from "lucide-react"
+import { PencilIcon, Upload, FileText, Send, Loader2, Download, CalendarPlus, Stethoscope } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,7 +17,6 @@ import { DocumentList } from "@/components/documents/document-list"
 import { UploadDialog } from "@/components/documents/upload-dialog"
 import { PatientCezihTab } from "@/components/cezih/patient-cezih-tab"
 import { EkartonView } from "@/components/cezih/ekarton-view"
-import { SendNalazDialog } from "@/components/cezih/send-nalaz-dialog"
 import { RecordForm } from "@/components/medical-records/record-form"
 import { PrescriptionList } from "@/components/prescriptions/prescription-list"
 import { useQueryClient } from "@tanstack/react-query"
@@ -37,7 +36,6 @@ export default function PacijentDetailPage() {
   const { data: patient, isLoading, error } = usePatient(id)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [ekartonOpen, setEkartonOpen] = useState(false)
-  const [sendNalazOpen, setSendNalazOpen] = useState(false)
   const [newRecordOpen, setNewRecordOpen] = useState(false)
   const tabParam = searchParams.get("tab")
   const initialTab = tabParam && tabParam !== "nalazi" ? tabParam : "pregled"
@@ -130,7 +128,7 @@ export default function PacijentDetailPage() {
               <CardTitle className="text-base">CEZIH</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Button
                   size="lg"
                   className={`h-12 text-base ${ekartonOpen ? "bg-sky-600 hover:bg-sky-700" : "bg-sky-500 hover:bg-sky-600"} text-white`}
@@ -159,22 +157,6 @@ export default function PacijentDetailPage() {
                   className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
                   onClick={() => {
                     if (!hasCezihIdentifier(patient)) {
-                      toast.error("Pacijent nema CEZIH identifikator — posjete nisu dostupne")
-                      return
-                    }
-                    setActiveTab("cezih")
-                    setCezihSubTab("posjete")
-                    setVisitCreateOpen(true)
-                  }}
-                >
-                  <CalendarPlus className="mr-2 h-5 w-5" />
-                  Nova posjeta
-                </Button>
-                <Button
-                  size="lg"
-                  className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
-                  onClick={() => {
-                    if (!hasCezihIdentifier(patient)) {
                       toast.error("Pacijent nema CEZIH identifikator — slučajevi nisu dostupni")
                       return
                     }
@@ -189,18 +171,26 @@ export default function PacijentDetailPage() {
                 <Button
                   size="lg"
                   className="h-12 text-base bg-sky-500 hover:bg-sky-600 text-white"
-                  onClick={() => setNewRecordOpen(true)}
+                  onClick={() => {
+                    if (!hasCezihIdentifier(patient)) {
+                      toast.error("Pacijent nema CEZIH identifikator — posjete nisu dostupne")
+                      return
+                    }
+                    setActiveTab("cezih")
+                    setCezihSubTab("posjete")
+                    setVisitCreateOpen(true)
+                  }}
                 >
-                  <PlusIcon className="mr-2 h-5 w-5" />
-                  Novi nalaz
+                  <CalendarPlus className="mr-2 h-5 w-5" />
+                  Nova posjeta
                 </Button>
                 <Button
                   size="lg"
                   className="h-12 text-base bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => setSendNalazOpen(true)}
+                  onClick={() => setNewRecordOpen(true)}
                 >
                   <Send className="mr-2 h-5 w-5" />
-                  Pošalji e-Nalaze
+                  Pošalji e-Nalaz
                 </Button>
               </div>
             </CardContent>
@@ -413,13 +403,6 @@ export default function PacijentDetailPage() {
       <RecordForm
         open={newRecordOpen}
         onOpenChange={setNewRecordOpen}
-        patientId={id}
-        hasCezihIdentifier={hasCezihIdentifier(patient)}
-      />
-
-      <SendNalazDialog
-        open={sendNalazOpen}
-        onOpenChange={setSendNalazOpen}
         patientId={id}
         hasCezihIdentifier={hasCezihIdentifier(patient)}
       />
