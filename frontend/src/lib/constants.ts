@@ -559,7 +559,7 @@ export const NAV_ITEMS: {
   { href: "/cezih?tab=slucajevi", label: "Slučajevi", icon: Stethoscope, perm: "canPerformCezihOps" },
   { href: "/cezih?tab=posjete", label: "Posjete", icon: CalendarPlus, perm: "canPerformCezihOps" },
   { href: "/cezih-nalazi", label: "Slanje e-Nalaza", icon: Send, perm: "canPerformCezihOps" },
-  { href: "/cezih?tab=postavke", label: "CEZIH Postavke", icon: Shield, perm: "canViewCezih" },
+  { href: "/cezih?tab=postavke", label: "CEZIH", icon: Shield, perm: "canViewCezih" },
   { href: "/postavke", label: "Postavke", icon: Settings, perm: "canViewSettings" },
 ];
 
