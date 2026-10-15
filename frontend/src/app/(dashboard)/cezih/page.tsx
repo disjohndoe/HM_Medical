@@ -13,6 +13,7 @@ import { ForeignerRegistration, ForeignerSearch } from "@/components/cezih/forei
 import { RegistryTools } from "@/components/cezih/registry-tools"
 import { AllVisitsTable } from "@/components/cezih/all-visits-table"
 import { AllCasesTable } from "@/components/cezih/all-cases-table"
+import { AllEnalaziTable } from "@/components/cezih/all-enalazi-table"
 import { toast } from "sonner"
 import { CreditCard, X, Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth"
@@ -21,7 +22,7 @@ import { useSettingsCezihStatus, useGenerateAgentSecret, useCreatePairingToken }
 import { useCezihStatus } from "@/lib/hooks/use-cezih"
 import { useSelfBindCard, useSelfUnbindCard } from "@/lib/hooks/use-users"
 
-const VALID_TABS = ["posjete", "slucajevi", "stranci", "registri", "aktivnost", "postavke"]
+const VALID_TABS = ["posjete", "slucajevi", "e-nalazi", "stranci", "registri", "aktivnost", "postavke"]
 
 export default function CezihPage() {
   const searchParams = useSearchParams()
@@ -182,9 +183,10 @@ export default function CezihPage() {
         onValueChange={(v) => router.replace(`/cezih?tab=${v}`, { scroll: false })}
         className="space-y-4"
       >
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-4 lg:grid-cols-7">
           <TabsTrigger value="posjete">Posjete</TabsTrigger>
           <TabsTrigger value="slucajevi">Slučajevi</TabsTrigger>
+          <TabsTrigger value="e-nalazi">e-Nalazi</TabsTrigger>
           <TabsTrigger value="stranci">Stranci</TabsTrigger>
           <TabsTrigger value="registri">Registri</TabsTrigger>
           <TabsTrigger value="aktivnost">Aktivnost</TabsTrigger>
@@ -197,6 +199,10 @@ export default function CezihPage() {
 
         <TabsContent value="slucajevi">
           <AllCasesTable />
+        </TabsContent>
+
+        <TabsContent value="e-nalazi">
+          <AllEnalaziTable />
         </TabsContent>
 
         <TabsContent value="stranci">

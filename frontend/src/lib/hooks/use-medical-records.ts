@@ -45,6 +45,18 @@ export function useCezihUnsentRecords(skip = 0, limit = 20) {
   })
 }
 
+// Sent e-Nalazi history across all patients — the complement of the unsent
+// queue. Powers the global e-Nalazi tab on /cezih.
+export function useCezihSentRecords(skip = 0, limit = 20) {
+  return useQuery({
+    queryKey: ["medical-records", "cezih-sent", skip, limit],
+    queryFn: () =>
+      api.get<PaginatedResponse<MedicalRecord>>(
+        `/medical-records?cezih_sent=true&skip=${skip}&limit=${limit}`
+      ),
+  })
+}
+
 export function useMedicalRecord(id: string) {
   return useQuery({
     queryKey: ["medical-records", id],
