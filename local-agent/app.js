@@ -1,6 +1,5 @@
 const { invoke } = window.__TAURI__.core;
 const check = window.__TAURI__.updater?.check;
-const relaunch = window.__TAURI__.process?.relaunch;
 
 function $(id) { return document.getElementById(id); }
 
@@ -138,148 +137,43 @@ async function resetConfig() {
 }
 
 // --- Update logic ---
-
-const REMINDER_DAYS = 3;
-const STORAGE_KEY = "hm_update_pending";
+// The agent never self-installs: it only checks for a newer release and
+// shows a notice. Installing is manual (run the setup exe from the releases
+// page).
 
 let updateState = "idle";
 let updateVersion = "";
 
 function updateUpdateUI() {
   const updateRow = $("update-row");
-  const updateDot = $("update-dot");
-  const updateLabel = $("update-label");
-  const updateDetail = $("update-detail");
-  const restartBtn = $("restart-btn");
-
   if (updateState === "idle") {
     updateRow.style.display = "none";
-    restartBtn.style.display = "none";
     return;
   }
 
   updateRow.style.display = "flex";
-  restartBtn.style.display = "none";
 
-  switch (updateState) {
-    case "checking":
-      updateDot.className = "dot gray";
-      updateLabel.textContent = "Provjera za ažuriranje...";
-      updateDetail.textContent = "";
-      break;
-    case "downloading":
-      updateDot.className = "dot blue";
-      updateLabel.textContent = "Preuzimanje ažuriranja...";
-      updateDetail.textContent = updateVersion;
-      break;
-    case "ready":
-      updateDot.className = "dot green";
-      updateLabel.textContent = "Ažuriranje spremno";
-      updateDetail.textContent = updateVersion + " — primijenit će se pri sljedećem pokretanju";
-      break;
-    case "overdue":
-      updateDot.className = "dot red";
-      updateLabel.textContent = "Ažuriranje potrebno";
-      updateDetail.textContent = updateVersion;
-      restartBtn.style.display = "inline-block";
-      break;
-    case "error":
-      updateDot.className = "dot red";
-      updateLabel.textContent = "Ažuriranje neuspjelo";
-      updateDetail.textContent = "";
-      break;
+  if (updateState === "available") {
+    $("update-dot").className = "dot blue";
+    $("update-label").textContent = "Dostupno je novo ažuriranje programa";
+    $("update-detail").textContent = updateVersion;
   }
-}
-
-function savePendingUpdate(version) {
-  const data = { version, downloadedAt: Date.now() };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-function getPendingUpdate() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY));
-  } catch {
-    return null;
-  }
-}
-
-function clearPendingUpdate() {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
-function isOverdue(pending) {
-  if (!pending) return false;
-  const elapsed = Date.now() - pending.downloadedAt;
-  return elapsed > REMINDER_DAYS * 24 * 60 * 60 * 1000;
-}
-
-function checkPendingUpdate() {
-  const pending = getPendingUpdate();
-  if (!pending) return;
-
-  updateVersion = pending.version;
-  if (isOverdue(pending)) {
-    updateState = "overdue";
-  } else {
-    updateState = "ready";
-  }
-  updateUpdateUI();
 }
 
 async function checkForUpdates() {
   if (!check) return;
-  if (updateState === "downloading") return;
 
   try {
-    updateState = "checking";
-    updateUpdateUI();
-
     const update = await check();
-
-    if (!update) {
-      const pending = getPendingUpdate();
-      if (pending) {
-        updateVersion = pending.version;
-        updateState = isOverdue(pending) ? "overdue" : "ready";
-      } else {
-        updateState = "idle";
-      }
-      updateUpdateUI();
-      return;
-    }
-
-    updateVersion = update.version;
-
-    updateState = "downloading";
-    updateUpdateUI();
-
-    await update.download();
-
-    savePendingUpdate(update.version);
-
-    updateState = "ready";
-    updateUpdateUI();
+    updateVersion = update ? update.version : "";
+    updateState = update ? "available" : "idle";
   } catch (e) {
+    // A failed check (e.g. no internet) stays silent — the next interval
+    // retry will surface the notice once reachable again.
     console.error("Update check failed:", e);
-    updateState = "error";
-    updateUpdateUI();
-    setTimeout(() => {
-      if (updateState === "error") {
-        updateState = "idle";
-        updateUpdateUI();
-      }
-    }, 30000);
+    updateState = "idle";
   }
-}
-
-async function restartNow() {
-  if (!relaunch) return;
-  try {
-    await relaunch();
-  } catch (e) {
-    console.error("Restart failed:", e);
-  }
+  updateUpdateUI();
 }
 
 // --- Polling ---
@@ -294,15 +188,11 @@ async function poll() {
 }
 
 // --- Button bindings (CSP's script-src-attr blocks inline onclick attributes) ---
-$("restart-btn")?.addEventListener("click", restartNow);
 $("disconnect-btn")?.addEventListener("click", resetConfig);
 
 // Initial + poll every 2 seconds
 poll();
 setInterval(poll, 2000);
-
-// Check for pending update first (instant, no network)
-checkPendingUpdate();
 
 // Check for new updates on startup, then every 30 minutes
 checkForUpdates();
